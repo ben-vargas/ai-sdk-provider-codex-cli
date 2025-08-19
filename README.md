@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white)
-![AI SDK v5](https://img.shields.io/badge/AI%20SDK-v5-000)
+![AI SDK v5](https://img.shields.io/badge/AI%20SDK-v5-000?logo=vercel&logoColor=white)
 ![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
