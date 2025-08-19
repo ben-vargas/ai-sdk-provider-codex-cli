@@ -1,5 +1,28 @@
 # AI SDK Provider for Codex CLI
 
+<p align="left">
+  <a href="https://www.npmjs.com/package/ai-sdk-provider-codex-cli">
+    <img alt="npm version" src="https://img.shields.io/npm/v/ai-sdk-provider-codex-cli.svg" />
+  </a>
+  <a href="https://www.npmjs.com/package/ai-sdk-provider-codex-cli">
+    <img alt="npm downloads" src="https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg" />
+  </a>
+  <a href="https://github.com/ben-vargas/ai-sdk-provider-codex-cli/blob/main/LICENSE">
+    <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" />
+  </a>
+  <img alt="Node >= 18" src="https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white" />
+  <img alt="AI SDK v5" src="https://img.shields.io/badge/AI%20SDK-v5-000?logo=vercel&logoColor=white" />
+  <img alt="Modules: ESM + CJS" src="https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-blue?logo=typescript" />
+  <a href="https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues">
+    <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" />
+  </a>
+  <a href="https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/tag/v0.1.0">
+    <img alt="Latest Release" src="https://img.shields.io/badge/release-v0.1.0-6f42c1" />
+  </a>
+  
+</p>
+
 A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface.
 
 - Works with `generateText`, `streamText`, and `generateObject` (JSON schemas via prompt engineering)
