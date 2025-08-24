@@ -73,8 +73,8 @@ describe('CodexCliLanguageModel', () => {
       id: 'gpt-5',
       settings: { allowNpx: true, color: 'never' },
     });
-    const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Say hi' }] as any });
-    expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
+    const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Say hi' }] as any, mode: { type: 'regular' } });
+    expect(res.text).toBe('Hello JSON');
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'session-123' });
   });
 
@@ -103,6 +103,7 @@ describe('CodexCliLanguageModel', () => {
     });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'Say hi' }] as any,
+      mode: { type: 'regular' },
     });
 
     const received: any[] = [];
@@ -149,7 +150,7 @@ describe('CodexCliLanguageModel', () => {
       },
     });
 
-    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any, mode: { type: 'regular' } });
 
     expect(['npx', 'node']).toContain(seen.cmd);
     expect(seen.args).toContain('exec');
@@ -185,7 +186,7 @@ describe('CodexCliLanguageModel', () => {
       id: 'gpt-5',
       settings: { allowNpx: true, fullAuto: true, color: 'never' },
     });
-    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any, mode: { type: 'regular' } });
 
     expect(lastArgs).toContain('--full-auto');
     // No -c flags when fullAuto
@@ -199,7 +200,7 @@ describe('CodexCliLanguageModel', () => {
       settings: { allowNpx: true, color: 'never' },
     });
     await expect(
-      model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any, mode: { type: 'regular' } }),
     ).rejects.toMatchObject({
       name: 'AI_APICallError',
       data: { exitCode: 2 },
@@ -231,6 +232,7 @@ describe('CodexCliLanguageModel', () => {
       model.doGenerate({
         prompt: [{ role: 'user', content: 'Hi' }] as any,
         abortSignal: ac.signal,
+        mode: { type: 'regular' },
       }),
     ).rejects.toBe(reason);
     expect(killed).toBe(true);

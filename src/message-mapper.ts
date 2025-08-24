@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai';
+import type { LanguageModelV1Prompt } from '@ai-sdk/provider';
 
 export type PromptMode = { type: 'regular' | 'object-json' };
 
@@ -36,7 +36,7 @@ function isToolItem(p: unknown): p is ToolItem {
 }
 
 export function mapMessagesToPrompt(
-  prompt: readonly ModelMessage[],
+  prompt: LanguageModelV1Prompt,
   mode: PromptMode = { type: 'regular' },
   jsonSchema?: unknown,
 ): { promptText: string; warnings?: string[] } {

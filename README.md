@@ -4,17 +4,80 @@
 [![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white)
-![AI SDK v5](https://img.shields.io/badge/AI%20SDK-v5-000?logo=vercel&logoColor=white)
+![AI SDK v4](https://img.shields.io/badge/AI%20SDK-v4-000?logo=vercel&logoColor=white)
 ![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface.
+A community provider for Vercel AI SDK v4 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV1 interface.
+
+Note: For AI SDK v5 support, see the `main` branch and install the `latest` tag from npm. This branch targets AI SDK v4 and is published under the `ai-sdk-v4` dist-tag.
 
 - Works with `generateText`, `streamText`, and `generateObject` (JSON schemas via prompt engineering)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
+
+## Version Compatibility
+
+- Provider (v5 line, main branch): published as `latest`, compatible with AI SDK v5.
+- Provider (v4 line, this branch): published as `ai-sdk-v4`, compatible with AI SDK v4.
+
+| Provider Version | AI SDK Version | NPM Tag     | Status       | Branch     |
+|------------------|----------------|-------------|--------------|------------|
+| 0.1.x            | v5             | `latest`    | Active       | `main`     |
+| 0.1.0-ai-sdk-v4  | v4             | `ai-sdk-v4` | Maintenance  | `ai-sdk-v4`|
+
+### Installing the Right Version
+
+- AI SDK v5 (recommended): `npm i ai-sdk-provider-codex-cli ai` (or `@latest`)
+- AI SDK v4 (this branch): `npm i ai-sdk-provider-codex-cli@ai-sdk-v4 ai@^4.3.16`
+
+## AI SDK v4 vs v5
+
+- For AI SDK v4 (this branch):
+  - Install: `npm i ai-sdk-provider-codex-cli@ai-sdk-v4 ai@^4.3.16`
+  - Usage (non-streaming):
+    
+    ```ts
+    import { generateText } from 'ai';
+    import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+    const { text } = await generateText({
+      model: codexCli('gpt-5', { allowNpx: true, skipGitRepoCheck: true }),
+      prompt: 'Hello from v4',
+    });
+    ```
+
+  - Usage (streaming):
+
+    ```ts
+    import { streamText } from 'ai';
+    import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+    const { textStream } = await streamText({
+      model: codexCli('gpt-5', { allowNpx: true, skipGitRepoCheck: true }),
+      prompt: 'Stream a short reply',
+    });
+    for await (const chunk of textStream) process.stdout.write(chunk);
+    ```
+
+- For AI SDK v5 (main branch):
+  - Install: `npm i ai-sdk-provider-codex-cli ai` (or `@latest`)
+  - Usage (streaming):
+
+    ```ts
+    import { streamText } from 'ai';
+    import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+    const result = streamText({
+      model: codexCli('gpt-5'),
+      prompt: 'Hello from v5',
+    });
+    const text = await result.text;
+    ```
+
+  - See the `main` branch README for full v5 docs and examples.
 
 ## Installation
 
@@ -28,7 +91,11 @@ codex login   # or set OPENAI_API_KEY
 2. Install provider and AI SDK
 
 ```bash
-npm i ai ai-sdk-provider-codex-cli
+# AI SDK v4 users (this branch)
+npm i ai@^4.3.16 ai-sdk-provider-codex-cli@ai-sdk-v4
+
+# AI SDK v5 users (use main branch/latest tag)
+# npm i ai ai-sdk-provider-codex-cli
 ```
 
 ## Quick Start
@@ -101,11 +168,7 @@ This is expected behavior for JSON mode in Codex exec, so streaming typically �
 
 ## Documentation
 
-- Getting started, configuration, and troubleshooting live in `docs/`:
-  - [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) – full usage guide and examples
-  - [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) – all settings and how they map to CLI flags
-  - [docs/ai-sdk-v5/troubleshooting.md](docs/ai-sdk-v5/troubleshooting.md) – common issues and fixes
-  - [docs/ai-sdk-v5/limitations.md](docs/ai-sdk-v5/limitations.md) – known constraints and behavior differences
+- Getting started, configuration, and troubleshooting live in `docs/` (v4 docs coming soon in this branch).
 - See [examples/](examples/) for runnable scripts covering core usage, streaming, permissions/sandboxing, and object generation.
 
 ## Authentication
@@ -129,8 +192,8 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 
 ## Zod Compatibility
 
-- Peer supports `zod@^3 || ^4`
-- Validation logic normalizes v3/v4 error shapes
+- Peer supports `zod@^3`
+- Validation logic normalizes zod v3/v4 error shapes
 
 ## Limitations
 

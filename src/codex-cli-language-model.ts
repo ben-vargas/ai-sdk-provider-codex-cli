@@ -5,12 +5,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  LanguageModelV2,
-  LanguageModelV2CallWarning,
-  LanguageModelV2FinishReason,
-  LanguageModelV2StreamPart,
-  LanguageModelV2Usage,
-  LanguageModelV2Content,
+  LanguageModelV1,
+  LanguageModelV1CallWarning,
+  LanguageModelV1FinishReason,
+  LanguageModelV1StreamPart,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId } from '@ai-sdk/provider-utils';
@@ -56,12 +54,11 @@ function resolveCodexPath(
   }
 }
 
-export class CodexCliLanguageModel implements LanguageModelV2 {
-  readonly specificationVersion = 'v2' as const;
+export class CodexCliLanguageModel implements LanguageModelV1 {
+  readonly specificationVersion = 'v1' as const;
   readonly provider = 'codex-cli';
   readonly defaultObjectGenerationMode = 'json' as const;
   readonly supportsImageUrls = false;
-  readonly supportedUrls = {};
   readonly supportsStructuredOutputs = false;
 
   readonly modelId: string;
@@ -137,18 +134,22 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   private mapWarnings(
-    options: Parameters<LanguageModelV2['doGenerate']>[0],
-  ): LanguageModelV2CallWarning[] {
-    const unsupported: LanguageModelV2CallWarning[] = [];
+    options:
+      | Parameters<LanguageModelV1['doGenerate']>[0]
+      | Parameters<LanguageModelV1['doStream']>[0],
+  ): LanguageModelV1CallWarning[] {
+    const unsupported: LanguageModelV1CallWarning[] = [];
     const add = (setting: unknown, name: string) => {
       if (setting !== undefined)
         unsupported.push({
           type: 'unsupported-setting',
           setting: name,
           details: `Codex CLI does not support ${name}; it will be ignored.`,
-        } as LanguageModelV2CallWarning);
+        } as LanguageModelV1CallWarning);
     };
     add(options.temperature, 'temperature');
+    // v4 uses maxTokens instead of maxOutputTokens
+    add((options as { maxTokens?: unknown }).maxTokens, 'maxTokens');
     add(options.topP, 'topP');
     add(options.topK, 'topK');
     add(options.presencePenalty, 'presencePenalty');
@@ -191,27 +192,24 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV2['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
-    const mode =
-      options.responseFormat?.type === 'json'
-        ? { type: 'object-json' as const }
-        : { type: 'regular' as const };
+    options: Parameters<LanguageModelV1['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV1['doGenerate']>>> {
+    const mode = options.mode?.type === 'object-json' ? { type: 'object-json' as const } : { type: 'regular' as const };
     const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(
-      options.prompt,
+      options.prompt as any,
       mode,
-      options.responseFormat?.type === 'json' ? options.responseFormat.schema : undefined,
+      options.mode?.type === 'object-json' ? (options.mode as any).schema : undefined,
     );
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
-    ] as LanguageModelV2CallWarning[];
+    ] as LanguageModelV1CallWarning[];
 
     const { cmd, args, env, cwd, lastMessagePath } = this.buildArgs(promptText);
     let text = '';
-    const usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-    const finishReason: LanguageModelV2FinishReason = 'stop';
+    const usage = { promptTokens: 0, completionTokens: 0 };
+    const finishReason: LanguageModelV1FinishReason = 'stop';
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -278,50 +276,44 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       } catch {}
     }
 
-    if (options.responseFormat?.type === 'json' && text) {
+    if (options.mode?.type === 'object-json' && text) {
       text = extractJson(text);
     }
 
-    const content: LanguageModelV2Content[] = [{ type: 'text', text }];
     return {
-      content,
+      text: text || undefined,
       usage,
       finishReason,
-      warnings,
+      warnings: warnings.length ? warnings : undefined,
       response: { id: generateId(), timestamp: new Date(), modelId: this.modelId },
       request: { body: promptText },
       providerMetadata: {
         'codex-cli': { ...(this.sessionId ? { sessionId: this.sessionId } : {}) },
       },
-    };
+      rawCall: { rawPrompt: promptText, rawSettings: { model: this.modelId, settings: this.settings } },
+    } as any;
   }
 
   async doStream(
-    options: Parameters<LanguageModelV2['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
-    const mode =
-      options.responseFormat?.type === 'json'
-        ? { type: 'object-json' as const }
-        : { type: 'regular' as const };
+    options: Parameters<LanguageModelV1['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV1['doStream']>>> {
+    const mode = options.mode?.type === 'object-json' ? { type: 'object-json' as const } : { type: 'regular' as const };
     const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(
-      options.prompt,
+      options.prompt as any,
       mode,
-      options.responseFormat?.type === 'json' ? options.responseFormat.schema : undefined,
+      options.mode?.type === 'object-json' ? (options.mode as any).schema : undefined,
     );
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
-    ] as LanguageModelV2CallWarning[];
+    ] as LanguageModelV1CallWarning[];
 
     const { cmd, args, env, cwd, lastMessagePath } = this.buildArgs(promptText);
 
-    const stream = new ReadableStream<LanguageModelV2StreamPart>({
+    const stream = new ReadableStream<LanguageModelV1StreamPart>({
       start: (controller) => {
         const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-
-        // Emit stream-start
-        controller.enqueue({ type: 'stream-start', warnings });
 
         let stderr = '';
         let accumulatedText = '';
@@ -397,16 +389,19 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
 
           if (finalText) {
-            if (options.responseFormat?.type === 'json') {
+            if (options.mode?.type === 'object-json') {
               finalText = extractJson(finalText);
             }
-            controller.enqueue({ type: 'text-delta', id: randomUUID(), delta: finalText });
+            controller.enqueue({ type: 'text-delta', textDelta: finalText });
           }
 
           controller.enqueue({
             type: 'finish',
             finishReason: 'stop',
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+            usage: { promptTokens: 0, completionTokens: 0 },
+            providerMetadata: {
+              'codex-cli': { ...(this.sessionId ? { sessionId: this.sessionId } : {}) },
+            },
           });
           controller.close();
         });
@@ -414,8 +409,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       cancel: () => {},
     });
 
-    return { stream, request: { body: promptText } } as Awaited<
-      ReturnType<LanguageModelV2['doStream']>
-    >;
+    return {
+      stream,
+      rawCall: { rawPrompt: promptText, rawSettings: { model: this.modelId, settings: this.settings } },
+      warnings: warnings.length ? warnings : undefined,
+    } as Awaited<ReturnType<LanguageModelV1['doStream']>>;
   }
 }
