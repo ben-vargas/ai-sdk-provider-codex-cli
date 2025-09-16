@@ -27,10 +27,20 @@ node examples/<file>.mjs
   - Demonstrates: `generateText`, provider wiring, safe defaults.
   - Value: Quick sanity check to confirm your environment is correct.
 
+- **basic-usage-gpt-5-codex.mjs:** Minimal generation with the new `gpt-5-codex` slug
+  - Purpose: Confirm the provider works unchanged with the Codex-specific GPT-5 model ID.
+  - Demonstrates: Same call path as above, but with the new slug so you can sanity check quickly.
+  - Value: Handy regression test when Codex CLI ships new model identifiers.
+
 - **streaming.mjs:** Stream responses
   - Purpose: Show the AI SDK streaming API shape.
   - Demonstrates: Reading `textStream` and rendering as chunks.
   - Value: Build responsive UIs. Note: Codex CLI JSON mode suppresses deltas, so you’ll typically receive a final chunk rather than many small ones; the pattern remains the same.
+
+- **streaming-gpt-5-codex.mjs:** Streaming with the `gpt-5-codex` slug
+  - Purpose: Validate stream handling with the Codex-specific model identifier.
+  - Demonstrates: Same stream plumbing while calling the new slug.
+  - Value: Confidence that streaming stays compatible across Codex model updates.
 
 - **conversation-history.mjs:** Maintain context
   - Purpose: Keep multi-turn state using a message array.
@@ -41,6 +51,11 @@ node examples/<file>.mjs
   - Purpose: Use system prompts to steer tone or format.
   - Demonstrates: `system` role to enforce concise or structured replies.
   - Value: Consistency across outputs without repeating instructions.
+
+- **system-messages-gpt-5-codex.mjs:** System prompts with `gpt-5-codex`
+  - Purpose: Mirror the system prompt example against the new slug to ensure compatibility.
+  - Demonstrates: That the conversation mapper/system validation still behaves the same.
+  - Value: Fast compatibility regression check for future Codex CLI updates.
 
 - **custom-config.mjs:** Configure runtime
   - Purpose: Customize CWD and autonomy/sandbox policies per run.
@@ -82,6 +97,11 @@ The provider uses prompt engineering to enforce JSON-only responses, then extrac
   - Purpose: Start with simple, typed objects.
   - Demonstrates: Zod primitives, arrays, and optional fields.
   - Value: Cleanly typed responses for standard data collection.
+
+- **generate-object-basic-gpt-5-codex.mjs:** Fundamentals with `gpt-5-codex`
+  - Purpose: Exercise JSON object generation against the Codex slug.
+  - Demonstrates: Same Zod-driven prompts, proving compatibility with new identifiers.
+  - Value: Quick regression path when Codex CLI ships new GPT-5 model slugs.
 
 - **generate-object-nested.mjs:** Real-world hierarchies
   - Purpose: Work with nested objects and arrays of objects.

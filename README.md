@@ -10,7 +10,7 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface.
+A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models (`gpt-5` and the Codex-specific `gpt-5-codex` slug) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface.
 
 - Works with `generateText`, `streamText`, and `generateObject` (JSON schemas via prompt engineering)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
@@ -39,7 +39,7 @@ Text generation
 import { generateText } from 'ai';
 import { codexCli } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -59,8 +59,10 @@ Streaming
 import { streamText } from 'ai';
 import { codexCli } from 'ai-sdk-provider-codex-cli';
 
+// The provider works with both `gpt-5` and `gpt-5-codex`; use the latter for
+// the Codex CLI specific slug.
 const { textStream } = await streamText({
-  model: codexCli('gpt-5', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexCli('gpt-5-codex', { allowNpx: true, skipGitRepoCheck: true }),
   prompt: 'Write two short lines of encouragement.',
 });
 for await (const chunk of textStream) process.stdout.write(chunk);
@@ -75,7 +77,7 @@ import { codexCli } from 'ai-sdk-provider-codex-cli';
 
 const schema = z.object({ name: z.string(), age: z.number().int() });
 const { object } = await generateObject({
-  model: codexCli('gpt-5', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexCli('gpt-5-codex', { allowNpx: true, skipGitRepoCheck: true }),
   schema,
   prompt: 'Generate a small user profile.',
 });
