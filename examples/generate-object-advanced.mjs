@@ -3,7 +3,8 @@
 /**
  * Advanced Object Generation (Codex CLI)
  *
- * Complex, real-world schemas using prompt-engineered JSON-only responses.
+ * Complex, real-world schemas using native --output-schema for API-level
+ * JSON enforcement. Reliable structured output without prompt engineering.
  */
 
 import { generateObject } from 'ai';

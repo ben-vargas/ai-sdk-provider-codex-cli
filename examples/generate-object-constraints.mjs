@@ -25,16 +25,13 @@ async function example1_userAccount() {
   console.log('1️⃣  User Account\n');
 
   const userSchema = z.object({
-    id: z.string().uuid().describe('Unique user id (UUID)'),
+    id: z.string().describe('Unique user id (UUID format)'),
     username: z.string().min(3).max(20),
-    email: z.string().email(),
+    email: z.string().describe('Valid email address'),
     status: z.enum(['pending', 'active', 'suspended']),
     role: z.enum(['user', 'admin', 'moderator']),
-    createdAt: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}/)
-      .describe('YYYY-MM-DD'),
-    website: z.string().url().optional(),
+    createdAt: z.string().describe('Creation date in YYYY-MM-DD format'),
+    website: z.string().describe('Personal website URL (or empty string if none)'),
   });
 
   const { object } = await generateObject({
@@ -51,10 +48,10 @@ async function example2_booking() {
   console.log('2️⃣  Booking with Logical Constraints\n');
 
   const bookingSchema = z.object({
-    bookingId: z.string().uuid(),
+    bookingId: z.string().describe('Booking ID in UUID format'),
     guestName: z.string(),
-    checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    checkIn: z.string().describe('Check-in date in YYYY-MM-DD format'),
+    checkOut: z.string().describe('Check-out date in YYYY-MM-DD format'),
     roomType: z.enum(['standard', 'deluxe', 'suite']),
     guests: z.number().int().min(1).max(4),
     totalUsd: z.number().positive(),

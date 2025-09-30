@@ -4,7 +4,8 @@
  * Basic Object Generation Examples (Codex CLI)
  *
  * Demonstrates fundamental object generation with JSON schema using
- * the Codex CLI provider. Uses prompt engineering to enforce JSON-only output.
+ * the Codex CLI provider. Uses native --output-schema for API-level
+ * JSON enforcement (v0.2.0+). No prompt engineering needed!
  */
 
 import { generateObject } from 'ai';
@@ -16,8 +17,7 @@ console.log('🎯 Codex CLI - Basic Object Generation\n');
 const model = codexCli('gpt-5', {
   allowNpx: true,
   skipGitRepoCheck: true,
-  approvalMode: 'on-failure',
-  sandboxMode: 'workspace-write',
+  dangerouslyBypassApprovalsAndSandbox: true, // For examples only!
   color: 'never',
 });
 
@@ -61,9 +61,10 @@ async function example2_arrays() {
   console.log();
 }
 
-// Example 3: Optional fields and basic constraints
-async function example3_optionalFields() {
-  console.log('3️⃣  Optional Fields & Constraints\n');
+// Example 3: Constraints (min/max)
+// NOTE: Optional fields are not supported with --output-schema (OpenAI strict mode limitation)
+async function example3_constraints() {
+  console.log('3️⃣  Numeric Constraints\n');
 
   const { object } = await generateObject({
     model,
@@ -72,8 +73,7 @@ async function example3_optionalFields() {
       author: z.string().describe('Author name'),
       isbn: z.string().describe('ISBN-13'),
       publishedYear: z.number().int().describe('Year of publication'),
-      rating: z.number().min(0).max(5).optional().describe('Average rating 0-5'),
-      awards: z.array(z.string()).optional().describe('Awards if any'),
+      rating: z.number().min(0).max(5).describe('Average rating 0-5'),
     }),
     prompt: 'Generate metadata for a science fiction novel (not a real title).',
   });
@@ -84,6 +84,6 @@ async function example3_optionalFields() {
 
 await example1_simpleObject();
 await example2_arrays();
-await example3_optionalFields();
+await example3_constraints();
 
 console.log('✅ Done');

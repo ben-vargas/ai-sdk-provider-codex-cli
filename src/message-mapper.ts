@@ -1,7 +1,5 @@
 import type { ModelMessage } from 'ai';
 
-export type PromptMode = { type: 'regular' | 'object-json' };
-
 type TextPart = { type: 'text'; text: string };
 type ImagePart = { type: 'image'; [k: string]: unknown };
 type ToolOutputText = { type: 'text'; value: string };
@@ -35,11 +33,10 @@ function isToolItem(p: unknown): p is ToolItem {
   return true;
 }
 
-export function mapMessagesToPrompt(
-  prompt: readonly ModelMessage[],
-  mode: PromptMode = { type: 'regular' },
-  jsonSchema?: unknown,
-): { promptText: string; warnings?: string[] } {
+export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
+  promptText: string;
+  warnings?: string[];
+} {
   const warnings: string[] = [];
   const parts: string[] = [];
 
@@ -97,18 +94,6 @@ export function mapMessagesToPrompt(
   let promptText = '';
   if (systemText) promptText += systemText + '\n\n';
   promptText += parts.join('\n\n');
-
-  if (mode.type === 'object-json' && jsonSchema) {
-    const schemaStr = JSON.stringify(jsonSchema, null, 2);
-    promptText = `CRITICAL: You MUST respond with ONLY a JSON object. NO other text.
-Your response MUST start with { and end with }
-The JSON MUST match this EXACT schema:
-${schemaStr}
-
-Now, based on the following conversation, generate ONLY the JSON object:
-
-${promptText}`;
-  }
 
   return { promptText, ...(warnings.length ? { warnings } : {}) };
 }

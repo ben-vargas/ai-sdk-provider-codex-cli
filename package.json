@@ -1,7 +1,7 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "0.1.0",
-  "description": "AI SDK v5 provider for spawning OpenAI Codex CLI (gpt-5 via ChatGPT OAuth)",
+  "version": "0.2.0",
+  "description": "AI SDK v5 provider for OpenAI Codex CLI with native JSON Schema support",
   "keywords": [
     "ai-sdk",
     "codex",

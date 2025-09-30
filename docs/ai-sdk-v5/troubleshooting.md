@@ -21,11 +21,17 @@
 
 ## Streaming emits only a final chunk
 
-- Codex JSON mode suppresses deltas; the provider still uses AI SDK’s standard stream API. This is expected.
+- Codex `--experimental-json` mode emits events (`session.created`, `turn.completed`, `item.completed`) rather than streaming text deltas; the provider still uses AI SDK's standard stream API. This is expected.
 
-## Object generation produces extra text
+## Object generation fails with empty response
 
-- The provider enforces JSON‑only via prompt engineering and then extracts the first balanced JSON block. Ensure your schema is clear and constraints are realistic.
+**v0.2.0+**: The provider uses native `--output-schema` with OpenAI strict mode. Common issues:
+
+- **Optional fields**: Remove all `.optional()` calls - OpenAI strict mode requires all fields
+- **Format validators**: Remove `.email()`, `.url()`, `.uuid()` - use descriptions like "Valid email address" or "UUID format" instead
+- **Pattern validators**: Remove `.regex()` - use descriptions like "YYYY-MM-DD format" instead
+
+See [LIMITATIONS.md](../../LIMITATIONS.md) for full details.
 
 ## zod v3/v4 compatibility warnings
 

@@ -36,10 +36,14 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `color` → `--color <always|never|auto>`
 - `outputLastMessageFile` → `--output-last-message <path>`
 
-## JSON Mode
+## JSON Mode (v0.2.0+)
 
 When the AI SDK request uses `responseFormat: { type: 'json' }`, the provider:
 
-1. Injects a strict JSON‑only instruction including your schema
-2. Extracts the first balanced JSON block from the model’s text
-3. Returns that text to AI SDK for Zod validation
+1. Converts your Zod schema to JSON Schema format
+2. Sanitizes the schema (removes unsupported fields like `format`, `pattern`, `$schema`, etc.)
+3. Passes the schema via `--output-schema` for native OpenAI strict mode enforcement
+4. The API returns guaranteed valid JSON matching your schema
+5. AI SDK validates the response with Zod
+
+**Breaking change from v0.1.x**: No longer uses prompt engineering. Schemas are enforced at the API level using OpenAI strict mode, which does not support optional fields or format validators.
