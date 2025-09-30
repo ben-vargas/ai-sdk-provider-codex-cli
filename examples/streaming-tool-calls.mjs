@@ -70,7 +70,7 @@ try {
         }
         break;
       }
-      case 'text-delta':
+      case 'text-delta': {
         // AI SDK fullStream uses .text for text-delta events
         const textDelta = part.text ?? part.delta;
         if (typeof textDelta === 'string') {
@@ -78,7 +78,8 @@ try {
           process.stdout.write(textDelta);
         }
         break;
-      case 'finish':
+      }
+      case 'finish': {
         // AI SDK fullStream delivers usage as 'totalUsage' not 'usage'
         const usage = part.totalUsage || part.usage;
         console.log(
@@ -87,6 +88,7 @@ try {
           })`,
         );
         break;
+      }
       default:
         break;
     }

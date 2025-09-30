@@ -37,9 +37,7 @@ try {
           name: part.toolName,
           input: part.input,
         });
-        console.log(
-          `🔧 Tool #${toolCalls.length}: ${part.toolName} (${part.toolCallId})`,
-        );
+        console.log(`🔧 Tool #${toolCalls.length}: ${part.toolName} (${part.toolCallId})`);
 
         // Show abbreviated input
         try {

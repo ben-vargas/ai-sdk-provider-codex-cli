@@ -96,6 +96,7 @@ Recommended defaults for CI/local automation:
 The `--experimental-json` output format (introduced Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is not yet implemented by OpenAI.
 
 **What this means:**
+
 - `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
 - No incremental text deltas—you wait for the full response, then receive it all at once
 - The AI SDK's streaming interface is supported, but actual incremental streaming is not available

@@ -353,7 +353,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       case 'command_execution': {
         const result: Record<string, unknown> = {};
         if (typeof data.command === 'string') result.command = data.command;
-        if (typeof data.aggregated_output === 'string') result.aggregatedOutput = data.aggregated_output;
+        if (typeof data.aggregated_output === 'string')
+          result.aggregatedOutput = data.aggregated_output;
         if (typeof data.exit_code === 'number') result.exitCode = data.exit_code;
         if (typeof data.status === 'string') result.status = data.status;
         return buildResult(result);
@@ -688,8 +689,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             return;
           }
 
-          const mapKey =
-            typeof item.id === 'string' && item.id.length > 0 ? item.id : randomUUID();
+          const mapKey = typeof item.id === 'string' && item.id.length > 0 ? item.id : randomUUID();
           let toolState = activeTools.get(mapKey);
           const latestInput = this.buildToolInputPayload(item);
 
