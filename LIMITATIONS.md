@@ -88,7 +88,19 @@ Currently returns `{ inputTokens: 0, outputTokens: 0, totalTokens: 0 }` for all 
 
 ### Streaming
 
-Codex CLI with `--experimental-json` suppresses token deltas during streaming. The final text is delivered as a single chunk at the end, so you won't see incremental streaming of JSON data.
+**Status:** Not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
+
+The `--experimental-json` output format (introduced in Codex CLI on Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is **not yet implemented** by OpenAI.
+
+**What this means:**
+- `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
+- No incremental text deltas - you wait for the full response, then receive it all at once
+- The AI SDK's streaming interface is supported, but actual incremental streaming is not available
+
+**Future support:**
+The Codex CLI commit message (344d4a1d) explicitly states: "or other item types like `item.output_delta` when we need streaming" and notes "more event types and item types to come."
+
+When OpenAI adds streaming support to the experimental JSON format, this provider will be updated to handle those events and enable true incremental streaming.
 
 ### Color Output
 

@@ -35,12 +35,12 @@ node examples/<file>.mjs
 - **streaming.mjs:** Stream responses
   - Purpose: Show the AI SDK streaming API shape.
   - Demonstrates: Reading `textStream` and rendering as chunks.
-  - Value: Build responsive UIs. Note: Codex CLI JSON mode suppresses deltas, so you’ll typically receive a final chunk rather than many small ones; the pattern remains the same.
+  - Value: Build responsive UIs. **Note:** `--experimental-json` format currently doesn't support incremental streaming—you'll receive the full response in a single chunk. The streaming API pattern is correct and will work when OpenAI adds delta event support to Codex CLI.
 
 - **streaming-gpt-5-codex.mjs:** Streaming with the `gpt-5-codex` slug
   - Purpose: Validate stream handling with the Codex-specific model identifier.
   - Demonstrates: Same stream plumbing while calling the new slug.
-  - Value: Confidence that streaming stays compatible across Codex model updates.
+  - Value: Confidence that streaming stays compatible across Codex model updates. **Note:** Currently delivers full response in single chunk due to experimental JSON format limitations.
 
 - **conversation-history.mjs:** Maintain context
   - Purpose: Keep multi-turn state using a message array.
@@ -153,4 +153,4 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 - Not getting output? Run `node examples/check-cli.mjs`.
 - Auth failures? Run `codex login` or set `OPENAI_API_KEY`.
 - PATH issues? Keep `allowNpx: true` or install `@openai/codex` globally.
-- Streaming not “chunky”? Codex JSON mode often returns a final chunk only; the stream pattern remains correct for UIs.
+- Streaming not incremental? The `--experimental-json` format (introduced Sept 25, 2025) doesn't yet support streaming deltas—you'll receive the full response in a single chunk. This is expected behavior until OpenAI adds delta event support. The streaming API pattern remains correct for future compatibility.

@@ -103,12 +103,18 @@ console.log(object);
 
 ### Streaming behavior
 
-When using `codex exec --experimental-json`, the Codex CLI intentionally suppresses token/assistant deltas in its JSON event stream. Instead, it writes the final assistant message to the file you pass via `--output-last-message` and then signals completion. This provider:
+**Status:** Incremental streaming not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
 
-- emits `response-metadata` early (as soon as the session is configured), and
-- returns the final text as a single `text-delta` right before `finish`.
+The `--experimental-json` output format (introduced Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is not yet implemented by OpenAI.
 
-This is expected behavior for JSON mode in Codex exec, so streaming typically “feels” like a final chunk rather than a gradual trickle.
+**What this means:**
+- `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
+- No incremental text deltas—you wait for the full response, then receive it all at once
+- The AI SDK's streaming interface is supported, but actual incremental streaming is not available
+
+**Future support:** The Codex CLI commit (344d4a1d) introducing experimental JSON explicitly notes: "or other item types like `item.output_delta` when we need streaming" and states "more event types and item types to come."
+
+When OpenAI adds streaming support, this provider will be updated to handle those events and enable true incremental streaming.
 
 ## Documentation
 

@@ -91,18 +91,25 @@ Recommended defaults for CI/local automation:
 
 ## Streaming Behavior
 
-When using `codex exec --experimental-json`, Codex does not stream assistant text tokens in its JSON event output. Instead, it:
+**Status:** Incremental streaming not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
 
-- Emits `session.created`, `turn.completed`, and `item.completed` events in JSONL format
-- Provides the final assistant message in the `item.completed` event
+The `--experimental-json` output format (introduced Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is not yet implemented by OpenAI.
 
-The provider surfaces this as:
+**What this means:**
+- `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
+- No incremental text deltas—you wait for the full response, then receive it all at once
+- The AI SDK's streaming interface is supported, but actual incremental streaming is not available
 
-1. a `response-metadata` stream part when the session is configured, then
-2. a single `text-delta` with the final text right before
-3. `finish`.
+**How the provider handles this:**
 
-This is expected behavior of `--experimental-json` mode in Codex exec; the AI SDK stream API is still used so your code remains compatible if richer streaming becomes available later.
+1. Emits `response-metadata` stream part when the session is configured
+2. Waits for `item.completed` event with the final assistant message
+3. Emits a single `text-delta` with the full text
+4. Emits `finish`
+
+**Future support:** The Codex CLI commit (344d4a1d) introducing experimental JSON explicitly notes: "or other item types like `item.output_delta` when we need streaming" and states "more event types and item types to come."
+
+When OpenAI adds streaming support, this provider will be updated to handle those events and enable true incremental streaming. Your code using the AI SDK stream API will remain compatible.
 
 ## Examples
 
