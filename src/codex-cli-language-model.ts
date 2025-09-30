@@ -319,6 +319,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         if (typeof data.server === 'string') payload.server = data.server;
         if (typeof data.tool === 'string') payload.tool = data.tool;
         if (typeof data.status === 'string') payload.status = data.status;
+        // Include arguments so consumers can see what parameters were passed
+        if (data.arguments !== undefined) payload.arguments = data.arguments;
         return Object.keys(payload).length ? payload : undefined;
       }
       case 'web_search': {
@@ -370,6 +372,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         }
         if (typeof data.tool === 'string') result.tool = data.tool;
         if (typeof data.status === 'string') result.status = data.status;
+        // Include result payload so consumers can see what the tool returned
+        if (data.result !== undefined) result.result = data.result;
+        // Include error details if present
+        if (data.error !== undefined) result.error = data.error;
         return buildResult(result);
       }
       case 'web_search': {
