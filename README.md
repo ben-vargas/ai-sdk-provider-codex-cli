@@ -12,9 +12,10 @@
 
 A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5 class models (`gpt-5` and the Codex-specific `gpt-5-codex` slug) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface.
 
-- Works with `generateText`, `streamText`, and `generateObject` (JSON schemas via prompt engineering)
+- Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
+- **v0.2.0 Breaking Changes**: Switched to `--experimental-json` and native schema enforcement (see [CHANGELOG](CHANGELOG.md))
 
 ## Installation
 
@@ -24,6 +25,12 @@ A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑
 npm i -g @openai/codex
 codex login   # or set OPENAI_API_KEY
 ```
+
+> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. Check your version with `codex --version` and upgrade if needed:
+>
+> ```bash
+> npm i -g @openai/codex@latest
+> ```
 
 2. Install provider and AI SDK
 
@@ -88,13 +95,15 @@ console.log(object);
 
 - AI SDK v5 compatible (LanguageModelV2)
 - Streaming and non‑streaming
-- JSON object generation with Zod schemas (prompt‑engineered)
+- **Native JSON Schema support** via `--output-schema` (API-enforced with `strict: true`)
+- JSON object generation with Zod schemas (100-200 fewer tokens per request vs prompt engineering)
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
+- Usage tracking from experimental JSON event format
 
 ### Streaming behavior
 
-When using `codex exec --json`, the Codex CLI intentionally suppresses token/assistant deltas in its JSON event stream. Instead, it writes the final assistant message to the file you pass via `--output-last-message` and then signals completion. This provider:
+When using `codex exec --experimental-json`, the Codex CLI intentionally suppresses token/assistant deltas in its JSON event stream. Instead, it writes the final assistant message to the file you pass via `--output-last-message` and then signals completion. This provider:
 
 - emits `response-metadata` early (as soon as the session is configured), and
 - returns the final text as a single `text-delta` right before `finish`.
@@ -137,8 +146,18 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 ## Limitations
 
 - Node ≥ 18, local process only (no Edge)
-- Codex JSON mode (`codex exec --json`) suppresses mid‑response deltas; streaming typically yields a final chunk. The CLI writes the final assistant text via `--output-last-message`, which this provider reads and emits at the end.
+- Codex `--experimental-json` mode emits events rather than streaming deltas; streaming typically yields a final chunk. The CLI provides the final assistant text in the `item.completed` event, which this provider reads and emits at the end.
 - Some AI SDK parameters are unsupported by Codex CLI (e.g., temperature/topP/penalties); the provider surfaces warnings and ignores them
+
+### JSON Schema Limitations (v0.2.0+)
+
+**⚠️ Important:** OpenAI strict mode has limitations:
+
+- **Optional fields NOT supported**: All fields must be required (no `.optional()`)
+- **Format validators stripped**: `.email()`, `.url()`, `.uuid()` are removed (use descriptions instead)
+- **Pattern validators stripped**: `.regex()` is removed (use descriptions instead)
+
+See [LIMITATIONS.md](LIMITATIONS.md) for comprehensive details and migration guidance.
 
 ## Disclaimer
 

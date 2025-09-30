@@ -91,12 +91,21 @@ node examples/<file>.mjs
 
 ## Structured Output (Objects)
 
-The provider uses prompt engineering to enforce JSON-only responses, then extracts the first well-formed JSON block and returns it to AI SDK for Zod validation.
+**v0.2.0+**: The provider uses native `--output-schema` support with OpenAI strict mode for API-level JSON enforcement. No prompt engineering needed—schemas are passed directly to the API, eliminating 100-200 tokens per request and improving reliability.
+
+**⚠️ Important Limitations:**
+
+- Optional fields are **NOT supported** by OpenAI strict mode (all fields must be required)
+- Format validators (`.email()`, `.url()`, `.uuid()`) are stripped (use descriptions instead)
+- Pattern validators (`.regex()`) are stripped (use descriptions instead)
+
+See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 
 - **generate-object-basic.mjs:** Fundamentals
   - Purpose: Start with simple, typed objects.
-  - Demonstrates: Zod primitives, arrays, and optional fields.
+  - Demonstrates: Zod primitives, arrays, and numeric constraints.
   - Value: Cleanly typed responses for standard data collection.
+  - Note: All fields must be required (no `.optional()`).
 
 - **generate-object-basic-gpt-5-codex.mjs:** Fundamentals with `gpt-5-codex`
   - Purpose: Exercise JSON object generation against the Codex slug.
@@ -109,21 +118,35 @@ The provider uses prompt engineering to enforce JSON-only responses, then extrac
   - Value: Match the shape of real app payloads and APIs.
 
 - **generate-object-constraints.mjs:** Quality and validation
-  - Purpose: Enforce enums, ranges, and regex formats.
-  - Demonstrates: UUIDs, date regex, enum fields, min/max constraints.
+  - Purpose: Enforce enums, ranges, and constraints.
+  - Demonstrates: Enums, min/max numeric constraints, string length constraints.
   - Value: Higher-quality data before it enters your system.
+  - Note: Use descriptions for format hints (e.g., "UUID format", "YYYY-MM-DD date") since format/pattern validators are stripped.
 
 - **generate-object-advanced.mjs:** Complex transformations
   - Purpose: Tackle richer tasks and data extraction.
   - Demonstrates: Product comparisons with scoring, HTML-to-JSON extraction, incident classification with recommendations.
   - Value: Turn free-form inputs into structured, actionable data.
 
+- **generate-object-native-schema.mjs:** Native schema showcase (v0.2.0+)
+  - Purpose: Demonstrate native `--output-schema` capabilities with API-level enforcement.
+  - Demonstrates: Complex nested schemas, enums, constraints enforced by OpenAI strict mode.
+  - Value: See the power of native schema support—no prompt engineering, 100-200 fewer tokens per request, guaranteed valid JSON.
+
+## New in v0.2.0
+
+- **experimental-json-events.mjs:** Event format showcase
+  - Purpose: Understand the new `--experimental-json` event structure.
+  - Demonstrates: `session.created`, `turn.completed`, `item.completed` events, usage tracking.
+  - Value: Learn the event flow for debugging and observability.
+
 ## Suggested Run Order
 
 1. `basic-usage.mjs` → `streaming.mjs` → `conversation-history.mjs`
 2. `custom-config.mjs` → `permissions-and-sandbox.mjs`
-3. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs`
-4. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
+3. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs` → `generate-object-native-schema.mjs`
+4. `experimental-json-events.mjs` (v0.2.0 event format)
+5. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
 
 ## Troubleshooting
 

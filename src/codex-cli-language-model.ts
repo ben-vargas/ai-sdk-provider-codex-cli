@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   LanguageModelV2,
   LanguageModelV2CallWarning,
@@ -14,7 +14,6 @@ import type {
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId } from '@ai-sdk/provider-utils';
-import { extractJson } from './extract-json.js';
 import { getLogger } from './logger.js';
 import type { CodexCliSettings, Logger } from './types.js';
 import { validateModelId } from './validation.js';
@@ -26,16 +25,23 @@ export interface CodexLanguageModelOptions {
   settings?: CodexCliSettings;
 }
 
-interface CodexEventMessage {
+// Experimental JSON event format from --experimental-json
+interface ExperimentalJsonEvent {
   type?: string;
   session_id?: string;
-  last_agent_message?: unknown;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cached_input_tokens?: number;
+  };
+  item?: {
+    id?: string;
+    item_type?: string; // Flattened from ConversationItemDetails
+    text?: string; // For assistant_message and reasoning items
+    [k: string]: unknown;
+  };
+  message?: string; // For error events
   [k: string]: unknown;
-}
-
-interface CodexJsonEvent {
-  id?: string;
-  msg?: CodexEventMessage;
 }
 
 function resolveCodexPath(
@@ -81,15 +87,19 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
   }
 
-  private buildArgs(promptText: string): {
+  private buildArgs(
+    promptText: string,
+    responseFormat?: { type: 'json'; schema: unknown },
+  ): {
     cmd: string;
     args: string[];
     env: NodeJS.ProcessEnv;
     cwd?: string;
     lastMessagePath?: string;
+    schemaPath?: string;
   } {
     const base = resolveCodexPath(this.settings.codexPath, this.settings.allowNpx);
-    const args: string[] = [...base.args, 'exec', '--json'];
+    const args: string[] = [...base.args, 'exec', '--experimental-json'];
 
     // Approval/sandbox (exec subcommand does not accept -a/-s directly; use -c overrides)
     if (this.settings.fullAuto) {
@@ -115,6 +125,25 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       args.push('-m', this.modelId);
     }
 
+    // Handle JSON schema if provided
+    let schemaPath: string | undefined;
+    if (responseFormat?.type === 'json' && responseFormat.schema) {
+      const dir = mkdtempSync(join(tmpdir(), 'codex-schema-'));
+      schemaPath = join(dir, 'schema.json');
+
+      // Sanitize and prepare schema for OpenAI strict mode
+      const schema = typeof responseFormat.schema === 'object' ? responseFormat.schema : {};
+      const sanitizedSchema = this.sanitizeJsonSchema(schema) as Record<string, unknown>;
+      const schemaWithAdditional = {
+        ...sanitizedSchema,
+        // OpenAI strict mode requires additionalProperties=false even if user requested otherwise.
+        additionalProperties: false,
+      };
+
+      writeFileSync(schemaPath, JSON.stringify(schemaWithAdditional, null, 2));
+      args.push('--output-schema', schemaPath);
+    }
+
     // Prompt as positional arg (avoid stdin for reliability)
     args.push(promptText);
 
@@ -133,7 +162,57 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
     args.push('--output-last-message', lastMessagePath);
 
-    return { cmd: base.cmd, args, env, cwd: this.settings.cwd, lastMessagePath };
+    return { cmd: base.cmd, args, env, cwd: this.settings.cwd, lastMessagePath, schemaPath };
+  }
+
+  private sanitizeJsonSchema(value: unknown): unknown {
+    // Remove fields that OpenAI strict mode doesn't support
+    // Based on codex-rs/core/src/openai_tools.rs sanitize_json_schema
+    if (typeof value !== 'object' || value === null) {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonSchema(item));
+    }
+
+    const obj = value as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+
+    for (const [key, val] of Object.entries(obj)) {
+      // Special handling for 'properties' - preserve all property names, sanitize their schemas
+      if (key === 'properties' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        const props = val as Record<string, unknown>;
+        const sanitizedProps: Record<string, unknown> = {};
+        for (const [propName, propSchema] of Object.entries(props)) {
+          // Keep property name, sanitize its schema
+          sanitizedProps[propName] = this.sanitizeJsonSchema(propSchema);
+        }
+        result[key] = sanitizedProps;
+        continue;
+      }
+
+      // Remove unsupported metadata fields
+      if (
+        key === '$schema' ||
+        key === '$id' ||
+        key === '$ref' ||
+        key === '$defs' ||
+        key === 'definitions' ||
+        key === 'title' ||
+        key === 'examples' ||
+        key === 'default' ||
+        key === 'format' || // OpenAI strict mode doesn't support format
+        key === 'pattern' // OpenAI strict mode doesn't support pattern
+      ) {
+        continue;
+      }
+
+      // Recursively sanitize nested objects and arrays
+      result[key] = this.sanitizeJsonSchema(val);
+    }
+
+    return result;
   }
 
   private mapWarnings(
@@ -158,11 +237,45 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     return unsupported;
   }
 
-  private parseJsonLine(line: string): CodexJsonEvent | undefined {
+  private parseExperimentalJsonEvent(line: string): {
+    sessionId?: string;
+    text?: string;
+    usage?: { inputTokens: number; outputTokens: number };
+    error?: string;
+  } {
     try {
-      return JSON.parse(line);
+      const evt: ExperimentalJsonEvent = JSON.parse(line);
+      const result: ReturnType<typeof this.parseExperimentalJsonEvent> = {};
+
+      switch (evt.type) {
+        case 'session.created':
+          result.sessionId = evt.session_id;
+          break;
+
+        case 'turn.completed':
+          if (evt.usage) {
+            result.usage = {
+              inputTokens: evt.usage.input_tokens || 0,
+              outputTokens: evt.usage.output_tokens || 0,
+            };
+          }
+          break;
+
+        case 'item.completed':
+          // Extract assistant message text
+          if (evt.item?.item_type === 'assistant_message' || evt.item?.item_type === 'reasoning') {
+            result.text = evt.item.text;
+          }
+          break;
+
+        case 'error':
+          result.error = evt.message;
+          break;
+      }
+
+      return result;
     } catch {
-      return undefined;
+      return {};
     }
   }
 
@@ -193,22 +306,21 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   async doGenerate(
     options: Parameters<LanguageModelV2['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
-    const mode =
-      options.responseFormat?.type === 'json'
-        ? { type: 'object-json' as const }
-        : { type: 'regular' as const };
-    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(
-      options.prompt,
-      mode,
-      options.responseFormat?.type === 'json' ? options.responseFormat.schema : undefined,
-    );
+    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
 
-    const { cmd, args, env, cwd, lastMessagePath } = this.buildArgs(promptText);
+    const responseFormat =
+      options.responseFormat?.type === 'json'
+        ? { type: 'json' as const, schema: options.responseFormat.schema }
+        : undefined;
+    const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
+      promptText,
+      responseFormat,
+    );
     let text = '';
     const usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     const finishReason: LanguageModelV2FinishReason = 'stop';
@@ -234,15 +346,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         child.stdout.on('data', (chunk: string) => {
           const lines = chunk.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
-            const evt = this.parseJsonLine(line);
-            if (!evt) continue;
-            const msg = evt.msg;
-            const type = msg?.type;
-            if (type === 'session_configured' && msg) {
-              this.sessionId = msg.session_id;
-            } else if (type === 'task_complete' && msg) {
-              const last = msg.last_agent_message;
-              if (typeof last === 'string') text = last;
+            const parsed = this.parseExperimentalJsonEvent(line);
+            if (parsed.sessionId) this.sessionId = parsed.sessionId;
+            if (parsed.text) text = parsed.text;
+            if (parsed.usage) {
+              usage.inputTokens = parsed.usage.inputTokens;
+              usage.outputTokens = parsed.usage.outputTokens;
+              usage.totalTokens = usage.inputTokens + usage.outputTokens;
             }
           }
         });
@@ -262,6 +372,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       });
     } finally {
       if (options.abortSignal && onAbort) options.abortSignal.removeEventListener('abort', onAbort);
+      // Clean up temp schema file
+      if (schemaPath) {
+        try {
+          const schemaDir = dirname(schemaPath);
+          rmSync(schemaDir, { recursive: true, force: true });
+        } catch {}
+      }
     }
 
     // Fallback: read last message file if needed
@@ -278,9 +395,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       } catch {}
     }
 
-    if (options.responseFormat?.type === 'json' && text) {
-      text = extractJson(text);
-    }
+    // No JSON extraction needed - native schema guarantees valid JSON
 
     const content: LanguageModelV2Content[] = [{ type: 'text', text }];
     return {
@@ -299,22 +414,21 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   async doStream(
     options: Parameters<LanguageModelV2['doStream']>[0],
   ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
-    const mode =
-      options.responseFormat?.type === 'json'
-        ? { type: 'object-json' as const }
-        : { type: 'regular' as const };
-    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(
-      options.prompt,
-      mode,
-      options.responseFormat?.type === 'json' ? options.responseFormat.schema : undefined,
-    );
+    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
 
-    const { cmd, args, env, cwd, lastMessagePath } = this.buildArgs(promptText);
+    const responseFormat =
+      options.responseFormat?.type === 'json'
+        ? { type: 'json' as const, schema: options.responseFormat.schema }
+        : undefined;
+    const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
+      promptText,
+      responseFormat,
+    );
 
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start: (controller) => {
@@ -344,33 +458,40 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         child.stdout.on('data', (chunk: string) => {
           const lines = chunk.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
-            const evt = this.parseJsonLine(line);
-            if (!evt) continue;
-            const msg = evt.msg;
-            const type = msg?.type;
-            if (type === 'session_configured' && msg) {
-              this.sessionId = msg.session_id;
+            const parsed = this.parseExperimentalJsonEvent(line);
+            if (parsed.sessionId) {
+              this.sessionId = parsed.sessionId;
               controller.enqueue({
                 type: 'response-metadata',
                 id: randomUUID(),
                 timestamp: new Date(),
                 modelId: this.modelId,
               });
-            } else if (type === 'task_complete' && msg) {
-              const last = msg.last_agent_message;
-              if (typeof last === 'string') {
-                accumulatedText = last;
-              }
+            }
+            if (parsed.text) {
+              accumulatedText = parsed.text;
             }
           }
         });
 
+        const cleanupSchema = () => {
+          if (!schemaPath) return;
+          try {
+            const schemaDir = dirname(schemaPath);
+            rmSync(schemaDir, { recursive: true, force: true });
+          } catch {}
+        };
+
         child.on('error', (e) => {
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
+          cleanupSchema();
           controller.error(this.handleSpawnError(e, promptExcerpt));
         });
         child.on('close', (code) => {
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
+
+          // Clean up temp schema file
+          cleanupSchema();
 
           if (code !== 0) {
             controller.error(
@@ -396,10 +517,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             } catch {}
           }
 
+          // No JSON extraction needed - native schema guarantees valid JSON
           if (finalText) {
-            if (options.responseFormat?.type === 'json') {
-              finalText = extractJson(finalText);
-            }
             controller.enqueue({ type: 'text-delta', id: randomUUID(), delta: finalText });
           }
 

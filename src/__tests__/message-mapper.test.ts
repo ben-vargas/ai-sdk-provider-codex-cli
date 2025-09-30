@@ -30,13 +30,8 @@ describe('mapMessagesToPrompt', () => {
     expect(warnings?.some((w) => w.toLowerCase().includes('image'))).toBe(true);
   });
 
-  it('appends strict JSON instruction in object-json mode', () => {
-    const { promptText } = mapMessagesToPrompt(
-      [{ role: 'user', content: 'Data please' }] as any,
-      { type: 'object-json' },
-      { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
-    );
-    expect(promptText).toContain('You MUST respond with ONLY a JSON object');
-    expect(promptText).toContain('properties');
+  it('does not inject JSON-specific instructions', () => {
+    const { promptText } = mapMessagesToPrompt([{ role: 'user', content: 'Data please' }] as any);
+    expect(promptText).not.toContain('CRITICAL:');
   });
 });

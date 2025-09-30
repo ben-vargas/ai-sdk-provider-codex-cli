@@ -53,19 +53,20 @@ describe('CodexCliLanguageModel', () => {
     vi.restoreAllMocks();
   });
 
-  it('doGenerate returns text and sessionId from JSONL', async () => {
+  it('doGenerate returns text and sessionId from experimental JSON events', async () => {
     const lines = [
       JSON.stringify({
-        id: '1',
-        msg: {
-          type: 'session_configured',
-          session_id: 'session-123',
-          model: 'gpt-5',
-          history_log_id: 0,
-          history_entry_count: 0,
-        },
+        type: 'session.created',
+        session_id: 'session-123',
       }),
-      JSON.stringify({ id: '2', msg: { type: 'task_complete', last_agent_message: 'Hello JSON' } }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'Hello JSON' },
+      }),
     ];
     (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
 
@@ -76,23 +77,15 @@ describe('CodexCliLanguageModel', () => {
     const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Say hi' }] as any });
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'session-123' });
+    expect(res.usage).toMatchObject({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
   });
 
   it('doStream yields response-metadata, text-delta, finish', async () => {
     const lines = [
+      JSON.stringify({ type: 'session.created', session_id: 'sess-1' }),
       JSON.stringify({
-        id: '1',
-        msg: {
-          type: 'session_configured',
-          session_id: 'sess-1',
-          model: 'gpt-5',
-          history_log_id: 0,
-          history_entry_count: 0,
-        },
-      }),
-      JSON.stringify({
-        id: '2',
-        msg: { type: 'task_complete', last_agent_message: 'Streamed hello' },
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'Streamed hello' },
       }),
     ];
     (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
@@ -115,22 +108,18 @@ describe('CodexCliLanguageModel', () => {
     expect(types).toContain('response-metadata');
     expect(types).toContain('text-delta');
     expect(types).toContain('finish');
+    const deltaPayload = received.find((p) => p.type === 'text-delta');
+    expect(deltaPayload?.delta).toBe('Streamed hello');
   });
 
   it('includes approval/sandbox flags and output-last-message; uses npx with allowNpx', async () => {
     let seen: any = { cmd: '', args: [] as string[] };
     const lines = [
+      JSON.stringify({ type: 'session.created', session_id: 'sess-2' }),
       JSON.stringify({
-        id: '1',
-        msg: {
-          type: 'session_configured',
-          session_id: 'sess-2',
-          model: 'gpt-5',
-          history_log_id: 0,
-          history_entry_count: 0,
-        },
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
       }),
-      JSON.stringify({ id: '2', msg: { type: 'task_complete', last_agent_message: 'OK' } }),
     ];
     (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
       seen = { cmd, args };
@@ -153,7 +142,8 @@ describe('CodexCliLanguageModel', () => {
 
     expect(['npx', 'node']).toContain(seen.cmd);
     expect(seen.args).toContain('exec');
-    expect(seen.args).toContain('--json');
+    expect(seen.args).toContain('--experimental-json');
+    expect(seen.args).not.toContain('--json');
     expect(seen.args).toContain('-c');
     expect(seen.args).toContain('approval_policy=on-failure');
     expect(seen.args).toContain('sandbox_mode=workspace-write');

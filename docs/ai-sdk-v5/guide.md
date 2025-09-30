@@ -58,13 +58,22 @@ const { text } = await generateText({ model, messages });
 
 ## Structured Output (JSON)
 
-The provider prompt‑engineers the model to output JSON only and then extracts the first balanced JSON block. AI SDK validates against your Zod schema.
+**v0.2.0+**: The provider uses native `--output-schema` support with OpenAI strict mode for API-level JSON enforcement. Schemas are passed directly to the API, eliminating 100-200 tokens per request and improving reliability.
+
+**⚠️ Important Limitations:**
+
+- Optional fields are **NOT supported** by OpenAI strict mode (all fields must be required)
+- Format validators (`.email()`, `.url()`, `.uuid()`) are stripped (use descriptions instead)
+- Pattern validators (`.regex()`) are stripped (use descriptions instead)
+
+See [LIMITATIONS.md](../../LIMITATIONS.md) for full details.
 
 Tips:
 
-- Add clear field descriptions to your Zod schema.
-- Keep constraints realistic for better adherence.
-- Provide concrete examples in the prompt if the format is tricky.
+- Add clear field descriptions to your Zod schema (especially for format hints like "UUID format", "YYYY-MM-DD date")
+- All fields must be required (no `.optional()`)
+- Use descriptions instead of format validators
+- Keep constraints realistic for better adherence
 
 ## Permissions & Sandbox
 
@@ -82,10 +91,10 @@ Recommended defaults for CI/local automation:
 
 ## Streaming Behavior
 
-When using `codex exec --json`, Codex does not stream assistant text tokens in its JSON event output. Instead, it:
+When using `codex exec --experimental-json`, Codex does not stream assistant text tokens in its JSON event output. Instead, it:
 
-- suppresses assistant deltas in the JSONL stream, and
-- writes the final assistant message to the path passed via `--output-last-message`.
+- Emits `session.created`, `turn.completed`, and `item.completed` events in JSONL format
+- Provides the final assistant message in the `item.completed` event
 
 The provider surfaces this as:
 
@@ -93,7 +102,7 @@ The provider surfaces this as:
 2. a single `text-delta` with the final text right before
 3. `finish`.
 
-This is expected behavior of JSON mode in Codex exec; the AI SDK stream API is still used so your code remains compatible if richer streaming becomes available later.
+This is expected behavior of `--experimental-json` mode in Codex exec; the AI SDK stream API is still used so your code remains compatible if richer streaming becomes available later.
 
 ## Examples
 
