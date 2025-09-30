@@ -137,8 +137,26 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 
 - **experimental-json-events.mjs:** Event format showcase
   - Purpose: Understand the new `--experimental-json` event structure.
-  - Demonstrates: `session.created`, `turn.completed`, `item.completed` events, usage tracking.
+  - Demonstrates: `thread.started`, `turn.completed`, `item.completed` events, usage tracking.
   - Value: Learn the event flow for debugging and observability.
+
+## Tool Streaming
+
+**Note:** Codex CLI executes tools autonomously, so the provider sets `providerExecuted: true` on all tool calls. This means the AI SDK will not attempt to execute tools—it simply receives the results from Codex CLI.
+
+**⚠️ Streaming Limitation:** Real-time output streaming (`output-delta` events) is not yet available. Tool outputs are delivered in the final `tool-result` event via the `aggregatedOutput` field. The provider correctly implements the AI SDK tool streaming API, but incremental stdout/stderr streaming will require additional support in Codex CLI's event format.
+
+- **streaming-tool-calls.mjs:** Basic tool streaming
+  - Purpose: Demonstrate tool streaming API with Codex CLI tool execution.
+  - Demonstrates: `tool-input-start`, `tool-input-delta`, `tool-input-end`, `tool-call`, `tool-result` events for exec commands.
+  - Value: See how tool invocation and results flow through the AI SDK streaming interface. Monitor what tools Codex CLI executes in real time.
+  - Note: Tool outputs appear in final result, not as streaming deltas (see limitation above).
+
+- **streaming-multiple-tools.mjs:** Multiple sequential tool calls
+  - Purpose: Show complex multi-tool workflows with result tracking.
+  - Demonstrates: Sequential tool execution, abbreviated output display, tool call numbering.
+  - Value: Build UIs that track progress across multiple tool invocations. Great for debugging complex agent workflows.
+  - Note: Shows tool inputs immediately and outputs when completed (aggregated, not streaming).
 
 ## Suggested Run Order
 
@@ -146,7 +164,8 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 2. `custom-config.mjs` → `permissions-and-sandbox.mjs`
 3. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs` → `generate-object-native-schema.mjs`
 4. `experimental-json-events.mjs` (v0.2.0 event format)
-5. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
+5. `streaming-tool-calls.mjs` → `streaming-multiple-tools.mjs` (tool streaming)
+6. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
 
 ## Troubleshooting
 
