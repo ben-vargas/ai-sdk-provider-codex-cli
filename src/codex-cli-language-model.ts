@@ -68,7 +68,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   readonly defaultObjectGenerationMode = 'json' as const;
   readonly supportsImageUrls = false;
   readonly supportedUrls = {};
-  readonly supportsStructuredOutputs = false;
+  readonly supportsStructuredOutputs = true;
 
   readonly modelId: string;
   readonly settings: CodexCliSettings;
