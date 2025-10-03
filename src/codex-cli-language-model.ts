@@ -102,6 +102,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
   }
 
+  // Codex JSONL items use `type` for the item discriminator, but some
+  // earlier fixtures (and defensive parsing) might still surface `item_type`.
+  // This helper returns whichever is present.
+  private getItemType(item?: ExperimentalJsonItem): string | undefined {
+    if (!item) return undefined;
+    const data = item as Record<string, unknown>;
+    const legacy = typeof data.item_type === 'string' ? (data.item_type as string) : undefined;
+    const current = typeof data.type === 'string' ? (data.type as string) : undefined;
+    return legacy ?? current;
+  }
+
   private buildArgs(
     promptText: string,
     responseFormat?: { type: 'json'; schema: unknown },
@@ -281,7 +292,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
   private getToolName(item?: ExperimentalJsonItem): string | undefined {
     if (!item) return undefined;
-    const itemType = item.item_type;
+    const itemType = this.getItemType(item);
     switch (itemType) {
       case 'command_execution':
         return 'exec';
@@ -302,7 +313,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   private buildToolInputPayload(item?: ExperimentalJsonItem): unknown {
     if (!item) return undefined;
     const data = item as Record<string, unknown>;
-    switch (item.item_type) {
+    switch (this.getItemType(item)) {
       case 'command_execution': {
         const payload: Record<string, unknown> = {};
         if (typeof data.command === 'string') payload.command = data.command;
@@ -342,7 +353,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (!item) return { result: {} };
     const data = item as Record<string, unknown>;
     const metadata: Record<string, string> = {};
-    if (typeof item.item_type === 'string') metadata.itemType = item.item_type;
+    const itemType = this.getItemType(item);
+    if (typeof itemType === 'string') metadata.itemType = itemType;
     if (typeof item.id === 'string') metadata.itemId = item.id;
     if (typeof data.status === 'string') metadata.status = data.status;
 
@@ -351,7 +363,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       metadata: Object.keys(metadata).length ? metadata : undefined,
     });
 
-    switch (item.item_type) {
+    switch (itemType) {
       case 'command_execution': {
         const result: Record<string, unknown> = {};
         if (typeof data.command === 'string') result.command = data.command;
@@ -436,8 +448,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     const providerMetadataEntries: Record<string, string> = {
       ...(metadata ?? {}),
     };
-    if (item.item_type && providerMetadataEntries.itemType === undefined) {
-      providerMetadataEntries.itemType = item.item_type;
+    const itemType = this.getItemType(item);
+    if (itemType && providerMetadataEntries.itemType === undefined) {
+      providerMetadataEntries.itemType = itemType;
     }
     if (item.id && providerMetadataEntries.itemId === undefined) {
       providerMetadataEntries.itemId = item.id;
@@ -445,7 +458,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
     // Determine error status for command executions
     let isError: boolean | undefined;
-    if (item.item_type === 'command_execution') {
+    if (itemType === 'command_execution') {
       const data = item as Record<string, unknown>;
       const exitCode = typeof data.exit_code === 'number' ? (data.exit_code as number) : undefined;
       const status = typeof data.status === 'string' ? (data.status as string) : undefined;
@@ -556,8 +569,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
             if (
               event.type === 'item.completed' &&
-              event.item?.item_type === 'assistant_message' &&
-              typeof event.item.text === 'string'
+              this.getItemType(event.item) === 'assistant_message' &&
+              typeof event.item?.text === 'string'
             ) {
               text = event.item.text;
             }
@@ -691,7 +704,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
           if (
             event.type === 'item.completed' &&
-            item.item_type === 'assistant_message' &&
+            this.getItemType(item) === 'assistant_message' &&
             typeof item.text === 'string'
           ) {
             accumulatedText = item.text;
