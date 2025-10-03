@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-10-03
+
+### Added
+
+- **Comprehensive tool streaming support** - Real-time monitoring of Codex CLI's autonomous tool execution
+  - Tool invocation events (`tool-input-start`, `tool-input-delta`, `tool-input-end`)
+  - Tool call events with `providerExecuted: true` (Codex executes tools autonomously)
+  - Tool result events with complete output payloads
+  - Support for all Codex tool types: `exec`, `patch`, `web_search`, `mcp_tool_call`
+- Turn-level usage tracking via `turn.completed` events (requires Codex CLI >= 0.44.0)
+- New examples:
+  - `streaming-tool-calls.mjs` - Basic tool streaming demonstration
+  - `streaming-multiple-tools.mjs` - Complex multi-tool workflows with result tracking
+- Comprehensive tool streaming documentation in `examples/README.md`
+
+### Fixed
+
+- **Empty schema handling** - No longer adds `additionalProperties: false` to empty schemas (e.g., from `z.any()`)
+- **Text event sequence** - Proper emission of `text-start` before `text-delta` events
+- **Stream timing race condition** - Use `setImmediate` to ensure all buffered stdout events process before stream finishes
+
+### Changed
+
+- Updated `@openai/codex` optional dependency from `*` to `^0.44.0` for usage tracking support
+- Test fixtures updated to match actual Codex CLI event format (`thread.started` vs `session.created`)
+
+### Limitations
+
+- **No real-time output streaming yet** - Tool outputs delivered in final `tool-result` event via `aggregatedOutput` field, not as incremental deltas. Requires Codex CLI to add output-delta events to experimental JSON format.
+
 ## [0.2.0] - 2025-09-30
 
 ### Breaking Changes

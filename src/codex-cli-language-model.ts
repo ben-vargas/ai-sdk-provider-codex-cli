@@ -273,7 +273,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     return {
       inputTokens,
       outputTokens,
-      totalTokens: inputTokens + outputTokens + cachedInputTokens,
+      // totalTokens should not double-count cached tokens; track cached separately
+      totalTokens: inputTokens + outputTokens,
+      cachedInputTokens,
     };
   }
 
@@ -441,11 +443,23 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       providerMetadataEntries.itemId = item.id;
     }
 
+    // Determine error status for command executions
+    let isError: boolean | undefined;
+    if (item.item_type === 'command_execution') {
+      const data = item as Record<string, unknown>;
+      const exitCode = typeof data.exit_code === 'number' ? (data.exit_code as number) : undefined;
+      const status = typeof data.status === 'string' ? (data.status as string) : undefined;
+      if ((exitCode !== undefined && exitCode !== 0) || status === 'failed') {
+        isError = true;
+      }
+    }
+
     controller.enqueue({
       type: 'tool-result',
       toolCallId,
       toolName,
       result: resultPayload ?? {},
+      ...(isError ? { isError: true } : {}),
       ...(Object.keys(providerMetadataEntries).length
         ? { providerMetadata: { 'codex-cli': providerMetadataEntries } }
         : {}),

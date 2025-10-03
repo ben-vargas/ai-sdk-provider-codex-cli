@@ -177,7 +177,12 @@ describe('CodexCliLanguageModel', () => {
     });
 
     const finish = received.find((p) => p.type === 'finish');
-    expect(finish?.usage).toEqual({ inputTokens: 4, outputTokens: 2, totalTokens: 7 });
+    expect(finish?.usage).toEqual({
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+      cachedInputTokens: 1,
+    });
   });
 
   it('includes approval/sandbox flags and output-last-message; uses npx with allowNpx', async () => {
@@ -217,6 +222,61 @@ describe('CodexCliLanguageModel', () => {
     expect(seen.args).toContain('sandbox_mode=workspace-write');
     expect(seen.args).toContain('--skip-git-repo-check');
     expect(seen.args).toContain('--output-last-message');
+  });
+
+  it('sets isError for failed command execution', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-fail' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_fail',
+          item_type: 'command_execution',
+          command: 'false',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_fail',
+          item_type: 'command_execution',
+          command: 'false',
+          aggregated_output: '',
+          exit_code: 1,
+          status: 'failed',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', item_type: 'assistant_message', text: 'oops' },
+      }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'fail please' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    for await (const part of (rs as any)[Symbol.asyncIterator]()) received.push(part);
+
+    const toolResult = received.find((p) => p.type === 'tool-result');
+    expect(toolResult?.isError).toBe(true);
+    expect(toolResult?.toolName).toBe('exec');
+    expect(toolResult?.result).toMatchObject({
+      command: 'false',
+      exitCode: 1,
+      status: 'failed',
+    });
   });
 
   it('uses --full-auto when specified and omits -c flags', async () => {

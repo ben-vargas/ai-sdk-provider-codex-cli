@@ -15,6 +15,7 @@ A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑
 - Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
+- **v0.3.0**: Adds comprehensive tool streaming support for monitoring autonomous tool execution
 - **v0.2.0 Breaking Changes**: Switched to `--experimental-json` and native schema enforcement (see [CHANGELOG](CHANGELOG.md))
 
 ## Installation
@@ -26,7 +27,7 @@ npm i -g @openai/codex
 codex login   # or set OPENAI_API_KEY
 ```
 
-> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. Check your version with `codex --version` and upgrade if needed:
+> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.44.0 recommended** for full usage tracking and tool streaming support. Check your version with `codex --version` and upgrade if needed:
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -95,13 +96,46 @@ console.log(object);
 
 - AI SDK v5 compatible (LanguageModelV2)
 - Streaming and non‑streaming
+- **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
 - **Native JSON Schema support** via `--output-schema` (API-enforced with `strict: true`)
 - JSON object generation with Zod schemas (100-200 fewer tokens per request vs prompt engineering)
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
 
-### Streaming behavior
+### Tool Streaming (v0.3.0+)
+
+The provider supports comprehensive tool streaming, enabling real-time monitoring of Codex CLI's autonomous tool execution:
+
+```js
+import { streamText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const result = await streamText({
+  model: codexCli('gpt-5-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  prompt: 'List files and count lines in the largest one',
+});
+
+for await (const part of result.fullStream) {
+  if (part.type === 'tool-call') {
+    console.log('🔧 Tool:', part.toolName);
+  }
+  if (part.type === 'tool-result') {
+    console.log('✅ Result:', part.result);
+  }
+}
+```
+
+**What you get:**
+
+- Tool invocation events when Codex starts executing tools (exec, patch, web_search, mcp_tool_call)
+- Tool input tracking with full parameter visibility
+- Tool result events with complete output payloads
+- `providerExecuted: true` on all tool calls (Codex executes autonomously, app doesn't need to)
+
+**Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/streaming-tool-calls.mjs` and `examples/streaming-multiple-tools.mjs` for usage patterns.
+
+### Text Streaming behavior
 
 **Status:** Incremental streaming not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
 

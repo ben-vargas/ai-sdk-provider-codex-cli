@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AI SDK v5 provider for OpenAI Codex CLI with native JSON Schema support",
   "keywords": [
     "ai-sdk",
