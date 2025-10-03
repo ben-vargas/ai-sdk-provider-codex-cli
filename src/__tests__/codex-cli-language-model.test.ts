@@ -56,8 +56,8 @@ describe('CodexCliLanguageModel', () => {
   it('doGenerate returns text and sessionId from experimental JSON events', async () => {
     const lines = [
       JSON.stringify({
-        type: 'session.created',
-        session_id: 'session-123',
+        type: 'thread.started',
+        thread_id: 'thread-123',
       }),
       JSON.stringify({
         type: 'turn.completed',
@@ -76,17 +76,18 @@ describe('CodexCliLanguageModel', () => {
     });
     const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Say hi' }] as any });
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
-    expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'session-123' });
+    expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'thread-123' });
     expect(res.usage).toMatchObject({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
   });
 
   it('doStream yields response-metadata, text-delta, finish', async () => {
     const lines = [
-      JSON.stringify({ type: 'session.created', session_id: 'sess-1' }),
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
       JSON.stringify({
         type: 'item.completed',
         item: { item_type: 'assistant_message', text: 'Streamed hello' },
       }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } }),
     ];
     (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
 
@@ -112,10 +113,82 @@ describe('CodexCliLanguageModel', () => {
     expect(deltaPayload?.delta).toBe('Streamed hello');
   });
 
+  it('streams tool events for command execution items', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: 'README.md\n',
+          exit_code: 0,
+          status: 'completed',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', item_type: 'assistant_message', text: 'done' },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 4, output_tokens: 2, cached_input_tokens: 1 },
+      }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'List files' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    const iterator = (rs as any)[Symbol.asyncIterator]();
+    for await (const part of iterator) received.push(part);
+
+    const toolCall = received.find((p) => p.type === 'tool-call');
+    expect(toolCall?.toolName).toBe('exec');
+    expect(toolCall?.providerExecuted).toBe(true);
+    expect(toolCall?.input).toContain('ls -la');
+
+    const toolResult = received.find((p) => p.type === 'tool-result');
+    expect(toolResult?.toolCallId).toBe(toolCall?.toolCallId);
+    expect(toolResult?.result).toMatchObject({
+      command: 'ls -la',
+      aggregatedOutput: 'README.md\n',
+      exitCode: 0,
+      status: 'completed',
+    });
+
+    const finish = received.find((p) => p.type === 'finish');
+    expect(finish?.usage).toEqual({
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+      cachedInputTokens: 1,
+    });
+  });
+
   it('includes approval/sandbox flags and output-last-message; uses npx with allowNpx', async () => {
     let seen: any = { cmd: '', args: [] as string[] };
     const lines = [
-      JSON.stringify({ type: 'session.created', session_id: 'sess-2' }),
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-2' }),
       JSON.stringify({
         type: 'item.completed',
         item: { item_type: 'assistant_message', text: 'OK' },
@@ -149,6 +222,61 @@ describe('CodexCliLanguageModel', () => {
     expect(seen.args).toContain('sandbox_mode=workspace-write');
     expect(seen.args).toContain('--skip-git-repo-check');
     expect(seen.args).toContain('--output-last-message');
+  });
+
+  it('sets isError for failed command execution', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-fail' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_fail',
+          item_type: 'command_execution',
+          command: 'false',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_fail',
+          item_type: 'command_execution',
+          command: 'false',
+          aggregated_output: '',
+          exit_code: 1,
+          status: 'failed',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', item_type: 'assistant_message', text: 'oops' },
+      }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'fail please' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    for await (const part of (rs as any)[Symbol.asyncIterator]()) received.push(part);
+
+    const toolResult = received.find((p) => p.type === 'tool-result');
+    expect(toolResult?.isError).toBe(true);
+    expect(toolResult?.toolName).toBe('exec');
+    expect(toolResult?.result).toMatchObject({
+      command: 'false',
+      exitCode: 1,
+      status: 'failed',
+    });
   });
 
   it('uses --full-auto when specified and omits -c flags', async () => {

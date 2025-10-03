@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { ReadableStreamDefaultController } from 'node:stream/web';
 import type {
   LanguageModelV2,
   LanguageModelV2CallWarning,
@@ -29,6 +30,7 @@ export interface CodexLanguageModelOptions {
 interface ExperimentalJsonEvent {
   type?: string;
   session_id?: string;
+  thread_id?: string;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -41,7 +43,20 @@ interface ExperimentalJsonEvent {
     [k: string]: unknown;
   };
   message?: string; // For error events
+  error?: {
+    message?: string;
+    [k: string]: unknown;
+  };
   [k: string]: unknown;
+}
+
+type ExperimentalJsonItem = NonNullable<ExperimentalJsonEvent['item']>;
+
+interface ActiveToolItem {
+  toolCallId: string;
+  toolName: string;
+  inputPayload?: unknown;
+  hasEmittedCall: boolean;
 }
 
 function resolveCodexPath(
@@ -87,6 +102,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
   }
 
+  // Codex JSONL items use `type` for the item discriminator, but some
+  // earlier fixtures (and defensive parsing) might still surface `item_type`.
+  // This helper returns whichever is present.
+  private getItemType(item?: ExperimentalJsonItem): string | undefined {
+    if (!item) return undefined;
+    const data = item as Record<string, unknown>;
+    const legacy = typeof data.item_type === 'string' ? (data.item_type as string) : undefined;
+    const current = typeof data.type === 'string' ? (data.type as string) : undefined;
+    return legacy ?? current;
+  }
+
   private buildArgs(
     promptText: string,
     responseFormat?: { type: 'json'; schema: unknown },
@@ -128,20 +154,24 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     // Handle JSON schema if provided
     let schemaPath: string | undefined;
     if (responseFormat?.type === 'json' && responseFormat.schema) {
-      const dir = mkdtempSync(join(tmpdir(), 'codex-schema-'));
-      schemaPath = join(dir, 'schema.json');
-
-      // Sanitize and prepare schema for OpenAI strict mode
       const schema = typeof responseFormat.schema === 'object' ? responseFormat.schema : {};
       const sanitizedSchema = this.sanitizeJsonSchema(schema) as Record<string, unknown>;
-      const schemaWithAdditional = {
-        ...sanitizedSchema,
-        // OpenAI strict mode requires additionalProperties=false even if user requested otherwise.
-        additionalProperties: false,
-      };
 
-      writeFileSync(schemaPath, JSON.stringify(schemaWithAdditional, null, 2));
-      args.push('--output-schema', schemaPath);
+      // Only write schema if it has properties (not empty schema like z.any())
+      const hasProperties = Object.keys(sanitizedSchema).length > 0;
+      if (hasProperties) {
+        const dir = mkdtempSync(join(tmpdir(), 'codex-schema-'));
+        schemaPath = join(dir, 'schema.json');
+
+        // OpenAI strict mode requires additionalProperties=false for structured schemas
+        const schemaWithAdditional = {
+          ...sanitizedSchema,
+          additionalProperties: false,
+        };
+
+        writeFileSync(schemaPath, JSON.stringify(schemaWithAdditional, null, 2));
+        args.push('--output-schema', schemaPath);
+      }
     }
 
     // Prompt as positional arg (avoid stdin for reliability)
@@ -237,46 +267,216 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     return unsupported;
   }
 
-  private parseExperimentalJsonEvent(line: string): {
-    sessionId?: string;
-    text?: string;
-    usage?: { inputTokens: number; outputTokens: number };
-    error?: string;
-  } {
+  private parseExperimentalJsonEvent(line: string): ExperimentalJsonEvent | undefined {
     try {
-      const evt: ExperimentalJsonEvent = JSON.parse(line);
-      const result: ReturnType<typeof this.parseExperimentalJsonEvent> = {};
-
-      switch (evt.type) {
-        case 'session.created':
-          result.sessionId = evt.session_id;
-          break;
-
-        case 'turn.completed':
-          if (evt.usage) {
-            result.usage = {
-              inputTokens: evt.usage.input_tokens || 0,
-              outputTokens: evt.usage.output_tokens || 0,
-            };
-          }
-          break;
-
-        case 'item.completed':
-          // Extract assistant message text
-          if (evt.item?.item_type === 'assistant_message' || evt.item?.item_type === 'reasoning') {
-            result.text = evt.item.text;
-          }
-          break;
-
-        case 'error':
-          result.error = evt.message;
-          break;
-      }
-
-      return result;
+      return JSON.parse(line) as ExperimentalJsonEvent;
     } catch {
-      return {};
+      return undefined;
     }
+  }
+
+  private extractUsage(evt: ExperimentalJsonEvent): LanguageModelV2Usage | undefined {
+    const reported = evt.usage;
+    if (!reported) return undefined;
+    const inputTokens = reported.input_tokens ?? 0;
+    const outputTokens = reported.output_tokens ?? 0;
+    const cachedInputTokens = reported.cached_input_tokens ?? 0;
+    return {
+      inputTokens,
+      outputTokens,
+      // totalTokens should not double-count cached tokens; track cached separately
+      totalTokens: inputTokens + outputTokens,
+      cachedInputTokens,
+    };
+  }
+
+  private getToolName(item?: ExperimentalJsonItem): string | undefined {
+    if (!item) return undefined;
+    const itemType = this.getItemType(item);
+    switch (itemType) {
+      case 'command_execution':
+        return 'exec';
+      case 'file_change':
+        return 'patch';
+      case 'mcp_tool_call': {
+        const tool = (item as Record<string, unknown>).tool;
+        if (typeof tool === 'string' && tool.length > 0) return tool;
+        return 'mcp_tool';
+      }
+      case 'web_search':
+        return 'web_search';
+      default:
+        return undefined;
+    }
+  }
+
+  private buildToolInputPayload(item?: ExperimentalJsonItem): unknown {
+    if (!item) return undefined;
+    const data = item as Record<string, unknown>;
+    switch (this.getItemType(item)) {
+      case 'command_execution': {
+        const payload: Record<string, unknown> = {};
+        if (typeof data.command === 'string') payload.command = data.command;
+        if (typeof data.status === 'string') payload.status = data.status;
+        if (typeof data.cwd === 'string') payload.cwd = data.cwd;
+        return Object.keys(payload).length ? payload : undefined;
+      }
+      case 'file_change': {
+        const payload: Record<string, unknown> = {};
+        if (Array.isArray(data.changes)) payload.changes = data.changes;
+        if (typeof data.status === 'string') payload.status = data.status;
+        return Object.keys(payload).length ? payload : undefined;
+      }
+      case 'mcp_tool_call': {
+        const payload: Record<string, unknown> = {};
+        if (typeof data.server === 'string') payload.server = data.server;
+        if (typeof data.tool === 'string') payload.tool = data.tool;
+        if (typeof data.status === 'string') payload.status = data.status;
+        // Include arguments so consumers can see what parameters were passed
+        if (data.arguments !== undefined) payload.arguments = data.arguments;
+        return Object.keys(payload).length ? payload : undefined;
+      }
+      case 'web_search': {
+        const payload: Record<string, unknown> = {};
+        if (typeof data.query === 'string') payload.query = data.query;
+        return Object.keys(payload).length ? payload : undefined;
+      }
+      default:
+        return undefined;
+    }
+  }
+
+  private buildToolResultPayload(item?: ExperimentalJsonItem): {
+    result: unknown;
+    metadata?: Record<string, string>;
+  } {
+    if (!item) return { result: {} };
+    const data = item as Record<string, unknown>;
+    const metadata: Record<string, string> = {};
+    const itemType = this.getItemType(item);
+    if (typeof itemType === 'string') metadata.itemType = itemType;
+    if (typeof item.id === 'string') metadata.itemId = item.id;
+    if (typeof data.status === 'string') metadata.status = data.status;
+
+    const buildResult = (result: Record<string, unknown>) => ({
+      result,
+      metadata: Object.keys(metadata).length ? metadata : undefined,
+    });
+
+    switch (itemType) {
+      case 'command_execution': {
+        const result: Record<string, unknown> = {};
+        if (typeof data.command === 'string') result.command = data.command;
+        if (typeof data.aggregated_output === 'string')
+          result.aggregatedOutput = data.aggregated_output;
+        if (typeof data.exit_code === 'number') result.exitCode = data.exit_code;
+        if (typeof data.status === 'string') result.status = data.status;
+        return buildResult(result);
+      }
+      case 'file_change': {
+        const result: Record<string, unknown> = {};
+        if (Array.isArray(data.changes)) result.changes = data.changes;
+        if (typeof data.status === 'string') result.status = data.status;
+        return buildResult(result);
+      }
+      case 'mcp_tool_call': {
+        const result: Record<string, unknown> = {};
+        if (typeof data.server === 'string') {
+          result.server = data.server;
+          metadata.server = data.server;
+        }
+        if (typeof data.tool === 'string') result.tool = data.tool;
+        if (typeof data.status === 'string') result.status = data.status;
+        // Include result payload so consumers can see what the tool returned
+        if (data.result !== undefined) result.result = data.result;
+        // Include error details if present
+        if (data.error !== undefined) result.error = data.error;
+        return buildResult(result);
+      }
+      case 'web_search': {
+        const result: Record<string, unknown> = {};
+        if (typeof data.query === 'string') result.query = data.query;
+        if (typeof data.status === 'string') result.status = data.status;
+        return buildResult(result);
+      }
+      default: {
+        const result = { ...data };
+        return buildResult(result);
+      }
+    }
+  }
+
+  private safeStringify(value: unknown): string {
+    if (value === undefined) return '';
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  }
+
+  private emitToolInvocation(
+    controller: ReadableStreamDefaultController<LanguageModelV2StreamPart>,
+    toolCallId: string,
+    toolName: string,
+    inputPayload: unknown,
+  ): void {
+    const inputString = this.safeStringify(inputPayload);
+    controller.enqueue({ type: 'tool-input-start', id: toolCallId, toolName });
+    if (inputString) {
+      controller.enqueue({ type: 'tool-input-delta', id: toolCallId, delta: inputString });
+    }
+    controller.enqueue({ type: 'tool-input-end', id: toolCallId });
+    controller.enqueue({
+      type: 'tool-call',
+      toolCallId,
+      toolName,
+      input: inputString,
+      providerExecuted: true,
+    });
+  }
+
+  private emitToolResult(
+    controller: ReadableStreamDefaultController<LanguageModelV2StreamPart>,
+    toolCallId: string,
+    toolName: string,
+    item: ExperimentalJsonItem,
+    resultPayload: unknown,
+    metadata?: Record<string, string>,
+  ): void {
+    const providerMetadataEntries: Record<string, string> = {
+      ...(metadata ?? {}),
+    };
+    const itemType = this.getItemType(item);
+    if (itemType && providerMetadataEntries.itemType === undefined) {
+      providerMetadataEntries.itemType = itemType;
+    }
+    if (item.id && providerMetadataEntries.itemId === undefined) {
+      providerMetadataEntries.itemId = item.id;
+    }
+
+    // Determine error status for command executions
+    let isError: boolean | undefined;
+    if (itemType === 'command_execution') {
+      const data = item as Record<string, unknown>;
+      const exitCode = typeof data.exit_code === 'number' ? (data.exit_code as number) : undefined;
+      const status = typeof data.status === 'string' ? (data.status as string) : undefined;
+      if ((exitCode !== undefined && exitCode !== 0) || status === 'failed') {
+        isError = true;
+      }
+    }
+
+    controller.enqueue({
+      type: 'tool-result',
+      toolCallId,
+      toolName,
+      result: resultPayload ?? {},
+      ...(isError ? { isError: true } : {}),
+      ...(Object.keys(providerMetadataEntries).length
+        ? { providerMetadata: { 'codex-cli': providerMetadataEntries } }
+        : {}),
+    });
   }
 
   private handleSpawnError(err: unknown, promptExcerpt: string) {
@@ -341,25 +541,68 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     try {
       await new Promise<void>((resolve, reject) => {
         let stderr = '';
+        let turnFailureMessage: string | undefined;
         child.stderr.on('data', (d) => (stderr += String(d)));
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', (chunk: string) => {
           const lines = chunk.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
-            const parsed = this.parseExperimentalJsonEvent(line);
-            if (parsed.sessionId) this.sessionId = parsed.sessionId;
-            if (parsed.text) text = parsed.text;
-            if (parsed.usage) {
-              usage.inputTokens = parsed.usage.inputTokens;
-              usage.outputTokens = parsed.usage.outputTokens;
-              usage.totalTokens = usage.inputTokens + usage.outputTokens;
+            const event = this.parseExperimentalJsonEvent(line);
+            if (!event) continue;
+
+            if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
+              this.sessionId = event.thread_id;
+            }
+            if (event.type === 'session.created' && typeof event.session_id === 'string') {
+              // Backwards compatibility in case older events appear
+              this.sessionId = event.session_id;
+            }
+
+            if (event.type === 'turn.completed') {
+              const usageEvent = this.extractUsage(event);
+              if (usageEvent) {
+                usage.inputTokens = usageEvent.inputTokens;
+                usage.outputTokens = usageEvent.outputTokens;
+                usage.totalTokens = usageEvent.totalTokens;
+              }
+            }
+
+            if (
+              event.type === 'item.completed' &&
+              this.getItemType(event.item) === 'assistant_message' &&
+              typeof event.item?.text === 'string'
+            ) {
+              text = event.item.text;
+            }
+
+            if (event.type === 'turn.failed') {
+              const errorText =
+                (event.error && typeof event.error.message === 'string' && event.error.message) ||
+                (typeof event.message === 'string' ? event.message : undefined);
+              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
+            }
+
+            if (event.type === 'error') {
+              const errorText = typeof event.message === 'string' ? event.message : undefined;
+              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex error';
             }
           }
         });
         child.on('error', (e) => reject(this.handleSpawnError(e, promptExcerpt)));
         child.on('close', (code) => {
-          if (code === 0) resolve();
-          else
+          if (code === 0) {
+            if (turnFailureMessage) {
+              reject(
+                createAPICallError({
+                  message: turnFailureMessage,
+                  stderr,
+                  promptExcerpt,
+                }),
+              );
+              return;
+            }
+            resolve();
+          } else {
             reject(
               createAPICallError({
                 message: `Codex CLI exited with code ${code}`,
@@ -368,6 +611,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
                 promptExcerpt,
               }),
             );
+          }
         });
       });
     } finally {
@@ -439,6 +683,81 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
         let stderr = '';
         let accumulatedText = '';
+        const activeTools = new Map<string, ActiveToolItem>();
+        let responseMetadataSent = false;
+        let lastUsage: LanguageModelV2Usage | undefined;
+        let turnFailureMessage: string | undefined;
+
+        const sendMetadata = (meta: Record<string, string> = {}) => {
+          controller.enqueue({
+            type: 'response-metadata',
+            id: randomUUID(),
+            timestamp: new Date(),
+            modelId: this.modelId,
+            ...(Object.keys(meta).length ? { providerMetadata: { 'codex-cli': meta } } : {}),
+          });
+        };
+
+        const handleItemEvent = (event: ExperimentalJsonEvent) => {
+          const item = event.item;
+          if (!item) return;
+
+          if (
+            event.type === 'item.completed' &&
+            this.getItemType(item) === 'assistant_message' &&
+            typeof item.text === 'string'
+          ) {
+            accumulatedText = item.text;
+            return;
+          }
+
+          const toolName = this.getToolName(item);
+          if (!toolName) {
+            return;
+          }
+
+          const mapKey = typeof item.id === 'string' && item.id.length > 0 ? item.id : randomUUID();
+          let toolState = activeTools.get(mapKey);
+          const latestInput = this.buildToolInputPayload(item);
+
+          if (!toolState) {
+            toolState = {
+              toolCallId: mapKey,
+              toolName,
+              inputPayload: latestInput,
+              hasEmittedCall: false,
+            };
+            activeTools.set(mapKey, toolState);
+          } else {
+            toolState.toolName = toolName;
+            if (latestInput !== undefined) {
+              toolState.inputPayload = latestInput;
+            }
+          }
+
+          if (!toolState.hasEmittedCall) {
+            this.emitToolInvocation(
+              controller,
+              toolState.toolCallId,
+              toolState.toolName,
+              toolState.inputPayload,
+            );
+            toolState.hasEmittedCall = true;
+          }
+
+          if (event.type === 'item.completed') {
+            const { result, metadata } = this.buildToolResultPayload(item);
+            this.emitToolResult(
+              controller,
+              toolState.toolCallId,
+              toolState.toolName,
+              item,
+              result,
+              metadata,
+            );
+            activeTools.delete(mapKey);
+          }
+        };
 
         // Abort support
         const onAbort = () => {
@@ -453,23 +772,112 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           options.abortSignal.addEventListener('abort', onAbort, { once: true });
         }
 
+        const finishStream = (code: number | null) => {
+          if (code !== 0) {
+            controller.error(
+              createAPICallError({
+                message: `Codex CLI exited with code ${code}`,
+                exitCode: code ?? undefined,
+                stderr,
+                promptExcerpt,
+              }),
+            );
+            return;
+          }
+
+          if (turnFailureMessage) {
+            controller.error(
+              createAPICallError({
+                message: turnFailureMessage,
+                stderr,
+                promptExcerpt,
+              }),
+            );
+            return;
+          }
+
+          // Emit text (non-streaming JSONL suppresses deltas; we send final text once)
+          let finalText = accumulatedText;
+          if (!finalText && lastMessagePath) {
+            try {
+              const fileText = readFileSync(lastMessagePath, 'utf8');
+              if (fileText) finalText = fileText.trim();
+            } catch {}
+            try {
+              rmSync(lastMessagePath, { force: true });
+            } catch {}
+          }
+
+          // No JSON extraction needed - native schema guarantees valid JSON
+          if (finalText) {
+            const textId = randomUUID();
+            controller.enqueue({ type: 'text-start', id: textId });
+            controller.enqueue({ type: 'text-delta', id: textId, delta: finalText });
+            controller.enqueue({ type: 'text-end', id: textId });
+          }
+
+          const usageSummary = lastUsage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+          controller.enqueue({
+            type: 'finish',
+            finishReason: 'stop',
+            usage: usageSummary,
+          });
+          controller.close();
+        };
+
         child.stderr.on('data', (d) => (stderr += String(d)));
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', (chunk: string) => {
           const lines = chunk.split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
-            const parsed = this.parseExperimentalJsonEvent(line);
-            if (parsed.sessionId) {
-              this.sessionId = parsed.sessionId;
-              controller.enqueue({
-                type: 'response-metadata',
-                id: randomUUID(),
-                timestamp: new Date(),
-                modelId: this.modelId,
-              });
+            const event = this.parseExperimentalJsonEvent(line);
+            if (!event) continue;
+
+            if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
+              this.sessionId = event.thread_id;
+              if (!responseMetadataSent) {
+                responseMetadataSent = true;
+                sendMetadata();
+              }
+              continue;
             }
-            if (parsed.text) {
-              accumulatedText = parsed.text;
+
+            if (event.type === 'session.created' && typeof event.session_id === 'string') {
+              this.sessionId = event.session_id;
+              if (!responseMetadataSent) {
+                responseMetadataSent = true;
+                sendMetadata();
+              }
+              continue;
+            }
+
+            if (event.type === 'turn.completed') {
+              const usageEvent = this.extractUsage(event);
+              if (usageEvent) {
+                lastUsage = usageEvent;
+              }
+              continue;
+            }
+
+            if (event.type === 'turn.failed') {
+              const errorText =
+                (event.error && typeof event.error.message === 'string' && event.error.message) ||
+                (typeof event.message === 'string' ? event.message : undefined);
+              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
+              sendMetadata({ error: turnFailureMessage });
+              continue;
+            }
+
+            if (event.type === 'error') {
+              const errorText = typeof event.message === 'string' ? event.message : undefined;
+              const effective = errorText ?? 'Codex error';
+              turnFailureMessage = turnFailureMessage ?? effective;
+              sendMetadata({ error: effective });
+              continue;
+            }
+
+            if (event.type && event.type.startsWith('item.')) {
+              handleItemEvent(event);
             }
           }
         });
@@ -493,41 +901,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           // Clean up temp schema file
           cleanupSchema();
 
-          if (code !== 0) {
-            controller.error(
-              createAPICallError({
-                message: `Codex CLI exited with code ${code}`,
-                exitCode: code ?? undefined,
-                stderr,
-                promptExcerpt,
-              }),
-            );
-            return;
-          }
-
-          // Emit text (non-streaming JSONL suppresses deltas; we send final text once)
-          let finalText = accumulatedText;
-          if (!finalText && lastMessagePath) {
-            try {
-              const fileText = readFileSync(lastMessagePath, 'utf8');
-              if (fileText) finalText = fileText.trim();
-            } catch {}
-            try {
-              rmSync(lastMessagePath, { force: true });
-            } catch {}
-          }
-
-          // No JSON extraction needed - native schema guarantees valid JSON
-          if (finalText) {
-            controller.enqueue({ type: 'text-delta', id: randomUUID(), delta: finalText });
-          }
-
-          controller.enqueue({
-            type: 'finish',
-            finishReason: 'stop',
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-          });
-          controller.close();
+          // Use setImmediate to ensure all stdout 'data' events are processed first
+          setImmediate(() => finishStream(code));
         });
       },
       cancel: () => {},

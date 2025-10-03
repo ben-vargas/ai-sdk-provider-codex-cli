@@ -7,7 +7,13 @@
 
 ## Streaming Behavior
 
-- Codex `--experimental-json` mode emits events (`session.created`, `turn.completed`, `item.completed`) rather than streaming text deltas; streaming usually returns a final chunk. The CLI provides the final assistant content in the `item.completed` event, which this provider reads and emits at the end.
+- Codex `--experimental-json` mode emits events (`thread.started`, `turn.completed`, `item.completed`) rather than streaming text deltas; streaming usually returns a final chunk. The CLI provides the final assistant content in the `item.completed` event, which this provider reads and emits at the end.
+
+## Tool Streaming (v0.3.0+)
+
+- Tool streaming is fully supported - tool invocation and result events are emitted in real-time
+- **Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs are delivered in the final `tool-result` event via `aggregatedOutput` field, not as incremental deltas during tool execution
+- This limitation exists because Codex CLI's experimental JSON format doesn't currently emit incremental output events during tool execution
 
 ## JSON Schema (v0.2.0+)
 
@@ -22,4 +28,5 @@
 
 ## Observability
 
-- Token usage is not currently exposed by Codex events in `--experimental-json` mode.
+- Token usage tracking is available via `turn.completed` events (requires Codex CLI >= 0.44.0)
+- Earlier versions (< 0.44.0) will report 0 for all token counts
