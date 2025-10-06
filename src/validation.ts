@@ -15,6 +15,33 @@ const settingsSchema = z
     env: z.record(z.string(), z.string()).optional(),
     verbose: z.boolean().optional(),
     logger: z.any().optional(),
+
+    // NEW: Reasoning & Verbosity
+    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+    // Note: API rejects 'concise' and 'none' despite error messages claiming they're valid
+    reasoningSummary: z.enum(['auto', 'detailed']).optional(),
+    reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
+    modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+
+    // NEW: Advanced features
+    includePlanTool: z.boolean().optional(),
+    profile: z.string().optional(),
+    oss: z.boolean().optional(),
+    webSearch: z.boolean().optional(),
+
+    // NEW: Generic overrides
+    configOverrides: z
+      .record(
+        z.string(),
+        z.union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.object({}).passthrough(),
+          z.array(z.any()),
+        ]),
+      )
+      .optional(),
   })
   .strict();
 
@@ -52,6 +79,9 @@ export function validateSettings(settings: unknown): {
       'Both fullAuto and dangerouslyBypassApprovalsAndSandbox specified; fullAuto takes precedence.',
     );
   }
+
+  // Note: Previously warned about reasoningSummary='none', but 'none' is now rejected
+  // by the schema as an invalid value (only 'auto' and 'detailed' are accepted)
 
   return { valid: true, warnings, errors };
 }

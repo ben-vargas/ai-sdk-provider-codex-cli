@@ -67,6 +67,16 @@ node examples/<file>.mjs
   - Demonstrates: `on-failure`, `workspace-write`, `fullAuto`, and `dangerouslyBypassApprovalsAndSandbox`.
   - Value: Pick the right guardrails for your workflow. Warning: bypass is dangerous; prefer sandboxed modes unless you fully trust the environment.
 
+- **advanced-settings.mjs:** Constructor-level model parameters (v0.4.0+)
+  - Purpose: Demonstrate comprehensive reasoning, verbosity, and advanced Codex features at model creation.
+  - Demonstrates: `reasoningEffort`, `reasoningSummary`, `modelVerbosity`, `webSearch`, `includePlanTool`, `profile`, and `configOverrides`.
+  - Value: See all Phase 1 parameters in action—configure behavior once at construction for consistent settings across all calls.
+
+- **provider-options.mjs:** Per-call overrides (v0.4.0+)
+  - Purpose: Show how to override reasoning and config settings for individual requests.
+  - Demonstrates: `providerOptions['codex-cli']` with `reasoningEffort`, `reasoningSummary`, `textVerbosity`, and `configOverrides`.
+  - Value: Tune behavior dynamically (e.g., low-effort quick checks vs. high-effort deep dives) without cloning model instances.
+
 ## Reliability & Operations
 
 - **long-running-tasks.mjs:** Abort and timeouts
@@ -161,7 +171,7 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 ## Suggested Run Order
 
 1. `basic-usage.mjs` → `streaming.mjs` → `conversation-history.mjs`
-2. `custom-config.mjs` → `permissions-and-sandbox.mjs`
+2. `custom-config.mjs` → `permissions-and-sandbox.mjs` → `advanced-settings.mjs` → `provider-options.mjs` (v0.4.0 features)
 3. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs` → `generate-object-native-schema.mjs`
 4. `experimental-json-events.mjs` (v0.2.0 event format)
 5. `streaming-tool-calls.mjs` → `streaming-multiple-tools.mjs` (tool streaming)

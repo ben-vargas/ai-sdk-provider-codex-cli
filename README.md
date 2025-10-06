@@ -179,6 +179,73 @@ When OpenAI adds streaming support, this provider will be updated to handle thos
 
 See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the full list and examples.
 
+## Model Parameters & Advanced Options (v0.4.0+)
+
+Control reasoning effort, verbosity, and advanced Codex features at model creation time:
+
+```ts
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const model = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+
+  // Reasoning & verbosity
+  reasoningEffort: 'medium', // minimal | low | medium | high
+  reasoningSummary: 'auto', // auto | detailed (Note: 'concise' and 'none' are rejected by API)
+  reasoningSummaryFormat: 'none', // none | experimental
+  modelVerbosity: 'high', // low | medium | high
+
+  // Advanced features
+  includePlanTool: true, // adds --include-plan-tool
+  profile: 'production', // adds --profile production
+  oss: false, // adds --oss when true
+  webSearch: true, // maps to -c tools.web_search=true
+
+  // Generic overrides (maps to -c key=value)
+  configOverrides: {
+    experimental_resume: '/tmp/session.jsonl',
+    sandbox_workspace_write: { network_access: true },
+  },
+});
+```
+
+Nested override objects are flattened to dotted keys (e.g., the example above emits
+`-c sandbox_workspace_write.network_access=true`). Arrays are serialized to JSON strings.
+
+### Per-call overrides via `providerOptions` (v0.4.0+)
+
+Override these parameters for individual AI SDK calls using the `providerOptions` map. Per-call
+values take precedence over constructor defaults while leaving other settings intact.
+
+```ts
+import { generateText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const model = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  reasoningEffort: 'medium',
+  modelVerbosity: 'medium',
+});
+
+const response = await generateText({
+  model,
+  prompt: 'Summarize the latest release notes.',
+  providerOptions: {
+    'codex-cli': {
+      reasoningEffort: 'high',
+      reasoningSummary: 'detailed',
+      textVerbosity: 'high', // AI SDK naming; maps to model_verbosity
+      configOverrides: {
+        experimental_resume: '/tmp/resume.jsonl',
+      },
+    },
+  },
+});
+```
+
+**Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+
 ## Zod Compatibility
 
 - Peer supports `zod@^3 || ^4`

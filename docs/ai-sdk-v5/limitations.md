@@ -26,6 +26,21 @@
 
 - Some AI SDK parameters are not applicable to Codex CLI (e.g., temperature, topP, penalties). The provider surfaces warnings and ignores them.
 
+## Model Parameter Validation (v0.4.0+)
+
+**Known API Quirks:**
+
+### reasoningSummary Parameter
+
+The OpenAI Responses API has misleading error messages for the `reasoningSummary` parameter:
+
+- **Valid values:** `'auto'`, `'detailed'`
+- **Invalid values:** `'concise'`, `'none'` (rejected with 400 errors)
+
+**The quirk:** When you pass an invalid value like `'none'`, the API error claims valid values are `'concise', 'detailed', and 'auto'`. However, if you then try `'concise'`, the API rejects it with: `"Unsupported value: 'concise' is not supported with the 'gpt-5-codex' model."`
+
+This provider's type system and validation only allow `'auto'` and `'detailed'` to prevent runtime errors.
+
 ## Observability
 
 - Token usage tracking is available via `turn.completed` events (requires Codex CLI >= 0.44.0)

@@ -17,6 +17,84 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `env` (Record<string,string>): Extra env vars for the child process (e.g., `OPENAI_API_KEY`).
 - `logger` (custom | false): Custom logger or disable logging entirely.
 
+## Model Parameters & Advanced Options (v0.4.0+)
+
+### Reasoning & Verbosity
+
+- **`reasoningEffort`** ('minimal' | 'low' | 'medium' | 'high'): Controls reasoning depth for reasoning-capable models (o3, o4-mini, gpt-5, gpt-5-codex). Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
+- **`reasoningSummary`** ('auto' | 'detailed'): Controls reasoning summary detail level. **Note:** Despite API error messages claiming 'concise' and 'none' are valid, they are rejected with 400 errors. Only 'auto' and 'detailed' work. Maps to `-c model_reasoning_summary=<value>`.
+- **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.
+- **`modelVerbosity`** ('low' | 'medium' | 'high'): Controls output length/detail for GPT-5 family models. Only applies to models using the Responses API. Maps to `-c model_verbosity=<value>`.
+
+### Advanced Codex Features
+
+- **`includePlanTool`** (boolean): Include experimental plan tool that the model can use to update its current plan. Maps to `--include-plan-tool`.
+- **`profile`** (string): Configuration profile from config.toml to specify default options. Maps to `--profile <name>`.
+- **`oss`** (boolean): Use OSS provider (experimental). Maps to `--oss`.
+- **`webSearch`** (boolean): Enable web search tool for the model. Maps to `-c tools.web_search=true`.
+
+### Generic Config Overrides
+
+- **`configOverrides`** (Record<string, string | number | boolean | object>): Generic Codex CLI config overrides. Allows setting any config value without updating the provider. Each entry maps to `-c <key>=<value>`.
+
+Examples (nested objects are flattened to dotted keys):
+
+```typescript
+{
+  experimental_resume: '/tmp/session.jsonl',           // string
+  hide_agent_reasoning: true,                          // boolean
+  model_context_window: 200000,                        // number
+  sandbox_workspace_write: { network_access: true },   // object → -c sandbox_workspace_write.network_access=true
+  'model_providers.custom.base_url': 'http://localhost:8000'  // nested config path
+}
+```
+
+Values are serialized:
+
+- string → raw string
+- number/boolean → String(value)
+- object → flattened to dotted keys (recursively)
+- array → JSON.stringify(value)
+- non-plain objects (Date, RegExp, Map, etc.) → JSON.stringify(value)
+
+### Per-call Overrides (`providerOptions`, v0.4.0+)
+
+Use AI SDK `providerOptions` to override Codex parameters for a single request without modifying the
+model instance. The provider parses the `codex-cli` entry and applies the keys below:
+
+- `reasoningEffort` → `model_reasoning_effort`
+- `reasoningSummary` → `model_reasoning_summary`
+- `reasoningSummaryFormat` → `model_reasoning_summary_format`
+- `textVerbosity` → `model_verbosity` (AI SDK naming; mirrors constructor `modelVerbosity`)
+- `configOverrides` → merged with constructor-level overrides (per-call values win on key conflicts)
+
+```ts
+import { generateText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const model = codexCli('gpt-5-codex', {
+  reasoningEffort: 'medium',
+  modelVerbosity: 'medium',
+});
+
+await generateText({
+  model,
+  prompt: 'Compare the trade-offs of high vs. low verbosity.',
+  providerOptions: {
+    'codex-cli': {
+      reasoningEffort: 'high',
+      reasoningSummary: 'detailed',
+      textVerbosity: 'high',
+      configOverrides: {
+        'sandbox_workspace_write.network_access': true,
+      },
+    },
+  },
+});
+```
+
+**Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+
 ## Defaults & Recommendations
 
 - Non‑interactive defaults:
@@ -28,6 +106,8 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 
 ## Flag Mapping
 
+### Core Settings
+
 - `approvalMode` → `-c approval_policy=<mode>`
 - `sandboxMode` → `-c sandbox_mode=<mode>`
 - `skipGitRepoCheck` → `--skip-git-repo-check`
@@ -35,6 +115,18 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `dangerouslyBypassApprovalsAndSandbox` → `--dangerously-bypass-approvals-and-sandbox`
 - `color` → `--color <always|never|auto>`
 - `outputLastMessageFile` → `--output-last-message <path>`
+
+### Model Parameters (v0.4.0+)
+
+- `reasoningEffort` → `-c model_reasoning_effort=<value>`
+- `reasoningSummary` → `-c model_reasoning_summary=<value>`
+- `reasoningSummaryFormat` → `-c model_reasoning_summary_format=<value>`
+- `modelVerbosity` → `-c model_verbosity=<value>`
+- `includePlanTool` → `--include-plan-tool`
+- `profile` → `--profile <name>`
+- `oss` → `--oss`
+- `webSearch` → `-c tools.web_search=true`
+- `configOverrides` → `-c <key>=<value>` (for each entry)
 
 ## JSON Mode (v0.2.0+)
 
