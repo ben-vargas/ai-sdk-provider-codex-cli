@@ -519,4 +519,158 @@ describe('CodexCliLanguageModel', () => {
       expect(lastArgs).toContain('model_reasoning_effort=medium');
     });
   });
+
+  describe('Phase 2: providerOptions overrides', () => {
+    it('overrides constructor reasoning settings per call', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-phase2' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5-codex',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          reasoningEffort: 'low',
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            reasoningEffort: 'high',
+            reasoningSummary: 'detailed',
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=high');
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=low');
+      expect(argsCaptured).toContain('model_reasoning_summary=detailed');
+    });
+
+    it('merges configOverrides with per-call overrides taking precedence', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-config' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          configOverrides: {
+            setting1: 'value1',
+            setting2: 'value2',
+          },
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            configOverrides: {
+              setting2: 'override',
+              setting3: 'value3',
+            },
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('setting1=value1');
+      expect(argsCaptured).toContain('setting2=override');
+      expect(argsCaptured.join(' ')).not.toContain('setting2=value2');
+      expect(argsCaptured).toContain('setting3=value3');
+    });
+
+    it('maps textVerbosity provider option to model_verbosity flag', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-verbosity' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            textVerbosity: 'high',
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('model_verbosity=high');
+    });
+
+    it('applies providerOptions during streaming calls', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-stream' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'stream ok' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      const { stream } = await model.doStream({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            reasoningEffort: 'medium',
+            textVerbosity: 'low',
+          },
+        },
+      });
+
+      const reader = (stream as any)[Symbol.asyncIterator]();
+      for await (const _ of reader) {
+        // exhaust stream to ensure spawn completes
+      }
+
+      expect(argsCaptured).toContain('model_reasoning_effort=medium');
+      expect(argsCaptured).toContain('model_verbosity=low');
+    });
+  });
 });

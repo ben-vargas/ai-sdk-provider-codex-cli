@@ -57,6 +57,44 @@ Values are serialized:
 - array → JSON.stringify(value)
 - non-plain objects (Date, RegExp, Map, etc.) → JSON.stringify(value)
 
+### Per-call Overrides (`providerOptions`, v0.4.0+)
+
+Use AI SDK `providerOptions` to override Codex parameters for a single request without modifying the
+model instance. The provider parses the `codex-cli` entry and applies the keys below:
+
+- `reasoningEffort` → `model_reasoning_effort`
+- `reasoningSummary` → `model_reasoning_summary`
+- `reasoningSummaryFormat` → `model_reasoning_summary_format`
+- `textVerbosity` → `model_verbosity` (AI SDK naming; mirrors constructor `modelVerbosity`)
+- `configOverrides` → merged with constructor-level overrides (per-call values win on key conflicts)
+
+```ts
+import { generateText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const model = codexCli('gpt-5-codex', {
+  reasoningEffort: 'medium',
+  modelVerbosity: 'medium',
+});
+
+await generateText({
+  model,
+  prompt: 'Compare the trade-offs of high vs. low verbosity.',
+  providerOptions: {
+    'codex-cli': {
+      reasoningEffort: 'high',
+      reasoningSummary: 'detailed',
+      textVerbosity: 'high',
+      configOverrides: {
+        'sandbox_workspace_write.network_access': true,
+      },
+    },
+  },
+});
+```
+
+**Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+
 ## Defaults & Recommendations
 
 - Non‑interactive defaults:

@@ -4,6 +4,7 @@ export type { CodexCliProvider } from './codex-cli-provider.js';
 export type {
   CodexCliSettings,
   CodexCliProviderSettings,
+  CodexCliProviderOptions,
   Logger,
   ReasoningEffort,
   ReasoningSummary,

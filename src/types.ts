@@ -154,3 +154,39 @@ export interface CodexCliProviderSettings {
   // Default settings applied to language models created by this provider
   defaultSettings?: CodexCliSettings;
 }
+
+/**
+ * Per-call overrides supplied through AI SDK providerOptions.
+ * These values take precedence over constructor-level CodexCliSettings.
+ */
+export interface CodexCliProviderOptions {
+  /**
+   * Per-call override for reasoning depth.
+   * Maps to `model_reasoning_effort`.
+   */
+  reasoningEffort?: ReasoningEffort;
+
+  /**
+   * Per-call override for reasoning summary detail level.
+   * Maps to `model_reasoning_summary`.
+   */
+  reasoningSummary?: ReasoningSummary;
+
+  /**
+   * Per-call override for reasoning summary format.
+   * Maps to `model_reasoning_summary_format`.
+   */
+  reasoningSummaryFormat?: ReasoningSummaryFormat;
+
+  /**
+   * AI SDK naming for per-call verbosity overrides.
+   * Maps to Codex `model_verbosity`.
+   */
+  textVerbosity?: ModelVerbosity;
+
+  /**
+   * Per-call Codex CLI config overrides. These are merged with
+   * constructor-level overrides with per-call values taking precedence.
+   */
+  configOverrides?: Record<string, string | number | boolean | object>;
+}

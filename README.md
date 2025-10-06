@@ -213,6 +213,39 @@ const model = codexCli('gpt-5-codex', {
 Nested override objects are flattened to dotted keys (e.g., the example above emits
 `-c sandbox_workspace_write.network_access=true`). Arrays are serialized to JSON strings.
 
+### Per-call overrides via `providerOptions` (v0.4.0+)
+
+Override these parameters for individual AI SDK calls using the `providerOptions` map. Per-call
+values take precedence over constructor defaults while leaving other settings intact.
+
+```ts
+import { generateText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+const model = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  reasoningEffort: 'medium',
+  modelVerbosity: 'medium',
+});
+
+const response = await generateText({
+  model,
+  prompt: 'Summarize the latest release notes.',
+  providerOptions: {
+    'codex-cli': {
+      reasoningEffort: 'high',
+      reasoningSummary: 'detailed',
+      textVerbosity: 'high', // AI SDK naming; maps to model_verbosity
+      configOverrides: {
+        experimental_resume: '/tmp/resume.jsonl',
+      },
+    },
+  },
+});
+```
+
+**Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+
 ## Zod Compatibility
 
 - Peer supports `zod@^3 || ^4`

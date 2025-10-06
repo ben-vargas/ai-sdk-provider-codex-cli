@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-10-06
+
+### Added
+
+- **Constructor-level model parameters:**
+  - `reasoningEffort`: Control reasoning depth for o3, o4-mini, gpt-5, gpt-5-codex ('minimal' | 'low' | 'medium' | 'high')
+  - `reasoningSummary`: Control reasoning summary detail level ('auto' | 'detailed')
+    - Note: Only 'auto' and 'detailed' are supported despite API error messages claiming otherwise
+  - `reasoningSummaryFormat`: Experimental format control ('none' | 'experimental')
+  - `modelVerbosity`: GPT-5 family output length control ('low' | 'medium' | 'high')
+- **Advanced Codex features:**
+  - `includePlanTool`: Enable experimental plan tool (`--include-plan-tool`)
+  - `profile`: Load config profile from `~/.codex/config.toml` (`--profile <name>`)
+  - `oss`: Use OSS provider (`--oss`)
+  - `webSearch`: Enable web search tool (`-c tools.web_search=true`)
+- **Generic config overrides:**
+  - `configOverrides`: Ultimate flexibility - set ANY Codex CLI config value via `-c key=value`
+  - Plain objects flattened recursively to dotted keys (e.g., `{sandbox_workspace_write: {network_access: true}}` → `-c sandbox_workspace_write.network_access=true`)
+  - Arrays serialized to JSON strings
+  - Enables future Codex features without provider updates
+- **Per-call parameter overrides:**
+  - `providerOptions['codex-cli']` support with `CodexCliProviderOptions` interface
+  - Override `reasoningEffort`, `reasoningSummary`, `reasoningSummaryFormat` per request
+  - `textVerbosity` (AI SDK naming convention) maps to internal `modelVerbosity`
+  - Per-call `configOverrides` merge with constructor settings (per-call values take precedence)
+  - Settings precedence: `providerOptions` > constructor settings > Codex CLI defaults
+- **Type exports:**
+  - `ReasoningEffort`, `ReasoningSummary`, `ReasoningSummaryFormat`, `ModelVerbosity`
+  - `CodexCliProviderOptions` for per-call override typing
+- **Documentation:**
+  - README section: "Model Parameters & Advanced Options (v0.4.0+)"
+  - README section: "Per-call overrides via providerOptions (v0.4.0+)"
+  - `docs/ai-sdk-v5/configuration.md`: Comprehensive parameter descriptions with CLI flag mappings
+  - `docs/ai-sdk-v5/limitations.md`: Model parameter validation quirks documented
+- **Examples:**
+  - `examples/advanced-settings.mjs`: Demonstrates constructor-level parameters and advanced features
+  - `examples/provider-options.mjs`: Demonstrates per-call override patterns
+
+### Changed
+
+- Extended `CodexCliSettings` interface with 8 new optional properties
+- `buildArgs()` method updated to accept merged settings parameter
+- `doGenerate()` and `doStream()` now parse provider options and merge with constructor settings
+- Validation schema extended to validate new parameters and reject invalid `reasoningSummary` values
+
+### Fixed
+
+- Incorrect `reasoningSummary` type that included invalid 'concise' and 'none' values
+- Misleading documentation suggesting 'concise' and 'none' work (they don't)
+- False limitation warning about reasoning + webSearch combination (was caused by invalid parameter values)
+
+### Technical Details
+
+- Zero breaking changes - all new parameters are optional
+- Full backward compatibility with v0.3.0
+- 28 tests passing (17 language model tests including 4 new provider options tests)
+- Follows AI SDK v5 standard pattern for provider options (consistent with @ai-sdk/openai)
+- Zod schema validation with `.strict()` mode to catch invalid properties
+
 ## [0.3.0] - 2025-10-03
 
 ### Added
@@ -83,19 +142,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ChatGPT OAuth authentication via `codex login`
 - Configurable approval and sandbox modes
 - Examples for basic usage, streaming, and object generation
-
-## [0.4.0] - 2025-10-05
-
-### Added
-
-- Constructor-level model parameters and advanced options:
-  - Reasoning: `reasoningEffort`, `reasoningSummary`, `reasoningSummaryFormat`
-  - Verbosity: `modelVerbosity`
-  - Advanced Codex features: `includePlanTool`, `profile`, `oss`, `webSearch`
-  - Generic `configOverrides` mapping to `-c key=value` for arbitrary Codex config keys (nested objects flatten to dotted keys)
-- Exported types: `ReasoningEffort`, `ReasoningSummary`, `ReasoningSummaryFormat`, `ModelVerbosity`
-- README section documenting new parameters and examples
-
-### Changed
-
-- Validation updated to accept new fields and warn when `reasoningSummary` is `none` but `reasoningEffort` is set

@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ReadableStreamDefaultController } from 'node:stream/web';
+import { z } from 'zod';
 import type {
   LanguageModelV2,
   LanguageModelV2CallWarning,
@@ -14,9 +15,9 @@ import type {
   LanguageModelV2Content,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
-import { generateId } from '@ai-sdk/provider-utils';
+import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger } from './logger.js';
-import type { CodexCliSettings, Logger } from './types.js';
+import type { CodexCliProviderOptions, CodexCliSettings, Logger } from './types.js';
 import { validateModelId } from './validation.js';
 import { mapMessagesToPrompt } from './message-mapper.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
@@ -58,6 +59,27 @@ interface ActiveToolItem {
   inputPayload?: unknown;
   hasEmittedCall: boolean;
 }
+
+const codexCliProviderOptionsSchema: z.ZodType<CodexCliProviderOptions> = z
+  .object({
+    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+    reasoningSummary: z.enum(['auto', 'detailed']).optional(),
+    reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
+    textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+    configOverrides: z
+      .record(
+        z.string(),
+        z.union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.object({}).passthrough(),
+          z.array(z.any()),
+        ]),
+      )
+      .optional(),
+  })
+  .strict();
 
 function resolveCodexPath(
   explicitPath?: string,
@@ -102,6 +124,28 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
   }
 
+  private mergeSettings(providerOptions?: CodexCliProviderOptions): CodexCliSettings {
+    if (!providerOptions) return this.settings;
+
+    const mergedConfigOverrides =
+      providerOptions.configOverrides || this.settings.configOverrides
+        ? {
+            ...(this.settings.configOverrides ?? {}),
+            ...(providerOptions.configOverrides ?? {}),
+          }
+        : undefined;
+
+    return {
+      ...this.settings,
+      reasoningEffort: providerOptions.reasoningEffort ?? this.settings.reasoningEffort,
+      reasoningSummary: providerOptions.reasoningSummary ?? this.settings.reasoningSummary,
+      reasoningSummaryFormat:
+        providerOptions.reasoningSummaryFormat ?? this.settings.reasoningSummaryFormat,
+      modelVerbosity: providerOptions.textVerbosity ?? this.settings.modelVerbosity,
+      configOverrides: mergedConfigOverrides,
+    };
+  }
+
   // Codex JSONL items use `type` for the item discriminator, but some
   // earlier fixtures (and defensive parsing) might still surface `item_type`.
   // This helper returns whichever is present.
@@ -116,6 +160,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   private buildArgs(
     promptText: string,
     responseFormat?: { type: 'json'; schema: unknown },
+    settings: CodexCliSettings = this.settings,
   ): {
     cmd: string;
     args: string[];
@@ -124,56 +169,56 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     lastMessagePath?: string;
     schemaPath?: string;
   } {
-    const base = resolveCodexPath(this.settings.codexPath, this.settings.allowNpx);
+    const base = resolveCodexPath(settings.codexPath, settings.allowNpx);
     const args: string[] = [...base.args, 'exec', '--experimental-json'];
 
     // Approval/sandbox (exec subcommand does not accept -a/-s directly; use -c overrides)
-    if (this.settings.fullAuto) {
+    if (settings.fullAuto) {
       args.push('--full-auto');
-    } else if (this.settings.dangerouslyBypassApprovalsAndSandbox) {
+    } else if (settings.dangerouslyBypassApprovalsAndSandbox) {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     } else {
-      const approval = this.settings.approvalMode ?? 'on-failure';
+      const approval = settings.approvalMode ?? 'on-failure';
       args.push('-c', `approval_policy=${approval}`);
-      const sandbox = this.settings.sandboxMode ?? 'workspace-write';
+      const sandbox = settings.sandboxMode ?? 'workspace-write';
       args.push('-c', `sandbox_mode=${sandbox}`);
     }
 
-    if (this.settings.skipGitRepoCheck !== false) {
+    if (settings.skipGitRepoCheck !== false) {
       args.push('--skip-git-repo-check');
     }
 
     // Reasoning & verbosity
-    if (this.settings.reasoningEffort) {
-      args.push('-c', `model_reasoning_effort=${this.settings.reasoningEffort}`);
+    if (settings.reasoningEffort) {
+      args.push('-c', `model_reasoning_effort=${settings.reasoningEffort}`);
     }
-    if (this.settings.reasoningSummary) {
-      args.push('-c', `model_reasoning_summary=${this.settings.reasoningSummary}`);
+    if (settings.reasoningSummary) {
+      args.push('-c', `model_reasoning_summary=${settings.reasoningSummary}`);
     }
-    if (this.settings.reasoningSummaryFormat) {
-      args.push('-c', `model_reasoning_summary_format=${this.settings.reasoningSummaryFormat}`);
+    if (settings.reasoningSummaryFormat) {
+      args.push('-c', `model_reasoning_summary_format=${settings.reasoningSummaryFormat}`);
     }
-    if (this.settings.modelVerbosity) {
-      args.push('-c', `model_verbosity=${this.settings.modelVerbosity}`);
+    if (settings.modelVerbosity) {
+      args.push('-c', `model_verbosity=${settings.modelVerbosity}`);
     }
 
     // Advanced Codex features
-    if (this.settings.includePlanTool) {
+    if (settings.includePlanTool) {
       args.push('--include-plan-tool');
     }
-    if (this.settings.profile) {
-      args.push('--profile', this.settings.profile);
+    if (settings.profile) {
+      args.push('--profile', settings.profile);
     }
-    if (this.settings.oss) {
+    if (settings.oss) {
       args.push('--oss');
     }
-    if (this.settings.webSearch) {
+    if (settings.webSearch) {
       args.push('-c', 'tools.web_search=true');
     }
 
     // Color handling
-    if (this.settings.color) {
-      args.push('--color', this.settings.color);
+    if (settings.color) {
+      args.push('--color', settings.color);
     }
 
     if (this.modelId) {
@@ -181,8 +226,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
 
     // Generic config overrides (-c key=value)
-    if (this.settings.configOverrides) {
-      for (const [key, value] of Object.entries(this.settings.configOverrides)) {
+    if (settings.configOverrides) {
+      for (const [key, value] of Object.entries(settings.configOverrides)) {
         this.addConfigOverride(args, key, value);
       }
     }
@@ -215,12 +260,12 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      ...(this.settings.env || {}),
+      ...(settings.env || {}),
       RUST_LOG: process.env.RUST_LOG || 'error',
     };
 
     // Configure output-last-message
-    let lastMessagePath: string | undefined = this.settings.outputLastMessageFile;
+    let lastMessagePath: string | undefined = settings.outputLastMessageFile;
     if (!lastMessagePath) {
       // create a temp folder for this run
       const dir = mkdtempSync(join(tmpdir(), 'codex-cli-'));
@@ -228,7 +273,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
     args.push('--output-last-message', lastMessagePath);
 
-    return { cmd: base.cmd, args, env, cwd: this.settings.cwd, lastMessagePath, schemaPath };
+    return { cmd: base.cmd, args, env, cwd: settings.cwd, lastMessagePath, schemaPath };
   }
 
   private addConfigOverride(
@@ -601,6 +646,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
 
+    const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
+      provider: this.provider,
+      providerOptions: options.providerOptions,
+      schema: codexCliProviderOptionsSchema,
+    });
+    const effectiveSettings = this.mergeSettings(providerOptions);
+
     const responseFormat =
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
@@ -608,6 +660,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
       promptText,
       responseFormat,
+      effectiveSettings,
     );
     let text = '';
     const usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
@@ -753,6 +806,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
 
+    const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
+      provider: this.provider,
+      providerOptions: options.providerOptions,
+      schema: codexCliProviderOptionsSchema,
+    });
+    const effectiveSettings = this.mergeSettings(providerOptions);
+
     const responseFormat =
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
@@ -760,6 +820,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
       promptText,
       responseFormat,
+      effectiveSettings,
     );
 
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
