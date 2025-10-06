@@ -353,4 +353,170 @@ describe('CodexCliLanguageModel', () => {
     ).rejects.toBe(reason);
     expect(killed).toBe(true);
   });
+
+  describe('Phase 1: constructor-level parameters', () => {
+    it('emits -c model_reasoning_* and model_verbosity args when set', async () => {
+      let seen: any = { args: [] as string[] };
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-reason' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        seen = { args };
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5-codex',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          reasoningEffort: 'high',
+          reasoningSummary: 'detailed',
+          reasoningSummaryFormat: 'experimental',
+          modelVerbosity: 'low',
+        },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      const a = seen.args as string[];
+      expect(a).toContain('-c');
+      expect(a).toContain('model_reasoning_effort=high');
+      expect(a).toContain('model_reasoning_summary=detailed');
+      expect(a).toContain('model_reasoning_summary_format=experimental');
+      expect(a).toContain('model_verbosity=low');
+    });
+
+    it('emits advanced feature flags (--include-plan-tool, --profile, --oss) and webSearch config', async () => {
+      let seen: any = { args: [] as string[] };
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-adv' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        seen = { args };
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          includePlanTool: true,
+          profile: 'production',
+          oss: true,
+          webSearch: true,
+          color: 'never',
+        },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      const a = seen.args as string[];
+      expect(a).toContain('--include-plan-tool');
+      expect(a).toContain('--profile');
+      expect(a).toContain('production');
+      expect(a).toContain('--oss');
+      expect(a).toContain('tools.web_search=true');
+    });
+
+    it('emits -c for configOverrides with string, number, boolean, and object', async () => {
+      let seen: any = { args: [] as string[] };
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-over' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        seen = { args };
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          configOverrides: {
+            experimental_resume: '/tmp/session.jsonl',
+            hide_agent_reasoning: true,
+            model_context_window: 200000,
+            sandbox_workspace_write: { network_access: true },
+          },
+        },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      const a = seen.args as string[];
+      expect(a).toContain('experimental_resume=/tmp/session.jsonl');
+      expect(a).toContain('hide_agent_reasoning=true');
+      expect(a).toContain('model_context_window=200000');
+      expect(a).toContain('sandbox_workspace_write.network_access=true');
+    });
+
+    it('handles deep nesting, arrays, and dotted keys in configOverrides', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-over-2' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          configOverrides: {
+            deep: { nested: { value: true } },
+            arr: [1, 2],
+            'dotted.key': 'val',
+          },
+        },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      expect(argsCaptured).toContain('deep.nested.value=true');
+      expect(argsCaptured).toContain('arr=[1,2]');
+      expect(argsCaptured).toContain('dotted.key=val');
+    });
+
+    it('keeps reasoning flags when fullAuto is enabled (but omits approval/sandbox overrides)', async () => {
+      let lastArgs: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-fa' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        lastArgs = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never', fullAuto: true, reasoningEffort: 'medium' },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      expect(lastArgs).toContain('--full-auto');
+      expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
+      expect(lastArgs).toContain('model_reasoning_effort=medium');
+    });
+  });
 });

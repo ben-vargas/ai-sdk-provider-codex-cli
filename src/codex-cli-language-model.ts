@@ -143,12 +143,48 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       args.push('--skip-git-repo-check');
     }
 
+    // Reasoning & verbosity
+    if (this.settings.reasoningEffort) {
+      args.push('-c', `model_reasoning_effort=${this.settings.reasoningEffort}`);
+    }
+    if (this.settings.reasoningSummary) {
+      args.push('-c', `model_reasoning_summary=${this.settings.reasoningSummary}`);
+    }
+    if (this.settings.reasoningSummaryFormat) {
+      args.push('-c', `model_reasoning_summary_format=${this.settings.reasoningSummaryFormat}`);
+    }
+    if (this.settings.modelVerbosity) {
+      args.push('-c', `model_verbosity=${this.settings.modelVerbosity}`);
+    }
+
+    // Advanced Codex features
+    if (this.settings.includePlanTool) {
+      args.push('--include-plan-tool');
+    }
+    if (this.settings.profile) {
+      args.push('--profile', this.settings.profile);
+    }
+    if (this.settings.oss) {
+      args.push('--oss');
+    }
+    if (this.settings.webSearch) {
+      args.push('-c', 'tools.web_search=true');
+    }
+
+    // Color handling
     if (this.settings.color) {
       args.push('--color', this.settings.color);
     }
 
     if (this.modelId) {
       args.push('-m', this.modelId);
+    }
+
+    // Generic config overrides (-c key=value)
+    if (this.settings.configOverrides) {
+      for (const [key, value] of Object.entries(this.settings.configOverrides)) {
+        this.addConfigOverride(args, key, value);
+      }
     }
 
     // Handle JSON schema if provided
@@ -193,6 +229,58 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     args.push('--output-last-message', lastMessagePath);
 
     return { cmd: base.cmd, args, env, cwd: this.settings.cwd, lastMessagePath, schemaPath };
+  }
+
+  private addConfigOverride(
+    args: string[],
+    key: string,
+    value: string | number | boolean | object,
+  ): void {
+    if (this.isPlainObject(value)) {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        this.addConfigOverride(
+          args,
+          `${key}.${childKey}`,
+          childValue as string | number | boolean | object,
+        );
+      }
+      return;
+    }
+    const serialized = this.serializeConfigValue(value);
+    args.push('-c', `${key}=${serialized}`);
+  }
+
+  /**
+   * Serialize a config override value into a CLI-safe string.
+   */
+  private serializeConfigValue(value: string | number | boolean | object): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    if (value && typeof value === 'object') {
+      // Remaining plain objects are flattened earlier; fallback to JSON.
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Object.prototype.toString.call(value) === '[object Object]'
+    );
   }
 
   private sanitizeJsonSchema(value: unknown): unknown {

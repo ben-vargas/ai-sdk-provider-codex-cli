@@ -13,4 +13,16 @@ describe('validateSettings', () => {
     expect(res.valid).toBe(true);
     expect(res.warnings.length).toBeGreaterThan(0);
   });
+
+  it('rejects invalid reasoningSummary value "none"', () => {
+    const res = validateSettings({ reasoningEffort: 'high', reasoningSummary: 'none' });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /reasoningSummary/i.test(e))).toBe(true);
+  });
+
+  it('rejects invalid reasoningSummary value "concise"', () => {
+    const res = validateSettings({ reasoningEffort: 'high', reasoningSummary: 'concise' });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /reasoningSummary/i.test(e))).toBe(true);
+  });
 });

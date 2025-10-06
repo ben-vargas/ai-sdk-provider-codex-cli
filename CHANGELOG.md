@@ -83,3 +83,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ChatGPT OAuth authentication via `codex login`
 - Configurable approval and sandbox modes
 - Examples for basic usage, streaming, and object generation
+
+## [0.4.0] - 2025-10-05
+
+### Added
+
+- Constructor-level model parameters and advanced options:
+  - Reasoning: `reasoningEffort`, `reasoningSummary`, `reasoningSummaryFormat`
+  - Verbosity: `modelVerbosity`
+  - Advanced Codex features: `includePlanTool`, `profile`, `oss`, `webSearch`
+  - Generic `configOverrides` mapping to `-c key=value` for arbitrary Codex config keys (nested objects flatten to dotted keys)
+- Exported types: `ReasoningEffort`, `ReasoningSummary`, `ReasoningSummaryFormat`, `ModelVerbosity`
+- README section documenting new parameters and examples
+
+### Changed
+
+- Validation updated to accept new fields and warn when `reasoningSummary` is `none` but `reasoningEffort` is set
