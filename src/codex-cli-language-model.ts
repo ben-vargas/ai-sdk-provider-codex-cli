@@ -16,7 +16,7 @@ import type {
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
-import { getLogger } from './logger.js';
+import { getLogger, createVerboseLogger } from './logger.js';
 import type { CodexCliProviderOptions, CodexCliSettings, Logger } from './types.js';
 import { validateModelId } from './validation.js';
 import { mapMessagesToPrompt } from './message-mapper.js';
@@ -116,7 +116,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   constructor(options: CodexLanguageModelOptions) {
     this.modelId = options.id;
     this.settings = options.settings ?? {};
-    this.logger = getLogger(this.settings.logger);
+    const baseLogger = getLogger(this.settings.logger);
+    this.logger = createVerboseLogger(baseLogger, this.settings.verbose ?? false);
     if (!this.modelId || this.modelId.trim() === '') {
       throw new NoSuchModelError({ modelId: this.modelId, modelType: 'languageModel' });
     }
@@ -639,12 +640,18 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   async doGenerate(
     options: Parameters<LanguageModelV2['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
+    this.logger.debug(`[codex-cli] Starting doGenerate request with model: ${this.modelId}`);
+
     const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
+
+    this.logger.debug(
+      `[codex-cli] Converted ${options.prompt.length} messages, response format: ${options.responseFormat?.type ?? 'none'}`
+    );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
       provider: this.provider,
@@ -662,9 +669,15 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       responseFormat,
       effectiveSettings,
     );
+
+    this.logger.debug(
+      `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`
+    );
+
     let text = '';
     const usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     const finishReason: LanguageModelV2FinishReason = 'stop';
+    const startTime = Date.now();
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -691,12 +704,16 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             const event = this.parseExperimentalJsonEvent(line);
             if (!event) continue;
 
+            this.logger.debug(`[codex-cli] Received event type: ${event.type ?? 'unknown'}`);
+
             if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
               this.sessionId = event.thread_id;
+              this.logger.debug(`[codex-cli] Session started: ${this.sessionId}`);
             }
             if (event.type === 'session.created' && typeof event.session_id === 'string') {
               // Backwards compatibility in case older events appear
               this.sessionId = event.session_id;
+              this.logger.debug(`[codex-cli] Session created: ${this.sessionId}`);
             }
 
             if (event.type === 'turn.completed') {
@@ -721,16 +738,22 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
                 (event.error && typeof event.error.message === 'string' && event.error.message) ||
                 (typeof event.message === 'string' ? event.message : undefined);
               turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
+              this.logger.error(`[codex-cli] Turn failed: ${turnFailureMessage}`);
             }
 
             if (event.type === 'error') {
               const errorText = typeof event.message === 'string' ? event.message : undefined;
               turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex error';
+              this.logger.error(`[codex-cli] Error event: ${turnFailureMessage}`);
             }
           }
         });
-        child.on('error', (e) => reject(this.handleSpawnError(e, promptExcerpt)));
+        child.on('error', (e) => {
+          this.logger.error(`[codex-cli] Spawn error: ${String(e)}`);
+          reject(this.handleSpawnError(e, promptExcerpt));
+        });
         child.on('close', (code) => {
+          const duration = Date.now() - startTime;
           if (code === 0) {
             if (turnFailureMessage) {
               reject(
@@ -742,8 +765,15 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
               );
               return;
             }
+            this.logger.info(
+              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usage.totalTokens}`
+            );
+            this.logger.debug(
+              `[codex-cli] Token usage - Input: ${usage.inputTokens}, Output: ${usage.outputTokens}, Total: ${usage.totalTokens}`
+            );
             resolve();
           } else {
+            this.logger.error(`[codex-cli] Process exited with code ${code} after ${duration}ms`);
             reject(
               createAPICallError({
                 message: `Codex CLI exited with code ${code}`,
@@ -799,12 +829,18 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   async doStream(
     options: Parameters<LanguageModelV2['doStream']>[0],
   ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
+    this.logger.debug(`[codex-cli] Starting doStream request with model: ${this.modelId}`);
+
     const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
     ] as LanguageModelV2CallWarning[];
+
+    this.logger.debug(
+      `[codex-cli] Converted ${options.prompt.length} messages for streaming, response format: ${options.responseFormat?.type ?? 'none'}`
+    );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
       provider: this.provider,
@@ -823,8 +859,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       effectiveSettings,
     );
 
+    this.logger.debug(
+      `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`
+    );
+
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       start: (controller) => {
+        const startTime = Date.now();
         const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 
         // Emit stream-start
@@ -857,6 +898,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             typeof item.text === 'string'
           ) {
             accumulatedText = item.text;
+            this.logger.debug(`[codex-cli] Received assistant message, length: ${item.text.length}`);
             return;
           }
 
@@ -864,6 +906,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           if (!toolName) {
             return;
           }
+
+          this.logger.debug(`[codex-cli] Tool detected: ${toolName}, item type: ${this.getItemType(item)}`);
 
           const mapKey = typeof item.id === 'string' && item.id.length > 0 ? item.id : randomUUID();
           let toolState = activeTools.get(mapKey);
@@ -885,6 +929,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
 
           if (!toolState.hasEmittedCall) {
+            this.logger.debug(`[codex-cli] Emitting tool invocation: ${toolState.toolName}`);
             this.emitToolInvocation(
               controller,
               toolState.toolCallId,
@@ -896,6 +941,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
           if (event.type === 'item.completed') {
             const { result, metadata } = this.buildToolResultPayload(item);
+            this.logger.debug(`[codex-cli] Tool completed: ${toolState.toolName}`);
             this.emitToolResult(
               controller,
               toolState.toolCallId,
@@ -922,7 +968,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         }
 
         const finishStream = (code: number | null) => {
+          const duration = Date.now() - startTime;
+
           if (code !== 0) {
+            this.logger.error(`[codex-cli] Stream process exited with code ${code} after ${duration}ms`);
             controller.error(
               createAPICallError({
                 message: `Codex CLI exited with code ${code}`,
@@ -935,6 +984,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
 
           if (turnFailureMessage) {
+            this.logger.error(`[codex-cli] Stream failed: ${turnFailureMessage}`);
             controller.error(
               createAPICallError({
                 message: turnFailureMessage,
@@ -966,6 +1016,12 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
 
           const usageSummary = lastUsage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+          this.logger.info(
+            `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usageSummary.totalTokens}`
+          );
+          this.logger.debug(
+            `[codex-cli] Token usage - Input: ${usageSummary.inputTokens}, Output: ${usageSummary.outputTokens}, Total: ${usageSummary.totalTokens}`
+          );
           controller.enqueue({
             type: 'finish',
             finishReason: 'stop',
@@ -982,8 +1038,11 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             const event = this.parseExperimentalJsonEvent(line);
             if (!event) continue;
 
+            this.logger.debug(`[codex-cli] Stream event: ${event.type ?? 'unknown'}`);
+
             if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
               this.sessionId = event.thread_id;
+              this.logger.debug(`[codex-cli] Stream session started: ${this.sessionId}`);
               if (!responseMetadataSent) {
                 responseMetadataSent = true;
                 sendMetadata();
@@ -993,6 +1052,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
             if (event.type === 'session.created' && typeof event.session_id === 'string') {
               this.sessionId = event.session_id;
+              this.logger.debug(`[codex-cli] Stream session created: ${this.sessionId}`);
               if (!responseMetadataSent) {
                 responseMetadataSent = true;
                 sendMetadata();
@@ -1013,6 +1073,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
                 (event.error && typeof event.error.message === 'string' && event.error.message) ||
                 (typeof event.message === 'string' ? event.message : undefined);
               turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
+              this.logger.error(`[codex-cli] Stream turn failed: ${turnFailureMessage}`);
               sendMetadata({ error: turnFailureMessage });
               continue;
             }
@@ -1021,6 +1082,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
               const errorText = typeof event.message === 'string' ? event.message : undefined;
               const effective = errorText ?? 'Codex error';
               turnFailureMessage = turnFailureMessage ?? effective;
+              this.logger.error(`[codex-cli] Stream error event: ${effective}`);
               sendMetadata({ error: effective });
               continue;
             }
@@ -1040,6 +1102,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         };
 
         child.on('error', (e) => {
+          this.logger.error(`[codex-cli] Stream spawn error: ${String(e)}`);
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
           cleanupSchema();
           controller.error(this.handleSpawnError(e, promptExcerpt));

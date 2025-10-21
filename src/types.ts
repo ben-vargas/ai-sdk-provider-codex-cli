@@ -1,7 +1,41 @@
 // Types and settings for Codex CLI provider
 
+/**
+ * Logger interface for custom logging.
+ * Allows consumers to provide their own logging implementation
+ * or disable logging entirely.
+ *
+ * @example
+ * ```typescript
+ * const customLogger: Logger = {
+ *   debug: (message) => myLoggingService.debug(message),
+ *   info: (message) => myLoggingService.info(message),
+ *   warn: (message) => myLoggingService.warn(message),
+ *   error: (message) => myLoggingService.error(message),
+ * };
+ * ```
+ */
 export interface Logger {
+  /**
+   * Log a debug message. Only logged when verbose mode is enabled.
+   * Used for detailed execution tracing and troubleshooting.
+   */
+  debug: (message: string) => void;
+
+  /**
+   * Log an informational message. Only logged when verbose mode is enabled.
+   * Used for general execution flow information.
+   */
+  info: (message: string) => void;
+
+  /**
+   * Log a warning message.
+   */
   warn: (message: string) => void;
+
+  /**
+   * Log an error message.
+   */
   error: (message: string) => void;
 }
 

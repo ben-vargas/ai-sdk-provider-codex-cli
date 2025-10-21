@@ -1,6 +1,21 @@
 import { z } from 'zod';
 import type { CodexCliSettings } from './types.js';
 
+const loggerFunctionSchema = z.object({
+  debug: z.any().refine((val) => typeof val === 'function', {
+    message: 'debug must be a function',
+  }),
+  info: z.any().refine((val) => typeof val === 'function', {
+    message: 'info must be a function',
+  }),
+  warn: z.any().refine((val) => typeof val === 'function', {
+    message: 'warn must be a function',
+  }),
+  error: z.any().refine((val) => typeof val === 'function', {
+    message: 'error must be a function',
+  }),
+});
+
 const settingsSchema = z
   .object({
     codexPath: z.string().optional(),
@@ -14,7 +29,7 @@ const settingsSchema = z
     allowNpx: z.boolean().optional(),
     env: z.record(z.string(), z.string()).optional(),
     verbose: z.boolean().optional(),
-    logger: z.any().optional(),
+    logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
 
     // NEW: Reasoning & Verbosity
     reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
