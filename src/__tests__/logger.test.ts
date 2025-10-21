@@ -99,21 +99,22 @@ describe('logger', () => {
       // Create a logger that relies on instance state
       class CustomLogger implements Logger {
         private prefix = '[CUSTOM]';
+        public lastMessage = '';
 
-        debug(message: string) {
-          return `${this.prefix} DEBUG: ${message}`;
+        debug(message: string): void {
+          this.lastMessage = `${this.prefix} DEBUG: ${message}`;
         }
 
-        info(message: string) {
-          return `${this.prefix} INFO: ${message}`;
+        info(message: string): void {
+          this.lastMessage = `${this.prefix} INFO: ${message}`;
         }
 
-        warn(message: string) {
-          return `${this.prefix} WARN: ${message}`;
+        warn(message: string): void {
+          this.lastMessage = `${this.prefix} WARN: ${message}`;
         }
 
-        error(message: string) {
-          return `${this.prefix} ERROR: ${message}`;
+        error(message: string): void {
+          this.lastMessage = `${this.prefix} ERROR: ${message}`;
         }
       }
 
@@ -121,11 +122,11 @@ describe('logger', () => {
       const logger = createVerboseLogger(customLogger, false);
 
       // These should not throw and should preserve 'this' binding
-      const warnResult = logger.warn('test warning');
-      const errorResult = logger.error('test error');
+      logger.warn('test warning');
+      expect(customLogger.lastMessage).toBe('[CUSTOM] WARN: test warning');
 
-      expect(warnResult).toBe('[CUSTOM] WARN: test warning');
-      expect(errorResult).toBe('[CUSTOM] ERROR: test error');
+      logger.error('test error');
+      expect(customLogger.lastMessage).toBe('[CUSTOM] ERROR: test error');
     });
   });
 });

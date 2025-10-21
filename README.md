@@ -15,6 +15,7 @@ A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑
 - Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
+- **v0.5.0**: Adds comprehensive logging system with verbose mode and custom logger support
 - **v0.3.0**: Adds comprehensive tool streaming support for monitoring autonomous tool execution
 - **v0.2.0 Breaking Changes**: Switched to `--experimental-json` and native schema enforcement (see [CHANGELOG](CHANGELOG.md))
 
@@ -96,6 +97,7 @@ console.log(object);
 
 - AI SDK v5 compatible (LanguageModelV2)
 - Streaming and non‑streaming
+- **Configurable logging** (v0.5.0+) - Verbose mode, custom loggers, or silent operation
 - **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
 - **Native JSON Schema support** via `--output-schema` (API-enforced with `strict: true`)
 - JSON object generation with Zod schemas (100-200 fewer tokens per request vs prompt engineering)
@@ -134,6 +136,58 @@ for await (const part of result.fullStream) {
 - `providerExecuted: true` on all tool calls (Codex executes autonomously, app doesn't need to)
 
 **Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/streaming-tool-calls.mjs` and `examples/streaming-multiple-tools.mjs` for usage patterns.
+
+### Logging Configuration (v0.5.0+)
+
+Control logging verbosity and integrate with your observability stack:
+
+```js
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+
+// Default: warn/error only (clean production output)
+const model = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+});
+
+// Verbose mode: enable debug/info logs for troubleshooting
+const verboseModel = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+  verbose: true, // Shows all log levels
+});
+
+// Custom logger: integrate with Winston, Pino, Datadog, etc.
+const customModel = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+  verbose: true,
+  logger: {
+    debug: (msg) => myLogger.debug('Codex:', msg),
+    info: (msg) => myLogger.info('Codex:', msg),
+    warn: (msg) => myLogger.warn('Codex:', msg),
+    error: (msg) => myLogger.error('Codex:', msg),
+  },
+});
+
+// Silent: disable all logging
+const silentModel = codexCli('gpt-5-codex', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+  logger: false, // No logs at all
+});
+```
+
+**Log Levels:**
+
+- `debug`: Detailed execution traces (verbose mode only)
+- `info`: General execution flow (verbose mode only)
+- `warn`: Warnings and misconfigurations (always shown)
+- `error`: Errors and failures (always shown)
+
+**Default Logger:** Adds level tags `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]` to console output. Use a custom logger or `logger: false` if you need different formatting.
+
+See `examples/logging-*.mjs` for complete examples and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
 
 ### Text Streaming behavior
 
@@ -176,6 +230,9 @@ When OpenAI adds streaming support, this provider will be updated to handle thos
 - `skipGitRepoCheck`: enable by default for CI/non‑repo contexts
 - `color`: `always` | `never` | `auto`
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably
+- Logging (v0.5.0+):
+  - `verbose`: Enable debug/info logs (default: `false` for clean output)
+  - `logger`: Custom logger object or `false` to disable all logging
 
 See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the full list and examples.
 

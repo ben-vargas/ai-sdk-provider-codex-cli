@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-10-21
+
+### Added
+
+- **Comprehensive logging system** with configurable verbosity and custom logger support
+  - Added `debug` and `info` log levels to complement existing `warn` and `error` levels
+  - New `verbose` setting to control debug/info logging visibility (default: `false` for clean production output)
+  - New `logger` setting for custom logger support or `false` to disable all logging
+  - `Logger` interface: Standardized four-level logging (debug, info, warn, error)
+  - Default logger with level tags: `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]` prefixes
+  - Detailed execution tracing including request/response flow, stream events, and process lifecycle
+  - When `verbose: false` (default), only `warn` and `error` messages are logged
+  - When `verbose: true`, all log levels including `debug` and `info` are logged
+  - `createVerboseLogger()` utility that filters debug/info logs based on verbose mode
+  - `this` context preservation via `.bind()` for class-based custom loggers
+- **Logging examples:**
+  - `examples/logging-default.mjs`: Default non-verbose mode (warn/error only)
+  - `examples/logging-verbose.mjs`: Verbose mode with full debug visibility
+  - `examples/logging-custom-logger.mjs`: Custom logger integration (Winston, Pino, etc.)
+  - `examples/logging-disabled.mjs`: Complete logging suppression
+- **Documentation:**
+  - `docs/ai-sdk-v5/guide.md`: Comprehensive logging configuration section
+  - `docs/ai-sdk-v5/configuration.md`: Detailed `verbose` and `logger` parameter documentation
+  - `examples/README.md`: Logging examples section with usage patterns
+
+### Potentially Breaking Changes
+
+**Who is affected:** Only users with custom `Logger` implementations (estimated <5% of users).
+
+**What changed:** The `Logger` interface now requires 4 methods instead of 2:
+
+- `debug(message: string): void` - NEW - for detailed execution tracing (verbose mode only)
+- `info(message: string): void` - NEW - for general flow information (verbose mode only)
+- `warn(message: string): void` - existing
+- `error(message: string): void` - existing
+
+**Migration for custom logger users:**
+
+```typescript
+// Before (v0.4.x) ❌
+const logger = {
+  warn: (msg) => myLogger.warn(msg),
+  error: (msg) => myLogger.error(msg),
+};
+
+// After (v0.5.0+) ✅
+const logger = {
+  debug: (msg) => myLogger.debug(msg), // Add this
+  info: (msg) => myLogger.info(msg), // Add this
+  warn: (msg) => myLogger.warn(msg),
+  error: (msg) => myLogger.error(msg),
+};
+```
+
+**Most users are unaffected:**
+
+- Users without a custom logger (using default `console`) - no changes needed
+- Users with `logger: false` - no changes needed
+- The default logger automatically handles all log levels
+
+### Changed
+
+- **Default logger now includes level tags** - All log messages are prefixed with `[DEBUG]`, `[INFO]`, `[WARN]`, or `[ERROR]` for clarity
+  - May affect applications parsing console output (use custom logger or `logger: false` if needed)
+- Non-verbose mode (default) only shows warn/error messages for cleaner production logs
+
+### Technical Details
+
+- All new settings (`verbose`, `logger`) are optional with safe defaults
+- 7 new unit tests covering logger functionality (all passing)
+- Comprehensive test coverage for all logging scenarios and custom logger implementations
+- Supports custom logging integrations (Winston, Pino, Datadog, Sentry, etc.)
+
 ## [0.4.0] - 2025-10-06
 
 ### Added
