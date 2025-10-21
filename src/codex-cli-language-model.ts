@@ -650,7 +650,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     ] as LanguageModelV2CallWarning[];
 
     this.logger.debug(
-      `[codex-cli] Converted ${options.prompt.length} messages, response format: ${options.responseFormat?.type ?? 'none'}`
+      `[codex-cli] Converted ${options.prompt.length} messages, response format: ${options.responseFormat?.type ?? 'none'}`,
     );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
@@ -671,7 +671,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     );
 
     this.logger.debug(
-      `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`
+      `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`,
     );
 
     let text = '';
@@ -766,10 +766,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
               return;
             }
             this.logger.info(
-              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usage.totalTokens}`
+              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usage.totalTokens}`,
             );
             this.logger.debug(
-              `[codex-cli] Token usage - Input: ${usage.inputTokens}, Output: ${usage.outputTokens}, Total: ${usage.totalTokens}`
+              `[codex-cli] Token usage - Input: ${usage.inputTokens}, Output: ${usage.outputTokens}, Total: ${usage.totalTokens}`,
             );
             resolve();
           } else {
@@ -839,7 +839,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     ] as LanguageModelV2CallWarning[];
 
     this.logger.debug(
-      `[codex-cli] Converted ${options.prompt.length} messages for streaming, response format: ${options.responseFormat?.type ?? 'none'}`
+      `[codex-cli] Converted ${options.prompt.length} messages for streaming, response format: ${options.responseFormat?.type ?? 'none'}`,
     );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
@@ -860,7 +860,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     );
 
     this.logger.debug(
-      `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`
+      `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`,
     );
 
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
@@ -898,7 +898,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             typeof item.text === 'string'
           ) {
             accumulatedText = item.text;
-            this.logger.debug(`[codex-cli] Received assistant message, length: ${item.text.length}`);
+            this.logger.debug(
+              `[codex-cli] Received assistant message, length: ${item.text.length}`,
+            );
             return;
           }
 
@@ -907,7 +909,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             return;
           }
 
-          this.logger.debug(`[codex-cli] Tool detected: ${toolName}, item type: ${this.getItemType(item)}`);
+          this.logger.debug(
+            `[codex-cli] Tool detected: ${toolName}, item type: ${this.getItemType(item)}`,
+          );
 
           const mapKey = typeof item.id === 'string' && item.id.length > 0 ? item.id : randomUUID();
           let toolState = activeTools.get(mapKey);
@@ -971,7 +975,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           const duration = Date.now() - startTime;
 
           if (code !== 0) {
-            this.logger.error(`[codex-cli] Stream process exited with code ${code} after ${duration}ms`);
+            this.logger.error(
+              `[codex-cli] Stream process exited with code ${code} after ${duration}ms`,
+            );
             controller.error(
               createAPICallError({
                 message: `Codex CLI exited with code ${code}`,
@@ -1017,10 +1023,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
           const usageSummary = lastUsage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
           this.logger.info(
-            `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usageSummary.totalTokens}`
+            `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usageSummary.totalTokens}`,
           );
           this.logger.debug(
-            `[codex-cli] Token usage - Input: ${usageSummary.inputTokens}, Output: ${usageSummary.outputTokens}, Total: ${usageSummary.totalTokens}`
+            `[codex-cli] Token usage - Input: ${usageSummary.inputTokens}, Output: ${usageSummary.outputTokens}, Total: ${usageSummary.totalTokens}`,
           );
           controller.enqueue({
             type: 'finish',

@@ -3,12 +3,14 @@ import type { Logger } from './types.js';
 /**
  * Default logger that uses console.
  */
+/* eslint-disable no-console -- Default logger legitimately uses all console methods */
 const defaultLogger: Logger = {
   debug: (message: string) => console.debug(message),
   info: (message: string) => console.info(message),
   warn: (message: string) => console.warn(message),
   error: (message: string) => console.error(message),
 };
+/* eslint-enable no-console */
 
 /**
  * No-op logger that discards all messages.
