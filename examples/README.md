@@ -99,6 +99,29 @@ node examples/<file>.mjs
   - Demonstrates: Warnings for temperature/topP/topK/penalties/stop sequences.
   - Value: Avoid confusion and tune your prompts instead.
 
+## Logging
+
+- **logging-default.mjs:** Default logging behavior
+  - Purpose: Show the default non-verbose logging mode.
+  - Demonstrates: Only warn and error messages are logged, debug/info suppressed.
+  - Value: Clean output for production—only essential logs appear.
+
+- **logging-verbose.mjs:** Verbose mode for debugging
+  - Purpose: Enable detailed execution logs for troubleshooting.
+  - Demonstrates: All log levels (debug, info, warn, error) with full visibility.
+  - Value: Development and debugging—see exactly what the provider is doing internally.
+
+- **logging-custom-logger.mjs:** Custom logger integration
+  - Purpose: Integrate with external logging systems (Winston, Pino, Datadog, etc.).
+  - Demonstrates: Custom logger object with timestamps and prefixes.
+  - Value: Route logs to your observability stack, format messages your way.
+
+- **logging-disabled.mjs:** Silent operation
+  - Purpose: Completely disable all provider logging.
+  - Demonstrates: Setting `logger: false` for zero log output.
+  - Value: Production scenarios where logs interfere with output processing.
+  - Warning: No warnings or errors from the provider will be visible!
+
 ## Structured Output (Objects)
 
 **v0.2.0+**: The provider uses native `--output-schema` support with OpenAI strict mode for API-level JSON enforcement. No prompt engineering needed—schemas are passed directly to the API, eliminating 100-200 tokens per request and improving reliability.
@@ -172,10 +195,11 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
 
 1. `basic-usage.mjs` → `streaming.mjs` → `conversation-history.mjs`
 2. `custom-config.mjs` → `permissions-and-sandbox.mjs` → `advanced-settings.mjs` → `provider-options.mjs` (v0.4.0 features)
-3. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs` → `generate-object-native-schema.mjs`
-4. `experimental-json-events.mjs` (v0.2.0 event format)
-5. `streaming-tool-calls.mjs` → `streaming-multiple-tools.mjs` (tool streaming)
-6. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
+3. `logging-default.mjs` → `logging-verbose.mjs` → `logging-custom-logger.mjs` → `logging-disabled.mjs` (logging)
+4. `generate-object-basic.mjs` → `generate-object-nested.mjs` → `generate-object-constraints.mjs` → `generate-object-advanced.mjs` → `generate-object-native-schema.mjs`
+5. `experimental-json-events.mjs` (v0.2.0 event format)
+6. `streaming-tool-calls.mjs` → `streaming-multiple-tools.mjs` (tool streaming)
+7. `long-running-tasks.mjs` → `error-handling.mjs` → `limitations.mjs` → `check-cli.mjs`
 
 ## Troubleshooting
 
