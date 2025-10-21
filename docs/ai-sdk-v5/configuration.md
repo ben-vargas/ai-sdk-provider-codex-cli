@@ -15,7 +15,8 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `sandboxMode` ('read-only' | 'workspace-write' | 'danger-full-access'): Applied via `-c sandbox_mode=...`.
 - `outputLastMessageFile` (string): File path to write the last agent message. If omitted, a temp file is created.
 - `env` (Record<string,string>): Extra env vars for the child process (e.g., `OPENAI_API_KEY`).
-- `logger` (custom | false): Custom logger or disable logging entirely.
+- `verbose` (boolean): Enable verbose logging mode. When `true`, enables `debug` and `info` log levels. When `false` (default), only `warn` and `error` are logged.
+- `logger` (Logger | false): Custom logger object or `false` to disable logging entirely. Logger must implement four methods: `debug`, `info`, `warn`, and `error`. Default uses `console.*` methods.
 
 ## Model Parameters & Advanced Options (v0.4.0+)
 
