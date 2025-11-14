@@ -11,7 +11,7 @@ import { generateText } from 'ai';
 import { codexCli } from '../dist/index.js';
 
 async function run(label, settings) {
-  const model = codexCli('gpt-5', {
+  const model = codexCli('gpt-5.1', {
     allowNpx: true,
     skipGitRepoCheck: true,
     color: 'never',

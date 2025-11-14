@@ -24,7 +24,7 @@ import { generateText, streamText, generateObject } from 'ai';
 import { codexCli } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5.1-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -153,7 +153,7 @@ const customCodex = createCodexCli({
 });
 
 // Model-specific logger override
-const model = customCodex('gpt-5', {
+const model = customCodex('gpt-5.1-codex', {
   logger: false, // Disable logging for this model only
 });
 ```
@@ -195,7 +195,7 @@ const codexCustom = createCodexCli({
 });
 
 // Model-specific verbose override
-const model = codexWithDebug('gpt-5', {
+const model = codexWithDebug('gpt-5.1-codex', {
   verbose: false, // Disable verbose for this specific model
 });
 ```
@@ -207,7 +207,7 @@ With `verbose: true`, you'll see intermediate process logs including:
 **For `generateText()` calls:**
 
 ```
-[DEBUG] [codex-cli] Starting doGenerate request with model: gpt-5
+[DEBUG] [codex-cli] Starting doGenerate request with model: gpt-5.1-codex
 [DEBUG] [codex-cli] Request mode: regular, response format: none
 [DEBUG] [codex-cli] Converted 2 messages, response format: none
 [DEBUG] [codex-cli] Executing Codex CLI: npx with 15 arguments, cwd: default
@@ -221,7 +221,7 @@ With `verbose: true`, you'll see intermediate process logs including:
 **For `streamText()` calls with tools:**
 
 ```
-[DEBUG] [codex-cli] Starting doStream request with model: gpt-5
+[DEBUG] [codex-cli] Starting doStream request with model: gpt-5.1-codex
 [DEBUG] [codex-cli] Converted 1 messages for streaming, response format: none
 [DEBUG] [codex-cli] Executing Codex CLI for streaming: npx with 14 arguments
 [DEBUG] [codex-cli] Stream event: thread.started
@@ -264,7 +264,7 @@ const codexCli = createCodexCli({
 
 try {
   const result = await generateText({
-    model: codexCli('gpt-5'),
+    model: codexCli('gpt-5.1-codex'),
     prompt: 'Hello!',
   });
 } catch (error) {

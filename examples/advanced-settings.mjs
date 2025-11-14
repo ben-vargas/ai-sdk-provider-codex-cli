@@ -4,12 +4,11 @@ import { codexCli } from 'ai-sdk-provider-codex-cli';
 async function main() {
   // Example 1: High reasoning effort
   console.log('=== Example 1: Deep Reasoning ===');
-  const deepThinking = codexCli('gpt-5-codex', {
+  const deepThinking = codexCli('gpt-5.1-codex', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'high',
     reasoningSummary: 'detailed',
-    modelVerbosity: 'medium',
   });
 
   const result1 = await generateText({
@@ -21,7 +20,7 @@ async function main() {
 
   // Example 2: Web search enabled
   console.log('\n=== Example 2: Web Search ===');
-  const withWebSearch = codexCli('gpt-5', {
+  const withWebSearch = codexCli('gpt-5.1', {
     allowNpx: true,
     skipGitRepoCheck: true,
     webSearch: true,
@@ -35,7 +34,7 @@ async function main() {
 
   // Example 3: Generic config overrides
   console.log('\n=== Example 3: Advanced Config ===');
-  const advanced = codexCli('gpt-5-codex', {
+  const advanced = codexCli('gpt-5.1-codex', {
     allowNpx: true,
     configOverrides: {
       model_context_window: 200000,
@@ -52,7 +51,7 @@ async function main() {
 
   // Example 4: Combined settings
   console.log('\n=== Example 4: All Features ===');
-  const fullFeatured = codexCli('gpt-5-codex', {
+  const fullFeatured = codexCli('gpt-5.1-codex', {
     allowNpx: true,
     skipGitRepoCheck: true,
     includePlanTool: true,

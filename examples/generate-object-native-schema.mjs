@@ -23,7 +23,7 @@ console.log('  ✅ 100-200 fewer tokens per request');
 console.log('  ✅ API-level enforcement (more reliable)');
 console.log('  ✅ Guaranteed valid JSON output\n');
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5.1', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

@@ -18,7 +18,7 @@ console.log('🔍 Experimental JSON Events\n');
 console.log('This example demonstrates the new event format in v0.2.0.');
 console.log('Events are parsed from --experimental-json output.\n');
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5.1', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "AI SDK v5 provider for OpenAI Codex CLI with native JSON Schema support",
   "keywords": [
     "ai-sdk",
@@ -9,6 +9,8 @@
     "cli",
     "language-model",
     "gpt-5",
+    "gpt-5.1",
+    "gpt-5.1-codex",
     "provider"
   ],
   "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",
@@ -65,16 +67,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
-    "@types/node": "20.17.24",
+    "@types/node": "20.19.6",
     "@vitest/coverage-v8": "^3.2.4",
-    "ai": "5.0.14",
+    "ai": "5.0.93",
     "eslint": "^9.14.0",
     "prettier": "^3.3.3",
     "tsup": "8.5.0",
     "typescript": "5.6.3",
     "vitest": "^3.2.4",
     "typescript-eslint": "^8.6.0",
-    "zod": "^4.0.17"
+    "zod": "^4.1.8"
   },
   "peerDependencies": {
     "zod": "^3.0.0 || ^4.0.0"

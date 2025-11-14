@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { codexCli } from 'ai-sdk-provider-codex-cli';
 
 async function main() {
-  const model = codexCli('gpt-5-codex', {
+  const model = codexCli('gpt-5.1-codex', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'medium',
