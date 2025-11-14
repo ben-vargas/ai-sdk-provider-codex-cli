@@ -37,7 +37,7 @@ The OpenAI Responses API has misleading error messages for the `reasoningSummary
 - **Valid values:** `'auto'`, `'detailed'`
 - **Invalid values:** `'concise'`, `'none'` (rejected with 400 errors)
 
-**The quirk:** When you pass an invalid value like `'none'`, the API error claims valid values are `'concise', 'detailed', and 'auto'`. However, if you then try `'concise'`, the API rejects it with: `"Unsupported value: 'concise' is not supported with the 'gpt-5-codex' model."`
+**The quirk:** When you pass an invalid value like `'none'`, the API error claims valid values are `'concise', 'detailed', and 'auto'`. However, if you then try `'concise'`, the API rejects it with: `"Unsupported value: 'concise' is not supported with the 'gpt-5.1-codex' model."`
 
 This provider's type system and validation only allow `'auto'` and `'detailed'` to prevent runtime errors.
 

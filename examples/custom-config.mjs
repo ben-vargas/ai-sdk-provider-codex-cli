@@ -3,7 +3,7 @@ import { codexCli } from '../dist/index.js';
 
 // Demonstrates custom CWD and sandbox/approval options
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5.1', {
   allowNpx: true,
   cwd: process.cwd(),
   skipGitRepoCheck: true,

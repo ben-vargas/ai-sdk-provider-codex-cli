@@ -27,9 +27,9 @@ node examples/<file>.mjs
   - Demonstrates: `generateText`, provider wiring, safe defaults.
   - Value: Quick sanity check to confirm your environment is correct.
 
-- **basic-usage-gpt-5-codex.mjs:** Minimal generation with the new `gpt-5-codex` slug
-  - Purpose: Confirm the provider works unchanged with the Codex-specific GPT-5 model ID.
-  - Demonstrates: Same call path as above, but with the new slug so you can sanity check quickly.
+- **basic-usage-gpt-5.1-codex.mjs:** Minimal generation with the Codex-optimized GPT-5.1 slug
+  - Purpose: Confirm the provider works unchanged with the Codex-specific GPT-5.1 model ID.
+  - Demonstrates: Same call path as above, but with the Codex slug so you can sanity check quickly.
   - Value: Handy regression test when Codex CLI ships new model identifiers.
 
 - **streaming.mjs:** Stream responses
@@ -37,9 +37,9 @@ node examples/<file>.mjs
   - Demonstrates: Reading `textStream` and rendering as chunks.
   - Value: Build responsive UIs. **Note:** `--experimental-json` format currently doesn't support incremental streaming—you'll receive the full response in a single chunk. The streaming API pattern is correct and will work when OpenAI adds delta event support to Codex CLI.
 
-- **streaming-gpt-5-codex.mjs:** Streaming with the `gpt-5-codex` slug
+- **streaming-gpt-5.1-codex.mjs:** Streaming with the `gpt-5.1-codex` slug
   - Purpose: Validate stream handling with the Codex-specific model identifier.
-  - Demonstrates: Same stream plumbing while calling the new slug.
+  - Demonstrates: Same stream plumbing while calling the Codex slug.
   - Value: Confidence that streaming stays compatible across Codex model updates. **Note:** Currently delivers full response in single chunk due to experimental JSON format limitations.
 
 - **conversation-history.mjs:** Maintain context
@@ -52,8 +52,8 @@ node examples/<file>.mjs
   - Demonstrates: `system` role to enforce concise or structured replies.
   - Value: Consistency across outputs without repeating instructions.
 
-- **system-messages-gpt-5-codex.mjs:** System prompts with `gpt-5-codex`
-  - Purpose: Mirror the system prompt example against the new slug to ensure compatibility.
+- **system-messages-gpt-5.1-codex.mjs:** System prompts with `gpt-5.1-codex`
+  - Purpose: Mirror the system prompt example against the Codex slug to ensure compatibility.
   - Demonstrates: That the conversation mapper/system validation still behaves the same.
   - Value: Fast compatibility regression check for future Codex CLI updates.
 
@@ -68,8 +68,8 @@ node examples/<file>.mjs
   - Value: Pick the right guardrails for your workflow. Warning: bypass is dangerous; prefer sandboxed modes unless you fully trust the environment.
 
 - **advanced-settings.mjs:** Constructor-level model parameters (v0.4.0+)
-  - Purpose: Demonstrate comprehensive reasoning, verbosity, and advanced Codex features at model creation.
-  - Demonstrates: `reasoningEffort`, `reasoningSummary`, `modelVerbosity`, `webSearch`, `includePlanTool`, `profile`, and `configOverrides`.
+  - Purpose: Demonstrate comprehensive reasoning controls and advanced Codex features at model creation.
+  - Demonstrates: `reasoningEffort`, `reasoningSummary`, `webSearch`, `includePlanTool`, `profile`, and `configOverrides`. (Swap to the non-Codex `gpt-5.1` slug if you need `modelVerbosity`.)
   - Value: See all Phase 1 parameters in action—configure behavior once at construction for consistent settings across all calls.
 
 - **provider-options.mjs:** Per-call overrides (v0.4.0+)
@@ -140,7 +140,7 @@ See [LIMITATIONS.md](../LIMITATIONS.md) for full details.
   - Value: Cleanly typed responses for standard data collection.
   - Note: All fields must be required (no `.optional()`).
 
-- **generate-object-basic-gpt-5-codex.mjs:** Fundamentals with `gpt-5-codex`
+- **generate-object-basic-gpt-5.1-codex.mjs:** Fundamentals with `gpt-5.1-codex`
   - Purpose: Exercise JSON object generation against the Codex slug.
   - Demonstrates: Same Zod-driven prompts, proving compatibility with new identifiers.
   - Value: Quick regression path when Codex CLI ships new GPT-5 model slugs.

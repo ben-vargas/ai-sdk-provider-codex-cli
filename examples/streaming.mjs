@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import { codexCli } from '../dist/index.js';
 
-const model = codexCli('gpt-5', {
+const model = codexCli('gpt-5.1', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',

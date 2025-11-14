@@ -96,8 +96,12 @@ export interface CodexCliSettings {
   // ===== Reasoning & Verbosity =====
 
   /**
-   * Controls reasoning effort for reasoning-capable models (o3, o4-mini, gpt-5, gpt-5-codex).
-   * Higher effort produces more thorough reasoning at the cost of latency.
+   * Controls reasoning effort for reasoning-capable models (o3, o4-mini, the GPT-5.1 family,
+   * and legacy GPT-5 slugs). Higher effort produces more thorough reasoning at the cost of latency.
+   *
+   * Codex CLI model presets currently expose `low`/`medium`/`high` for `gpt-5.1` and `gpt-5.1-codex`,
+   * while `gpt-5.1-codex-mini` only offers `medium`/`high`. The legacy `gpt-5` slug still allowed
+   * `minimal`, but GPT-5.1 rejects it.
    *
    * Maps to: `-c model_reasoning_effort=<value>`
    * @see https://platform.openai.com/docs/guides/reasoning
@@ -124,7 +128,8 @@ export interface CodexCliSettings {
   reasoningSummaryFormat?: ReasoningSummaryFormat;
 
   /**
-   * Controls output length/detail for GPT-5 family models.
+   * Controls output length/detail for GPT-5.1 (non-Codex) and legacy GPT-5 models.
+   * Codex-specific slugs ignore this flag because the CLI disables verbosity for them.
    * Only applies to models using the Responses API.
    *
    * Maps to: `-c model_verbosity=<value>`
