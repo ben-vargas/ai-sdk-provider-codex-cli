@@ -13,12 +13,15 @@ import { z } from 'zod';
 
 console.log('🚀 Codex CLI - Advanced Object Generation\n');
 
-const model = codexCli('gpt-5.1', {
+// Use the Codex flagship model to exercise extra-high reasoning effort.
+// Requires codex-cli >= 0.60 for gpt-5.1-codex-max + xhigh.
+const model = codexCli('gpt-5.1-codex-max', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
   sandboxMode: 'workspace-write',
   color: 'never',
+  reasoningEffort: 'xhigh', // gpt-5.1-codex-max only; deeper reasoning for structured outputs
 });
 
 // Example 1: Product comparison with scoring and rationale

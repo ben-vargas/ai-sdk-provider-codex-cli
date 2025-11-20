@@ -10,7 +10,7 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5.1 class models (`gpt-5.1`, the Codex-specific `gpt-5.1-codex`, and the lightweight `gpt-5.1-codex-mini` slugs) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface. Legacy GPT-5 / GPT-5-codex slugs remain compatible for existing workflows.
+A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5.1 class models (`gpt-5.1`, the Codex-specific `gpt-5.1-codex`, the flagship `gpt-5.1-codex-max`, and the lightweight `gpt-5.1-codex-mini` slugs) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface. Legacy GPT-5 / GPT-5-codex slugs remain compatible for existing workflows.
 
 - Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
@@ -28,7 +28,7 @@ npm i -g @openai/codex
 codex login   # or set OPENAI_API_KEY
 ```
 
-> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.44.0 recommended** for full usage tracking and tool streaming support. Check your version with `codex --version` and upgrade if needed:
+> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.60.0 recommended** for `gpt-5.1-codex-max` and `xhigh` reasoning effort. If you supply your own Codex CLI (global install or custom `codexPath`/`allowNpx`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -248,7 +248,7 @@ const model = codexCli('gpt-5.1-codex', {
   skipGitRepoCheck: true,
 
   // Reasoning & verbosity
-  reasoningEffort: 'medium', // minimal | low | medium | high
+  reasoningEffort: 'medium', // minimal | low | medium | high | xhigh (xhigh only on gpt-5.1-codex-max)
   reasoningSummary: 'auto', // auto | detailed (Note: 'concise' and 'none' are rejected by API)
   reasoningSummaryFormat: 'none', // none | experimental
   modelVerbosity: 'high', // low | medium | high

@@ -32,7 +32,7 @@ const settingsSchema = z
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
 
     // NEW: Reasoning & Verbosity
-    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
     // Note: API rejects 'concise' and 'none' despite error messages claiming they're valid
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
