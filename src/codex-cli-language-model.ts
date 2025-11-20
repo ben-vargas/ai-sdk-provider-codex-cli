@@ -62,7 +62,7 @@ interface ActiveToolItem {
 
 const codexCliProviderOptionsSchema: z.ZodType<CodexCliProviderOptions> = z
   .object({
-    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),

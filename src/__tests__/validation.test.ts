@@ -25,4 +25,10 @@ describe('validateSettings', () => {
     expect(res.valid).toBe(false);
     expect(res.errors.some((e) => /reasoningSummary/i.test(e))).toBe(true);
   });
+
+  it('accepts xhigh reasoningEffort for max models', () => {
+    const res = validateSettings({ reasoningEffort: 'xhigh' });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
 });

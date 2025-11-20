@@ -22,8 +22,8 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 
 ### Reasoning & Verbosity
 
-- **`reasoningEffort`** ('minimal' | 'low' | 'medium' | 'high'): Controls reasoning depth for reasoning-capable models (o3, o4-mini, the GPT-5.1 family, and legacy GPT-5). Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
-  - Per the Codex CLI model preset definitions (`codex-rs/common/src/model_presets.rs`), `gpt-5.1` and `gpt-5.1-codex` expose `low`, `medium`, and `high`, while `gpt-5.1-codex-mini` only surfaces `medium` and `high`.
+- **`reasoningEffort`** ('minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Controls reasoning depth for reasoning-capable models (o3, o4-mini, the GPT-5.1 family, and legacy GPT-5). Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
+  - Per the Codex CLI model preset definitions (`codex-rs/common/src/model_presets.rs`), `gpt-5.1` and `gpt-5.1-codex` expose `low`, `medium`, and `high`; `gpt-5.1-codex-max` adds `xhigh`; and `gpt-5.1-codex-mini` only surfaces `medium` and `high`.
   - The older `gpt-5` slug still exposed `minimal`, but the GPT-5.1 family does not; passing `minimal` to a GPT-5.1 slug is rejected server-side.
 - **`reasoningSummary`** ('auto' | 'detailed'): Controls reasoning summary detail level. **Note:** Despite API error messages claiming 'concise' and 'none' are valid, they are rejected with 400 errors. Only 'auto' and 'detailed' work. Maps to `-c model_reasoning_summary=<value>`.
 - **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.

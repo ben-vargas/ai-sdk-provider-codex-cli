@@ -43,7 +43,7 @@ export type ApprovalMode = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 /**
  * Reasoning summary detail level.
  * Note: The API error messages claim 'concise' and 'none' are valid, but they are
@@ -99,9 +99,9 @@ export interface CodexCliSettings {
    * Controls reasoning effort for reasoning-capable models (o3, o4-mini, the GPT-5.1 family,
    * and legacy GPT-5 slugs). Higher effort produces more thorough reasoning at the cost of latency.
    *
-   * Codex CLI model presets currently expose `low`/`medium`/`high` for `gpt-5.1` and `gpt-5.1-codex`,
-   * while `gpt-5.1-codex-mini` only offers `medium`/`high`. The legacy `gpt-5` slug still allowed
-   * `minimal`, but GPT-5.1 rejects it.
+   * Codex CLI model presets currently expose `low`/`medium`/`high` for `gpt-5.1` and `gpt-5.1-codex`.
+   * `gpt-5.1-codex-max` additionally supports `xhigh`. `gpt-5.1-codex-mini` only offers `medium`/`high`.
+   * The legacy `gpt-5` slug still allowed `minimal`, but GPT-5.1 rejects it.
    *
    * Maps to: `-c model_reasoning_effort=<value>`
    * @see https://platform.openai.com/docs/guides/reasoning
