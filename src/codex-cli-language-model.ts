@@ -211,11 +211,19 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
 
     const baseHttp = existing as McpServerHttp;
+    // Treat auth fields as a bundle: if incoming defines either, override both.
+    const hasIncomingAuth =
+      incoming.bearerToken !== undefined || incoming.bearerTokenEnvVar !== undefined;
+    const bearerToken = hasIncomingAuth ? incoming.bearerToken : baseHttp.bearerToken;
+    const bearerTokenEnvVar = hasIncomingAuth
+      ? incoming.bearerTokenEnvVar
+      : baseHttp.bearerTokenEnvVar;
+
     const result: McpServerConfig = {
       transport: 'http',
       url: incoming.url,
-      bearerToken: incoming.bearerToken ?? baseHttp.bearerToken,
-      bearerTokenEnvVar: incoming.bearerTokenEnvVar ?? baseHttp.bearerTokenEnvVar,
+      bearerToken,
+      bearerTokenEnvVar,
       httpHeaders: this.mergeStringRecord(baseHttp.httpHeaders, incoming.httpHeaders),
       envHttpHeaders: this.mergeStringRecord(baseHttp.envHttpHeaders, incoming.envHttpHeaders),
       enabled: incoming.enabled ?? existing.enabled,

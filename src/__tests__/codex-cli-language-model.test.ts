@@ -904,6 +904,56 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('mcp_servers.remote.env_http_headers={}');
     });
 
+    it('clears base bearerToken when overriding with bearerTokenEnvVar (auth bundle replacement)', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-auth-bundle' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          mcpServers: {
+            remote: {
+              transport: 'http',
+              url: 'https://api.example.com',
+              bearerToken: 'base-token-secret', // Should be cleared
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            mcpServers: {
+              remote: {
+                transport: 'http',
+                url: 'https://api.example.com',
+                bearerTokenEnvVar: 'NEW_ENV_VAR', // Should replace the token
+              },
+            },
+          },
+        },
+      });
+
+      // Should contain the new env var
+      expect(argsCaptured).toContain('mcp_servers.remote.bearer_token_env_var=NEW_ENV_VAR');
+      // Should NOT contain the old token
+      expect(argsCaptured.some((arg) => arg.includes('mcp_servers.remote.bearer_token=base-token-secret'))).toBe(false);
+    });
+
     it('merges addDirs from providerOptions with constructor settings', async () => {
       let argsCaptured: string[] = [];
       const lines = [
