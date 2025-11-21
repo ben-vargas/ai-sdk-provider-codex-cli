@@ -53,12 +53,81 @@ export type ReasoningSummary = 'auto' | 'detailed';
 export type ReasoningSummaryFormat = 'none' | 'experimental';
 export type ModelVerbosity = 'low' | 'medium' | 'high';
 
+export interface McpServerBase {
+  /**
+   * Enable/disable this MCP server without removing its definition.
+   * Maps to: `mcp_servers.<name>.enabled`
+   */
+  enabled?: boolean;
+
+  /**
+   * Time allowed for the MCP server to start (in seconds).
+   * Maps to: `mcp_servers.<name>.startup_timeout_sec`
+   */
+  startupTimeoutSec?: number;
+
+  /**
+   * Max time a single MCP tool call may run (in seconds).
+   * Maps to: `mcp_servers.<name>.tool_timeout_sec`
+   */
+  toolTimeoutSec?: number;
+
+  /**
+   * Explicit allow/deny lists for tools exposed by the server.
+   * Maps to: `mcp_servers.<name>.enabled_tools` / `disabled_tools`
+   */
+  enabledTools?: string[];
+  disabledTools?: string[];
+}
+
+export interface McpServerStdio extends McpServerBase {
+  /** Execute an MCP server over stdio */
+  transport: 'stdio';
+
+  /** Command to start the MCP server (e.g., `node`, `python`, or a binary path). */
+  command: string;
+
+  /** Arguments passed to the command. */
+  args?: string[];
+
+  /** Environment variables passed to the MCP process. */
+  env?: Record<string, string>;
+
+  /** Optional working directory for the MCP server process. */
+  cwd?: string;
+}
+
+export interface McpServerHttp extends McpServerBase {
+  /** Use an HTTP-based MCP server (RMCP). */
+  transport: 'http';
+
+  /** Base URL for the MCP server. */
+  url: string;
+
+  /** Bearer token supplied inline (use env var variant to avoid embedding secrets). */
+  bearerToken?: string;
+
+  /** Name of env var that holds the bearer token. */
+  bearerTokenEnvVar?: string;
+
+  /** Static HTTP headers to send with each MCP request. */
+  httpHeaders?: Record<string, string>;
+
+  /** Names of env vars whose values should be sent as HTTP headers. */
+  envHttpHeaders?: Record<string, string>;
+}
+
+export type McpServerConfig = McpServerStdio | McpServerHttp;
+
 export interface CodexCliSettings {
   // Path to the codex CLI JS entry (bin/codex.js) or executable. If omitted, the provider tries to resolve @openai/codex.
   codexPath?: string;
 
   // Set working directory for the Codex process
   cwd?: string;
+
+  // Additional directories Codex should be allowed to read/write (maps to repeated --add-dir)
+  addDirs?: string[];
 
   // Approval policy for command execution
   approvalMode?: ApprovalMode;
@@ -135,6 +204,20 @@ export interface CodexCliSettings {
    * Maps to: `-c model_verbosity=<value>`
    */
   modelVerbosity?: ModelVerbosity;
+
+  // ===== MCP configuration =====
+
+  /**
+   * Configure MCP servers (stdio or HTTP/RMCP). Keys are server names.
+   * Each entry maps to the Codex CLI `mcp_servers.<name>` table.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
+
+  /**
+   * Enable the RMCP client so HTTP-based MCP servers can be contacted.
+   * Maps to: `-c features.rmcp_client=true`
+   */
+  rmcpClient?: boolean;
 
   // ===== Advanced Codex Features =====
 
@@ -224,8 +307,25 @@ export interface CodexCliProviderOptions {
   textVerbosity?: ModelVerbosity;
 
   /**
+   * Per-call override for extra directories Codex can access.
+   * Maps to repeated `--add-dir` flags.
+   */
+  addDirs?: string[];
+
+  /**
    * Per-call Codex CLI config overrides. These are merged with
    * constructor-level overrides with per-call values taking precedence.
    */
   configOverrides?: Record<string, string | number | boolean | object>;
+
+  /**
+   * Per-call MCP server definitions. Merged with constructor definitions
+   * (per-call servers and fields take precedence).
+   */
+  mcpServers?: Record<string, McpServerConfig>;
+
+  /**
+   * Per-call override for RMCP client enablement.
+   */
+  rmcpClient?: boolean;
 }

@@ -16,10 +16,40 @@ const loggerFunctionSchema = z.object({
   }),
 });
 
+const mcpServerBaseSchema = z.object({
+  enabled: z.boolean().optional(),
+  startupTimeoutSec: z.number().int().positive().optional(),
+  toolTimeoutSec: z.number().int().positive().optional(),
+  enabledTools: z.array(z.string()).optional(),
+  disabledTools: z.array(z.string()).optional(),
+});
+
+const mcpServerStdioSchema = mcpServerBaseSchema.extend({
+  transport: z.literal('stdio'),
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  cwd: z.string().optional(),
+});
+
+const mcpServerHttpSchema = mcpServerBaseSchema.extend({
+  transport: z.literal('http'),
+  url: z.string().min(1),
+  bearerToken: z.string().optional(),
+  bearerTokenEnvVar: z.string().optional(),
+  httpHeaders: z.record(z.string(), z.string()).optional(),
+  envHttpHeaders: z.record(z.string(), z.string()).optional(),
+});
+
+const mcpServerSchema = z.discriminatedUnion('transport', [mcpServerStdioSchema, mcpServerHttpSchema]);
+
+export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
+
 const settingsSchema = z
   .object({
     codexPath: z.string().optional(),
     cwd: z.string().optional(),
+    addDirs: z.array(z.string().min(1)).optional(),
     approvalMode: z.enum(['untrusted', 'on-failure', 'on-request', 'never']).optional(),
     sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional(),
     fullAuto: z.boolean().optional(),
@@ -27,6 +57,7 @@ const settingsSchema = z
     skipGitRepoCheck: z.boolean().optional(),
     color: z.enum(['always', 'never', 'auto']).optional(),
     allowNpx: z.boolean().optional(),
+    outputLastMessageFile: z.string().optional(),
     env: z.record(z.string(), z.string()).optional(),
     verbose: z.boolean().optional(),
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
@@ -43,6 +74,8 @@ const settingsSchema = z
     profile: z.string().optional(),
     oss: z.boolean().optional(),
     webSearch: z.boolean().optional(),
+    mcpServers: mcpServersSchema.optional(),
+    rmcpClient: z.boolean().optional(),
 
     // NEW: Generic overrides
     configOverrides: z

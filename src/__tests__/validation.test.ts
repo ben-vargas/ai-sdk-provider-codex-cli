@@ -31,4 +31,22 @@ describe('validateSettings', () => {
     expect(res.valid).toBe(true);
     expect(res.errors).toHaveLength(0);
   });
+
+  it('accepts addDirs with valid paths', () => {
+    const res = validateSettings({ addDirs: ['../shared', '/tmp/lib'] });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
+
+  it('rejects addDirs with empty strings', () => {
+    const res = validateSettings({ addDirs: ['valid', ''] });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /addDirs/i.test(e))).toBe(true);
+  });
+
+  it('accepts outputLastMessageFile', () => {
+    const res = validateSettings({ outputLastMessageFile: '/tmp/last.txt' });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
 });

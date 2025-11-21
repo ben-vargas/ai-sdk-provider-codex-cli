@@ -50,6 +50,25 @@ async function main() {
     },
   });
   console.log(tuned.text);
+
+  console.log('\n=== Per-call MCP override ===');
+  const withMcp = await generateText({
+    model,
+    prompt: 'Ping the docs MCP for /status.',
+    providerOptions: {
+      'codex-cli': {
+        rmcpClient: true,
+        mcpServers: {
+          docs: {
+            transport: 'http',
+            url: 'https://mcp.example/api',
+            bearerTokenEnvVar: 'MCP_BEARER',
+          },
+        },
+      },
+    },
+  });
+  console.log(withMcp.text);
 }
 
 main().catch(console.error);

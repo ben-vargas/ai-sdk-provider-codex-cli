@@ -7,6 +7,7 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `allowNpx` (boolean): If true, runs `npx -y @openai/codex` when Codex isn’t found on PATH.
 - `codexPath` (string): Explicit path to Codex JS entry (`bin/codex.js`), bypassing PATH resolution.
 - `cwd` (string): Working directory for the spawned process.
+- `addDirs` (string[]): Additional directories Codex can read/write. Emits one `--add-dir <path>` per entry (useful in monorepos or when sharing resources across packages).
 - `color` ('always' | 'never' | 'auto'): Controls ANSI color emission.
 - `skipGitRepoCheck` (boolean): When true, passes `--skip-git-repo-check`.
 - `fullAuto` (boolean): Sets `--full-auto` (low-friction sandboxed execution).
@@ -17,6 +18,8 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - `env` (Record<string,string>): Extra env vars for the child process (e.g., `OPENAI_API_KEY`).
 - `verbose` (boolean): Enable verbose logging mode. When `true`, enables `debug` and `info` log levels. When `false` (default), only `warn` and `error` are logged.
 - `logger` (Logger | false): Custom logger object or `false` to disable logging entirely. Logger must implement four methods: `debug`, `info`, `warn`, and `error`. Default uses `console.*` methods.
+- `rmcpClient` (boolean): Enable the RMCP client so HTTP-based MCP servers can be reached (`-c features.rmcp_client=true`).
+- `mcpServers` (Record<string, McpServerConfig>): Define MCP servers (stdio or HTTP). Keys are server names; values follow the shapes below.
 
 ## Model Parameters & Advanced Options (v0.4.0+)
 
@@ -35,6 +38,39 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - **`profile`** (string): Configuration profile from config.toml to specify default options. Maps to `--profile <name>`.
 - **`oss`** (boolean): Use OSS provider (experimental). Maps to `--oss`.
 - **`webSearch`** (boolean): Enable web search tool for the model. Maps to `-c tools.web_search=true`.
+
+### MCP Servers (v0.6.0+)
+
+- **`rmcpClient`** (boolean): Enables the RMCP client for HTTP-based MCP servers. Maps to `-c features.rmcp_client=true`.
+- **`mcpServers`** (Record<string, McpServerConfig>): Define MCP servers by name.
+  - Common fields: `enabled?`, `startupTimeoutSec?`, `toolTimeoutSec?`, `enabledTools?`, `disabledTools?`.
+  - **Stdio servers** (`transport: 'stdio'`): `command` (required), `args?`, `env?`, `cwd?`.
+  - **HTTP/RMCP servers** (`transport: 'http'`): `url` (required), `bearerToken?`, `bearerTokenEnvVar?`, `httpHeaders?`, `envHttpHeaders?`.
+
+Example:
+
+```ts
+const model = codexCli('gpt-5.1-codex', {
+  rmcpClient: true,
+  mcpServers: {
+    // Stdio MCP
+    repo: {
+      transport: 'stdio',
+      command: 'node',
+      args: ['tools/repo-mcp.js'],
+      env: { API_KEY: process.env.REPO_KEY ?? '' },
+      enabledTools: ['list', 'read'],
+    },
+    // HTTP/RMCP
+    docs: {
+      transport: 'http',
+      url: 'https://mcp.internal/api',
+      bearerTokenEnvVar: 'MCP_BEARER',
+      httpHeaders: { 'x-tenant': 'acme' },
+    },
+  },
+});
+```
 
 ### Generic Config Overrides
 
@@ -69,7 +105,10 @@ model instance. The provider parses the `codex-cli` entry and applies the keys b
 - `reasoningSummary` → `model_reasoning_summary`
 - `reasoningSummaryFormat` → `model_reasoning_summary_format`
 - `textVerbosity` → `model_verbosity` (AI SDK naming; mirrors constructor `modelVerbosity`)
+- `addDirs` → appends `--add-dir` entries (merged with constructor `addDirs`)
 - `configOverrides` → merged with constructor-level overrides (per-call values win on key conflicts)
+- `mcpServers` → merged with constructor-level MCP servers (per-call values override per server)
+- `rmcpClient` → overrides constructor `rmcpClient`
 
 ```ts
 import { generateText } from 'ai';
@@ -118,6 +157,7 @@ await generateText({
 - `dangerouslyBypassApprovalsAndSandbox` → `--dangerously-bypass-approvals-and-sandbox`
 - `color` → `--color <always|never|auto>`
 - `outputLastMessageFile` → `--output-last-message <path>`
+- `addDirs` → `--add-dir <path>` (emitted once per entry)
 
 ### Model Parameters (v0.4.0+)
 
@@ -130,6 +170,11 @@ await generateText({
 - `oss` → `--oss`
 - `webSearch` → `-c tools.web_search=true`
 - `configOverrides` → `-c <key>=<value>` (for each entry)
+
+### MCP
+
+- `rmcpClient` → `-c features.rmcp_client=true`
+- `mcpServers` → `-c mcp_servers.<name>.<field>=<value>` for each field (e.g., `command`, `args`, `env.KEY`, `url`, `bearer_token_env_var`, `http_headers.Header-Name`).
 
 ## JSON Mode (v0.2.0+)
 

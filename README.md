@@ -223,6 +223,7 @@ When OpenAI adds streaming support, this provider will be updated to handle thos
 
 - `allowNpx`: If true, falls back to `npx -y @openai/codex` when Codex is not on PATH
 - `cwd`: Working directory for Codex
+- `addDirs`: Extra directories Codex may read/write (repeats `--add-dir`)
 - Autonomy/sandbox:
   - `fullAuto` (equivalent to `--full-auto`)
   - `dangerouslyBypassApprovalsAndSandbox` (bypass approvals and sandbox; dangerous)
@@ -246,6 +247,7 @@ import { codexCli } from 'ai-sdk-provider-codex-cli';
 const model = codexCli('gpt-5.1-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
+  addDirs: ['../shared'],
 
   // Reasoning & verbosity
   reasoningEffort: 'medium', // minimal | low | medium | high | xhigh (xhigh only on gpt-5.1-codex-max)
@@ -259,6 +261,23 @@ const model = codexCli('gpt-5.1-codex', {
   oss: false, // adds --oss when true
   webSearch: true, // maps to -c tools.web_search=true
 
+  // MCP servers (stdio + HTTP/RMCP)
+  rmcpClient: true, // enables HTTP-based MCP clients (features.rmcp_client=true)
+  mcpServers: {
+    local: {
+      transport: 'stdio',
+      command: 'node',
+      args: ['tools/mcp.js'],
+      env: { API_KEY: process.env.MCP_API_KEY ?? '' },
+    },
+    docs: {
+      transport: 'http',
+      url: 'https://mcp.my-org.com',
+      bearerTokenEnvVar: 'MCP_BEARER',
+      httpHeaders: { 'x-tenant': 'acme' },
+    },
+  },
+
   // Generic overrides (maps to -c key=value)
   configOverrides: {
     experimental_resume: '/tmp/session.jsonl',
@@ -269,6 +288,7 @@ const model = codexCli('gpt-5.1-codex', {
 
 Nested override objects are flattened to dotted keys (e.g., the example above emits
 `-c sandbox_workspace_write.network_access=true`). Arrays are serialized to JSON strings.
+MCP server env/header objects flatten the same way (e.g., `mcp_servers.docs.http_headers.x-tenant=acme`).
 
 ### Per-call overrides via `providerOptions` (v0.4.0+)
 
@@ -293,6 +313,14 @@ const response = await generateText({
       reasoningEffort: 'high',
       reasoningSummary: 'detailed',
       textVerbosity: 'high', // AI SDK naming; maps to model_verbosity
+      rmcpClient: true,
+      mcpServers: {
+        scratch: {
+          transport: 'stdio',
+          command: 'pnpm',
+          args: ['mcp', 'serve'],
+        },
+      },
       configOverrides: {
         experimental_resume: '/tmp/resume.jsonl',
       },

@@ -17,8 +17,8 @@ import type {
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger, createVerboseLogger } from './logger.js';
-import type { CodexCliProviderOptions, CodexCliSettings, Logger } from './types.js';
-import { validateModelId } from './validation.js';
+import type { CodexCliProviderOptions, CodexCliSettings, Logger, McpServerConfig } from './types.js';
+import { mcpServersSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt } from './message-mapper.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
 
@@ -66,6 +66,7 @@ const codexCliProviderOptionsSchema: z.ZodType<CodexCliProviderOptions> = z
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+    addDirs: z.array(z.string().min(1)).optional(),
     configOverrides: z
       .record(
         z.string(),
@@ -78,6 +79,8 @@ const codexCliProviderOptionsSchema: z.ZodType<CodexCliProviderOptions> = z
         ]),
       )
       .optional(),
+    mcpServers: mcpServersSchema.optional(),
+    rmcpClient: z.boolean().optional(),
   })
   .strict();
 
@@ -136,6 +139,16 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
         : undefined;
 
+    const mergedAddDirs =
+      providerOptions.addDirs || this.settings.addDirs
+        ? [...(this.settings.addDirs ?? []), ...(providerOptions.addDirs ?? [])]
+        : undefined;
+
+    const mergedMcpServers = this.mergeMcpServers(
+      this.settings.mcpServers,
+      providerOptions.mcpServers,
+    );
+
     return {
       ...this.settings,
       reasoningEffort: providerOptions.reasoningEffort ?? this.settings.reasoningEffort,
@@ -144,7 +157,74 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         providerOptions.reasoningSummaryFormat ?? this.settings.reasoningSummaryFormat,
       modelVerbosity: providerOptions.textVerbosity ?? this.settings.modelVerbosity,
       configOverrides: mergedConfigOverrides,
+      addDirs: mergedAddDirs,
+      mcpServers: mergedMcpServers,
+      rmcpClient: providerOptions.rmcpClient ?? this.settings.rmcpClient,
     };
+  }
+
+  private mergeMcpServers(
+    base?: Record<string, McpServerConfig>,
+    override?: Record<string, McpServerConfig>,
+  ): Record<string, McpServerConfig> | undefined {
+    if (!base) return override;
+    if (!override) return base;
+
+    const merged: Record<string, McpServerConfig> = { ...base };
+    for (const [name, incoming] of Object.entries(override)) {
+      const existing = base[name];
+      merged[name] = this.mergeSingleMcpServer(existing, incoming);
+    }
+    return merged;
+  }
+
+  private mergeSingleMcpServer(
+    existing: McpServerConfig | undefined,
+    incoming: McpServerConfig,
+  ): McpServerConfig {
+    if (!existing || existing.transport !== incoming.transport) {
+      return { ...incoming };
+    }
+
+    if (incoming.transport === 'stdio') {
+      const result: McpServerConfig = {
+        transport: 'stdio',
+        command: incoming.command,
+        args: incoming.args ?? existing.args,
+        env: this.mergeStringRecord(existing.env, incoming.env),
+        cwd: incoming.cwd ?? existing.cwd,
+        enabled: incoming.enabled ?? existing.enabled,
+        startupTimeoutSec: incoming.startupTimeoutSec ?? existing.startupTimeoutSec,
+        toolTimeoutSec: incoming.toolTimeoutSec ?? existing.toolTimeoutSec,
+        enabledTools: incoming.enabledTools ?? existing.enabledTools,
+        disabledTools: incoming.disabledTools ?? existing.disabledTools,
+      } as McpServerConfig;
+      return result;
+    }
+
+    const result: McpServerConfig = {
+      transport: 'http',
+      url: incoming.url,
+      bearerToken: incoming.bearerToken ?? existing.bearerToken,
+      bearerTokenEnvVar: incoming.bearerTokenEnvVar ?? existing.bearerTokenEnvVar,
+      httpHeaders: this.mergeStringRecord(existing.httpHeaders, incoming.httpHeaders),
+      envHttpHeaders: this.mergeStringRecord(existing.envHttpHeaders, incoming.envHttpHeaders),
+      enabled: incoming.enabled ?? existing.enabled,
+      startupTimeoutSec: incoming.startupTimeoutSec ?? existing.startupTimeoutSec,
+      toolTimeoutSec: incoming.toolTimeoutSec ?? existing.toolTimeoutSec,
+      enabledTools: incoming.enabledTools ?? existing.enabledTools,
+      disabledTools: incoming.disabledTools ?? existing.disabledTools,
+    };
+
+    return result;
+  }
+
+  private mergeStringRecord(
+    base?: Record<string, string>,
+    override?: Record<string, string>,
+  ): Record<string, string> | undefined {
+    if (base || override) return { ...(base ?? {}), ...(override ?? {}) };
+    return undefined;
   }
 
   // Codex JSONL items use `type` for the item discriminator, but some
@@ -217,6 +297,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       args.push('-c', 'tools.web_search=true');
     }
 
+    // MCP configuration
+    this.applyMcpSettings(args, settings);
+
     // Color handling
     if (settings.color) {
       args.push('--color', settings.color);
@@ -224,6 +307,14 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
     if (this.modelId) {
       args.push('-m', this.modelId);
+    }
+
+    if (settings.addDirs?.length) {
+      for (const dir of settings.addDirs) {
+        if (typeof dir === 'string' && dir.trim().length > 0) {
+          args.push('--add-dir', dir);
+        }
+      }
     }
 
     // Generic config overrides (-c key=value)
@@ -275,6 +366,53 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     args.push('--output-last-message', lastMessagePath);
 
     return { cmd: base.cmd, args, env, cwd: settings.cwd, lastMessagePath, schemaPath };
+  }
+
+  private applyMcpSettings(args: string[], settings: CodexCliSettings): void {
+    if (settings.rmcpClient) {
+      this.addConfigOverride(args, 'features.rmcp_client', true);
+    }
+
+    if (!settings.mcpServers) return;
+
+    for (const [rawName, server] of Object.entries(settings.mcpServers)) {
+      const name = rawName.trim();
+      if (!name) continue;
+      const prefix = `mcp_servers.${name}`;
+
+      if (server.enabled !== undefined) {
+        this.addConfigOverride(args, `${prefix}.enabled`, server.enabled);
+      }
+      if (server.startupTimeoutSec !== undefined) {
+        this.addConfigOverride(args, `${prefix}.startup_timeout_sec`, server.startupTimeoutSec);
+      }
+      if (server.toolTimeoutSec !== undefined) {
+        this.addConfigOverride(args, `${prefix}.tool_timeout_sec`, server.toolTimeoutSec);
+      }
+      if (server.enabledTools) {
+        this.addConfigOverride(args, `${prefix}.enabled_tools`, server.enabledTools);
+      }
+      if (server.disabledTools) {
+        this.addConfigOverride(args, `${prefix}.disabled_tools`, server.disabledTools);
+      }
+
+      if (server.transport === 'stdio') {
+        this.addConfigOverride(args, `${prefix}.command`, server.command);
+        if (server.args) this.addConfigOverride(args, `${prefix}.args`, server.args);
+        if (server.env) this.addConfigOverride(args, `${prefix}.env`, server.env);
+        if (server.cwd) this.addConfigOverride(args, `${prefix}.cwd`, server.cwd);
+      } else {
+        this.addConfigOverride(args, `${prefix}.url`, server.url);
+        if (server.bearerToken !== undefined)
+          this.addConfigOverride(args, `${prefix}.bearer_token`, server.bearerToken);
+        if (server.bearerTokenEnvVar)
+          this.addConfigOverride(args, `${prefix}.bearer_token_env_var`, server.bearerTokenEnvVar);
+        if (server.httpHeaders)
+          this.addConfigOverride(args, `${prefix}.http_headers`, server.httpHeaders);
+        if (server.envHttpHeaders)
+          this.addConfigOverride(args, `${prefix}.env_http_headers`, server.envHttpHeaders);
+      }
+    }
   }
 
   private addConfigOverride(

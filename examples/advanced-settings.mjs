@@ -55,6 +55,19 @@ async function main() {
     allowNpx: true,
     skipGitRepoCheck: true,
     includePlanTool: true,
+    rmcpClient: true,
+    mcpServers: {
+      repo: {
+        transport: 'stdio',
+        command: 'node',
+        args: ['tools/repo-mcp.js'],
+      },
+      docs: {
+        transport: 'http',
+        url: 'https://mcp.internal/api',
+        bearerTokenEnvVar: 'MCP_BEARER',
+      },
+    },
 
     // Custom
     configOverrides: {
