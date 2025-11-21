@@ -41,7 +41,10 @@ const mcpServerHttpSchema = mcpServerBaseSchema.extend({
   envHttpHeaders: z.record(z.string(), z.string()).optional(),
 });
 
-const mcpServerSchema = z.discriminatedUnion('transport', [mcpServerStdioSchema, mcpServerHttpSchema]);
+const mcpServerSchema = z.discriminatedUnion('transport', [
+  mcpServerStdioSchema,
+  mcpServerHttpSchema,
+]);
 
 export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
 

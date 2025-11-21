@@ -17,7 +17,14 @@ import type {
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger, createVerboseLogger } from './logger.js';
-import type { CodexCliProviderOptions, CodexCliSettings, Logger, McpServerConfig } from './types.js';
+import type {
+  CodexCliProviderOptions,
+  CodexCliSettings,
+  Logger,
+  McpServerConfig,
+  McpServerStdio,
+  McpServerHttp,
+} from './types.js';
 import { mcpServersSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt } from './message-mapper.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
@@ -187,12 +194,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
 
     if (incoming.transport === 'stdio') {
+      const baseStdio = existing as McpServerStdio;
       const result: McpServerConfig = {
         transport: 'stdio',
         command: incoming.command,
-        args: incoming.args ?? existing.args,
-        env: this.mergeStringRecord(existing.env, incoming.env),
-        cwd: incoming.cwd ?? existing.cwd,
+        args: incoming.args ?? baseStdio.args,
+        env: this.mergeStringRecord(baseStdio.env, incoming.env),
+        cwd: incoming.cwd ?? baseStdio.cwd,
         enabled: incoming.enabled ?? existing.enabled,
         startupTimeoutSec: incoming.startupTimeoutSec ?? existing.startupTimeoutSec,
         toolTimeoutSec: incoming.toolTimeoutSec ?? existing.toolTimeoutSec,
@@ -202,13 +210,14 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       return result;
     }
 
+    const baseHttp = existing as McpServerHttp;
     const result: McpServerConfig = {
       transport: 'http',
       url: incoming.url,
-      bearerToken: incoming.bearerToken ?? existing.bearerToken,
-      bearerTokenEnvVar: incoming.bearerTokenEnvVar ?? existing.bearerTokenEnvVar,
-      httpHeaders: this.mergeStringRecord(existing.httpHeaders, incoming.httpHeaders),
-      envHttpHeaders: this.mergeStringRecord(existing.envHttpHeaders, incoming.envHttpHeaders),
+      bearerToken: incoming.bearerToken ?? baseHttp.bearerToken,
+      bearerTokenEnvVar: incoming.bearerTokenEnvVar ?? baseHttp.bearerTokenEnvVar,
+      httpHeaders: this.mergeStringRecord(baseHttp.httpHeaders, incoming.httpHeaders),
+      envHttpHeaders: this.mergeStringRecord(baseHttp.envHttpHeaders, incoming.envHttpHeaders),
       enabled: incoming.enabled ?? existing.enabled,
       startupTimeoutSec: incoming.startupTimeoutSec ?? existing.startupTimeoutSec,
       toolTimeoutSec: incoming.toolTimeoutSec ?? existing.toolTimeoutSec,
