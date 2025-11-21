@@ -5,12 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2025-11-21
 
 ### Added
 
 - **First-class MCP configuration**: `mcpServers` and `rmcpClient` settings map directly to Codex CLI MCP config keys (stdio + HTTP/RMCP), with per-call overrides, validation, and tests.
 - **Documentation and examples**: README, docs, and examples now show MCP server setup without relying on `configOverrides`.
+- **Add-dirs support**: New `addDirs` setting (array of strings) to expose additional directories to the model context (maps to `--add-dir`).
+
+### Fixed
+
+- **File Preservation**: The `outputLastMessageFile` is no longer deleted after execution if the user explicitly provided the path. Auto-generated temp files are still cleaned up.
 
 ## [0.5.0] - 2025-10-21
 
