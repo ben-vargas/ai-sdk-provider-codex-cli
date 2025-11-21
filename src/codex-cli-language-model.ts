@@ -232,7 +232,11 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     base?: Record<string, string>,
     override?: Record<string, string>,
   ): Record<string, string> | undefined {
-    if (base || override) return { ...(base ?? {}), ...(override ?? {}) };
+    if (override !== undefined) {
+      if (Object.keys(override).length === 0) return {};
+      return { ...(base ?? {}), ...override };
+    }
+    if (base) return { ...base };
     return undefined;
   }
 
@@ -257,6 +261,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     env: NodeJS.ProcessEnv;
     cwd?: string;
     lastMessagePath?: string;
+    lastMessageIsTemp?: boolean;
     schemaPath?: string;
   } {
     const base = resolveCodexPath(settings.codexPath, settings.allowNpx);
@@ -367,14 +372,24 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
     // Configure output-last-message
     let lastMessagePath: string | undefined = settings.outputLastMessageFile;
+    let lastMessageIsTemp = false;
     if (!lastMessagePath) {
       // create a temp folder for this run
       const dir = mkdtempSync(join(tmpdir(), 'codex-cli-'));
       lastMessagePath = join(dir, 'last-message.txt');
+      lastMessageIsTemp = true;
     }
     args.push('--output-last-message', lastMessagePath);
 
-    return { cmd: base.cmd, args, env, cwd: settings.cwd, lastMessagePath, schemaPath };
+    return {
+      cmd: base.cmd,
+      args,
+      env,
+      cwd: settings.cwd,
+      lastMessagePath,
+      lastMessageIsTemp,
+      schemaPath,
+    };
   }
 
   private applyMcpSettings(args: string[], settings: CodexCliSettings): void {
@@ -416,9 +431,9 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           this.addConfigOverride(args, `${prefix}.bearer_token`, server.bearerToken);
         if (server.bearerTokenEnvVar)
           this.addConfigOverride(args, `${prefix}.bearer_token_env_var`, server.bearerTokenEnvVar);
-        if (server.httpHeaders)
+        if (server.httpHeaders !== undefined)
           this.addConfigOverride(args, `${prefix}.http_headers`, server.httpHeaders);
-        if (server.envHttpHeaders)
+        if (server.envHttpHeaders !== undefined)
           this.addConfigOverride(args, `${prefix}.env_http_headers`, server.envHttpHeaders);
       }
     }
@@ -816,7 +831,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
-    const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
+    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath } = this.buildArgs(
       promptText,
       responseFormat,
       effectiveSettings,
@@ -956,10 +971,12 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           text = fileText.trim();
         }
       } catch {}
-      // best-effort cleanup
-      try {
-        rmSync(lastMessagePath, { force: true });
-      } catch {}
+      // best-effort cleanup for temp paths only
+      if (lastMessageIsTemp) {
+        try {
+          rmSync(lastMessagePath, { force: true });
+        } catch {}
+      }
     }
 
     // No JSON extraction needed - native schema guarantees valid JSON
@@ -1005,7 +1022,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
-    const { cmd, args, env, cwd, lastMessagePath, schemaPath } = this.buildArgs(
+    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath } = this.buildArgs(
       promptText,
       responseFormat,
       effectiveSettings,
@@ -1160,9 +1177,11 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
               const fileText = readFileSync(lastMessagePath, 'utf8');
               if (fileText) finalText = fileText.trim();
             } catch {}
-            try {
-              rmSync(lastMessagePath, { force: true });
-            } catch {}
+            if (lastMessageIsTemp) {
+              try {
+                rmSync(lastMessagePath, { force: true });
+              } catch {}
+            }
           }
 
           // No JSON extraction needed - native schema guarantees valid JSON

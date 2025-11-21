@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodexCliLanguageModel } from '../codex-cli-language-model.js';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -222,6 +222,59 @@ describe('CodexCliLanguageModel', () => {
     expect(seen.args).toContain('sandbox_mode=workspace-write');
     expect(seen.args).toContain('--skip-git-repo-check');
     expect(seen.args).toContain('--output-last-message');
+  });
+
+  it('retains user-provided outputLastMessageFile when fallback is used', async () => {
+    let outputPath = '';
+    const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-user' })];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      const idx = args.indexOf('--output-last-message');
+      outputPath = idx !== -1 ? args[idx + 1] : '';
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), 'codex-last-msg-user-'));
+    const filePath = join(dir, 'last.txt');
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        outputLastMessageFile: filePath,
+      },
+    });
+
+    const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(res.content[0]).toMatchObject({ type: 'text', text: 'Fallback last message' });
+    expect(outputPath).toBe(filePath);
+    expect(existsSync(filePath)).toBe(true);
+    expect(readFileSync(filePath, 'utf8')).toContain('Fallback last message');
+  });
+
+  it('cleans up auto-created outputLastMessageFile after fallback', async () => {
+    let outputPath = '';
+    const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-auto' })];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      const idx = args.indexOf('--output-last-message');
+      outputPath = idx !== -1 ? args[idx + 1] : '';
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+      },
+    });
+
+    const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(res.content[0]).toMatchObject({ type: 'text', text: 'Fallback last message' });
+    expect(outputPath).toBeTruthy();
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it('sets isError for failed command execution', async () => {
