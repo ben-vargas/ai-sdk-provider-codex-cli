@@ -748,6 +748,109 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('mcp_servers.remote.http_headers.x-debug=1');
     });
 
+    it('allows clearing stdio MCP args and tool lists with empty arrays', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-mcp-empty' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          mcpServers: {
+            local: {
+              transport: 'stdio',
+              command: 'node',
+              args: ['base.js'],
+              enabledTools: ['one'],
+              disabledTools: ['two'],
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            mcpServers: {
+              local: {
+                transport: 'stdio',
+                command: 'node',
+                args: [],
+                enabledTools: [],
+                disabledTools: [],
+              },
+            },
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('mcp_servers.local.args=[]');
+      expect(argsCaptured).toContain('mcp_servers.local.enabled_tools=[]');
+      expect(argsCaptured).toContain('mcp_servers.local.disabled_tools=[]');
+    });
+
+    it('allows clearing HTTP MCP headers with empty objects', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-mcp-http-empty' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          mcpServers: {
+            remote: {
+              transport: 'http',
+              url: 'https://base.example',
+              httpHeaders: { 'x-base': '1' },
+              envHttpHeaders: { BASE_ENV: 'BASE_ENV' },
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            mcpServers: {
+              remote: {
+                transport: 'http',
+                url: 'https://base.example',
+                httpHeaders: {},
+                envHttpHeaders: {},
+              },
+            },
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('mcp_servers.remote.http_headers={}');
+      expect(argsCaptured).toContain('mcp_servers.remote.env_http_headers={}');
+    });
+
     it('merges addDirs from providerOptions with constructor settings', async () => {
       let argsCaptured: string[] = [];
       const lines = [

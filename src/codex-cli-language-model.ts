@@ -398,17 +398,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       if (server.toolTimeoutSec !== undefined) {
         this.addConfigOverride(args, `${prefix}.tool_timeout_sec`, server.toolTimeoutSec);
       }
-      if (server.enabledTools) {
+      if (server.enabledTools !== undefined) {
         this.addConfigOverride(args, `${prefix}.enabled_tools`, server.enabledTools);
       }
-      if (server.disabledTools) {
+      if (server.disabledTools !== undefined) {
         this.addConfigOverride(args, `${prefix}.disabled_tools`, server.disabledTools);
       }
 
       if (server.transport === 'stdio') {
         this.addConfigOverride(args, `${prefix}.command`, server.command);
-        if (server.args) this.addConfigOverride(args, `${prefix}.args`, server.args);
-        if (server.env) this.addConfigOverride(args, `${prefix}.env`, server.env);
+        if (server.args !== undefined) this.addConfigOverride(args, `${prefix}.args`, server.args);
+        if (server.env !== undefined) this.addConfigOverride(args, `${prefix}.env`, server.env);
         if (server.cwd) this.addConfigOverride(args, `${prefix}.cwd`, server.cwd);
       } else {
         this.addConfigOverride(args, `${prefix}.url`, server.url);
@@ -430,7 +430,12 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     value: string | number | boolean | object,
   ): void {
     if (this.isPlainObject(value)) {
-      for (const [childKey, childValue] of Object.entries(value)) {
+      const entries = Object.entries(value);
+      if (entries.length === 0) {
+        args.push('-c', `${key}={}`);
+        return;
+      }
+      for (const [childKey, childValue] of entries) {
         this.addConfigOverride(
           args,
           `${key}.${childKey}`,
