@@ -104,6 +104,48 @@ console.log(object);
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
+- **Image support** - Pass images to vision-capable models via `--image` flag
+
+### Image Support
+
+The provider supports multimodal (image) inputs for vision-capable models:
+
+```js
+import { generateText } from 'ai';
+import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { readFileSync } from 'fs';
+
+const model = codexCli('gpt-5.1-codex', { allowNpx: true, skipGitRepoCheck: true });
+const imageBuffer = readFileSync('./screenshot.png');
+
+const { text } = await generateText({
+  model,
+  messages: [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What do you see in this image?' },
+        { type: 'image', image: imageBuffer, mimeType: 'image/png' },
+      ],
+    },
+  ],
+});
+console.log(text);
+```
+
+**Supported image formats:**
+
+- Base64 data URL (`data:image/png;base64,...`)
+- Base64 string (without data URL prefix)
+- `Buffer` / `Uint8Array` / `ArrayBuffer`
+
+**Not supported:**
+
+- HTTP/HTTPS URLs (images must be provided as binary data)
+
+Images are written to temporary files and passed to Codex CLI via the `--image` flag. Temp files are automatically cleaned up after the request completes.
+
+See [examples/image-support.mjs](examples/image-support.mjs) for a complete working example.
 
 ### Tool Streaming (v0.3.0+)
 

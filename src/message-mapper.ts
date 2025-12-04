@@ -1,7 +1,9 @@
 import type { ModelMessage } from 'ai';
+import { extractImageData, type ImageData, type ImagePart } from './image-utils.js';
+
+export type { ImageData };
 
 type TextPart = { type: 'text'; text: string };
-type ImagePart = { type: 'image'; [k: string]: unknown };
 type ToolOutputText = { type: 'text'; value: string };
 type ToolOutputJson = { type: 'json'; value: unknown };
 type ToolItem = { toolName: string; output: ToolOutputText | ToolOutputJson };
@@ -35,10 +37,12 @@ function isToolItem(p: unknown): p is ToolItem {
 
 export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
   promptText: string;
+  images: ImageData[];
   warnings?: string[];
 } {
   const warnings: string[] = [];
   const parts: string[] = [];
+  const images: ImageData[] = [];
 
   let systemText: string | undefined;
 
@@ -57,8 +61,16 @@ export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
           .map((p) => p.text)
           .join('\n');
         if (text) parts.push(`Human: ${text}`);
-        const images = msg.content.filter(isImagePart);
-        if (images.length) warnings.push('Image inputs ignored by Codex CLI integration.');
+
+        // Extract images instead of warning
+        for (const part of msg.content.filter(isImagePart)) {
+          const imageData = extractImageData(part);
+          if (imageData) {
+            images.push(imageData);
+          } else {
+            warnings.push('Unsupported image format in message (HTTP URLs not supported)');
+          }
+        }
       }
       continue;
     }
@@ -95,5 +107,5 @@ export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
   if (systemText) promptText += systemText + '\n\n';
   promptText += parts.join('\n\n');
 
-  return { promptText, ...(warnings.length ? { warnings } : {}) };
+  return { promptText, images, ...(warnings.length ? { warnings } : {}) };
 }
