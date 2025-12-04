@@ -82,6 +82,27 @@ const schema = z.object({
 
 ## Other Limitations
 
+### Image Support
+
+The provider supports multimodal (image) inputs, but with some limitations:
+
+**Not supported:**
+
+- HTTP/HTTPS image URLs - Images must be provided as binary data (Buffer, Uint8Array) or base64 strings
+- The AI SDK will pass images as base64 data, which the provider handles correctly
+
+**How it works:**
+
+- Images are written to temporary files
+- Passed to Codex CLI via the `--image` flag
+- Temp files are automatically cleaned up after the request completes
+
+**Supported formats:**
+
+- Base64 data URLs (`data:image/png;base64,...`)
+- Raw base64 strings
+- `Buffer` / `Uint8Array` / `ArrayBuffer`
+
 ### Usage Tracking
 
 Currently returns `{ inputTokens: 0, outputTokens: 0, totalTokens: 0 }` for all requests. This is a Codex CLI limitation where `turn.completed` events don't consistently populate usage statistics.

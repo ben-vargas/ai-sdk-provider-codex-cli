@@ -951,7 +951,11 @@ describe('CodexCliLanguageModel', () => {
       // Should contain the new env var
       expect(argsCaptured).toContain('mcp_servers.remote.bearer_token_env_var=NEW_ENV_VAR');
       // Should NOT contain the old token
-      expect(argsCaptured.some((arg) => arg.includes('mcp_servers.remote.bearer_token=base-token-secret'))).toBe(false);
+      expect(
+        argsCaptured.some((arg) =>
+          arg.includes('mcp_servers.remote.bearer_token=base-token-secret'),
+        ),
+      ).toBe(false);
     });
 
     it('merges addDirs from providerOptions with constructor settings', async () => {

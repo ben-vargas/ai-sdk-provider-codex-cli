@@ -26,7 +26,8 @@ import type {
   McpServerHttp,
 } from './types.js';
 import { mcpServersSchema, validateModelId } from './validation.js';
-import { mapMessagesToPrompt } from './message-mapper.js';
+import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
+import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
 
 export interface CodexLanguageModelOptions {
@@ -261,6 +262,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
   private buildArgs(
     promptText: string,
+    images: ImageData[] = [],
     responseFormat?: { type: 'json'; schema: unknown },
     settings: CodexCliSettings = this.settings,
   ): {
@@ -271,6 +273,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     lastMessagePath?: string;
     lastMessageIsTemp?: boolean;
     schemaPath?: string;
+    tempImagePaths?: string[];
   } {
     const base = resolveCodexPath(settings.codexPath, settings.allowNpx);
     const args: string[] = [...base.args, 'exec', '--experimental-json'];
@@ -369,6 +372,18 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       }
     }
 
+    // Add image arguments (must come before prompt)
+    const tempImagePaths: string[] = [];
+    for (const img of images) {
+      try {
+        const tempPath = writeImageToTempFile(img);
+        tempImagePaths.push(tempPath);
+        args.push('--image', tempPath);
+      } catch (e) {
+        this.logger.warn(`[codex-cli] Failed to write image to temp file: ${String(e)}`);
+      }
+    }
+
     // Prompt as positional arg (avoid stdin for reliability)
     args.push(promptText);
 
@@ -397,6 +412,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       lastMessagePath,
       lastMessageIsTemp,
       schemaPath,
+      tempImagePaths: tempImagePaths.length > 0 ? tempImagePaths : undefined,
     };
   }
 
@@ -817,7 +833,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
     this.logger.debug(`[codex-cli] Starting doGenerate request with model: ${this.modelId}`);
 
-    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
+    const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
@@ -825,7 +841,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     ] as LanguageModelV2CallWarning[];
 
     this.logger.debug(
-      `[codex-cli] Converted ${options.prompt.length} messages, response format: ${options.responseFormat?.type ?? 'none'}`,
+      `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images), response format: ${options.responseFormat?.type ?? 'none'}`,
     );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
@@ -839,11 +855,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
-    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath } = this.buildArgs(
-      promptText,
-      responseFormat,
-      effectiveSettings,
-    );
+    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath, tempImagePaths } =
+      this.buildArgs(promptText, images, responseFormat, effectiveSettings);
 
     this.logger.debug(
       `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`,
@@ -861,6 +874,16 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     if (options.abortSignal) {
       if (options.abortSignal.aborted) {
         child.kill('SIGTERM');
+        // Clean up temp files before throwing
+        if (schemaPath) {
+          try {
+            const schemaDir = dirname(schemaPath);
+            rmSync(schemaDir, { recursive: true, force: true });
+          } catch {}
+        }
+        if (tempImagePaths?.length) {
+          cleanupTempImages(tempImagePaths);
+        }
         throw options.abortSignal.reason ?? new Error('Request aborted');
       }
       onAbort = () => child.kill('SIGTERM');
@@ -969,6 +992,10 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           rmSync(schemaDir, { recursive: true, force: true });
         } catch {}
       }
+      // Clean up temp image files
+      if (tempImagePaths?.length) {
+        cleanupTempImages(tempImagePaths);
+      }
     }
 
     // Fallback: read last message file if needed
@@ -1008,7 +1035,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
     this.logger.debug(`[codex-cli] Starting doStream request with model: ${this.modelId}`);
 
-    const { promptText, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
+    const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
     const promptExcerpt = promptText.slice(0, 200);
     const warnings = [
       ...this.mapWarnings(options),
@@ -1016,7 +1043,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     ] as LanguageModelV2CallWarning[];
 
     this.logger.debug(
-      `[codex-cli] Converted ${options.prompt.length} messages for streaming, response format: ${options.responseFormat?.type ?? 'none'}`,
+      `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images) for streaming, response format: ${options.responseFormat?.type ?? 'none'}`,
     );
 
     const providerOptions = await parseProviderOptions<CodexCliProviderOptions>({
@@ -1030,11 +1057,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       options.responseFormat?.type === 'json'
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
-    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath } = this.buildArgs(
-      promptText,
-      responseFormat,
-      effectiveSettings,
-    );
+    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath, tempImagePaths } =
+      this.buildArgs(promptText, images, responseFormat, effectiveSettings);
 
     this.logger.debug(
       `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`,
@@ -1054,6 +1078,21 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         let responseMetadataSent = false;
         let lastUsage: LanguageModelV2Usage | undefined;
         let turnFailureMessage: string | undefined;
+
+        // Define cleanup early so it's available for early abort
+        const cleanupTempFiles = () => {
+          // Clean up temp schema file
+          if (schemaPath) {
+            try {
+              const schemaDir = dirname(schemaPath);
+              rmSync(schemaDir, { recursive: true, force: true });
+            } catch {}
+          }
+          // Clean up temp image files
+          if (tempImagePaths?.length) {
+            cleanupTempImages(tempImagePaths);
+          }
+        };
 
         const sendMetadata = (meta: Record<string, string> = {}) => {
           controller.enqueue({
@@ -1142,6 +1181,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         if (options.abortSignal) {
           if (options.abortSignal.aborted) {
             child.kill('SIGTERM');
+            // Clean up temp files before returning
+            cleanupTempFiles();
             controller.error(options.abortSignal.reason ?? new Error('Request aborted'));
             return;
           }
@@ -1278,25 +1319,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
           }
         });
 
-        const cleanupSchema = () => {
-          if (!schemaPath) return;
-          try {
-            const schemaDir = dirname(schemaPath);
-            rmSync(schemaDir, { recursive: true, force: true });
-          } catch {}
-        };
-
         child.on('error', (e) => {
           this.logger.error(`[codex-cli] Stream spawn error: ${String(e)}`);
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
-          cleanupSchema();
+          cleanupTempFiles();
           controller.error(this.handleSpawnError(e, promptExcerpt));
         });
         child.on('close', (code) => {
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
 
-          // Clean up temp schema file
-          cleanupSchema();
+          // Clean up temp files (schema and images)
+          cleanupTempFiles();
 
           // Use setImmediate to ensure all stdout 'data' events are processed first
           setImmediate(() => finishStream(code));
