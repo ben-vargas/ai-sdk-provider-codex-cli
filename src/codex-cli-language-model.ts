@@ -114,7 +114,7 @@ interface ActiveToolItem {
 
 const codexCliProviderOptionsSchema: z.ZodType<CodexCliProviderOptions> = z
   .object({
-    reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),

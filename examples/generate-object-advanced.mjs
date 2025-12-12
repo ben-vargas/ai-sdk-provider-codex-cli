@@ -21,7 +21,7 @@ const model = codexCli('gpt-5.1-codex-max', {
   approvalMode: 'on-failure',
   sandboxMode: 'workspace-write',
   color: 'never',
-  reasoningEffort: 'xhigh', // gpt-5.1-codex-max only; deeper reasoning for structured outputs
+  reasoningEffort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
 });
 
 // Example 1: Product comparison with scoring and rationale
