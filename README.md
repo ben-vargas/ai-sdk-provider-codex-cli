@@ -4,22 +4,33 @@
 [![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white)
-![AI SDK v5](https://img.shields.io/badge/AI%20SDK-v5-000?logo=vercel&logoColor=white)
+![AI SDK v6 beta](https://img.shields.io/badge/AI%20SDK-v6%20beta-000?logo=vercel&logoColor=white)
 ![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v5 that uses OpenAI’s Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5.1 class models (`gpt-5.1`, the Codex-specific `gpt-5.1-codex`, the flagship `gpt-5.1-codex-max`, and the lightweight `gpt-5.1-codex-mini` slugs) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV2 interface. Legacy GPT-5 / GPT-5-codex slugs remain compatible for existing workflows.
+A community provider for Vercel AI SDK v6 (beta) that uses OpenAI's Codex CLI (non‑interactive `codex exec`) to talk to GPT‑5.1 class models (`gpt-5.1`, the Codex-specific `gpt-5.1-codex`, the flagship `gpt-5.1-codex-max`, and the lightweight `gpt-5.1-codex-mini` slugs) with your ChatGPT Plus/Pro subscription. The provider spawns the Codex CLI process, parses its JSONL output, and adapts it to the AI SDK LanguageModelV3 interface. Legacy GPT-5 / GPT-5-codex slugs remain compatible for existing workflows.
+
+> **⚠️ AI SDK v6 Beta**: This version (`1.0.0-beta.x`) requires AI SDK v6 beta packages. For AI SDK v5, use the `0.x` releases from the main branch.
 
 - Works with `generateText`, `streamText`, and `generateObject` (native JSON Schema support via `--output-schema`)
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
+- **v1.0.0-beta.1**: AI SDK v6 migration with LanguageModelV3 interface
 - **v0.5.0**: Adds comprehensive logging system with verbose mode and custom logger support
 - **v0.3.0**: Adds comprehensive tool streaming support for monitoring autonomous tool execution
-- **v0.2.0 Breaking Changes**: Switched to `--experimental-json` and native schema enforcement (see [CHANGELOG](CHANGELOG.md))
+
+## Version Compatibility
+
+| Provider Version | AI SDK Version | NPM Tag   | Status | Branch       |
+| ---------------- | -------------- | --------- | ------ | ------------ |
+| 1.x.x-beta       | v6 (beta)      | `beta`    | Beta   | `ai-sdk-v6`  |
+| 0.x.x            | v5             | `latest`  | Stable | `main`       |
 
 ## Installation
+
+### For AI SDK v6 (beta)
 
 1. Install and authenticate Codex CLI
 
@@ -28,17 +39,23 @@ npm i -g @openai/codex
 codex login   # or set OPENAI_API_KEY
 ```
 
-> **⚠️ Version Requirement**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.60.0 recommended** for `gpt-5.1-codex-max` and `xhigh` reasoning effort. If you supply your own Codex CLI (global install or custom `codexPath`/`allowNpx`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
->
-> ```bash
-> npm i -g @openai/codex@latest
-> ```
+2. Install provider and AI SDK v6 beta
 
-2. Install provider and AI SDK
+```bash
+npm i ai@beta ai-sdk-provider-codex-cli@beta
+```
+
+### For AI SDK v5 (stable)
 
 ```bash
 npm i ai ai-sdk-provider-codex-cli
 ```
+
+> **⚠️ Codex CLI Version**: Requires Codex CLI **>= 0.42.0** for `--experimental-json` and `--output-schema` support. **>= 0.60.0 recommended** for `gpt-5.1-codex-max` and `xhigh` reasoning effort. If you supply your own Codex CLI (global install or custom `codexPath`/`allowNpx`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
+>
+> ```bash
+> npm i -g @openai/codex@latest
+> ```
 
 ## Quick Start
 
@@ -95,7 +112,7 @@ console.log(object);
 
 ## Features
 
-- AI SDK v5 compatible (LanguageModelV2)
+- AI SDK v6 compatible (LanguageModelV3)
 - Streaming and non‑streaming
 - **Configurable logging** (v0.5.0+) - Verbose mode, custom loggers, or silent operation
 - **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
