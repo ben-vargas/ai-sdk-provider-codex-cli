@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.1] - 2025-12-15
+
+### Breaking Changes
+
+- **AI SDK v6 migration** - This release requires AI SDK v6 (beta) and is incompatible with AI SDK v5
+- **Provider interface**: `LanguageModelV2` → `LanguageModelV3`, `ProviderV2` → `ProviderV3`
+- **Specification version**: `specificationVersion` changed from `'v2'` to `'v3'`
+- **Warning format**: Changed from `{ type: 'unsupported-setting', setting: ... }` to `{ type: 'unsupported', feature: ... }`
+- **Usage structure**: Changed from flat to hierarchical format:
+  ```typescript
+  // Old (v5)
+  { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 1 }
+
+  // New (v6)
+  {
+    inputTokens: { total: 10, noCache: 9, cacheRead: 1, cacheWrite: undefined },
+    outputTokens: { total: 5, text: 5, reasoning: undefined }
+  }
+  ```
+- **Method rename**: `textEmbeddingModel()` → `embeddingModel()` (throws `NoSuchModelError`)
+
+### Changed
+
+- Dependencies pinned to specific beta versions for stability:
+  - `@ai-sdk/provider`: 3.0.0-beta.26
+  - `@ai-sdk/provider-utils`: 4.0.0-beta.51
+  - `ai` (dev): 6.0.0-beta.156
+
+### Notes
+
+- This beta release tracks AI SDK v6 beta and will be maintained separately until AI SDK v6 is stable
+- For AI SDK v5 users, continue using the 0.x releases on the main branch
+
+## [0.7.0] - 2025-12-15
+
+### Added
+
+- **Multimodal image support** via `--image` flag (#10)
+  - Supports base64 data URLs, raw base64 strings, Buffer, ArrayBuffer, and Uint8Array
+  - Images extracted from AI SDK message parts and passed to Codex CLI as temp files
+  - Automatic cleanup of temp image files after request completion
+
 ## [0.6.0] - 2025-11-21
 
 ### Added

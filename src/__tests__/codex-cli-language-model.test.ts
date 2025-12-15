@@ -77,7 +77,10 @@ describe('CodexCliLanguageModel', () => {
     const res = await model.doGenerate({ prompt: [{ role: 'user', content: 'Say hi' }] as any });
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'thread-123' });
-    expect(res.usage).toMatchObject({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
+    expect(res.usage).toMatchObject({
+      inputTokens: { total: 10, noCache: 10, cacheRead: 0 },
+      outputTokens: { total: 5, text: 5 },
+    });
   });
 
   it('doStream yields response-metadata, text-delta, finish', async () => {
@@ -178,10 +181,8 @@ describe('CodexCliLanguageModel', () => {
 
     const finish = received.find((p) => p.type === 'finish');
     expect(finish?.usage).toEqual({
-      inputTokens: 4,
-      outputTokens: 2,
-      totalTokens: 6,
-      cachedInputTokens: 1,
+      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: undefined },
+      outputTokens: { total: 2, text: 2, reasoning: undefined },
     });
   });
 
