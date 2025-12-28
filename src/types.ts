@@ -43,7 +43,9 @@ export type ApprovalMode = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+// 'none' is the newer "no extra reasoning" level for GPT‑5.1+.
+// 'minimal' is retained as a backwards‑compatible alias for older GPT‑5 slugs.
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 /**
  * Reasoning summary detail level.
  * Note: The API error messages claim 'concise' and 'none' are valid, but they are
@@ -169,8 +171,8 @@ export interface CodexCliSettings {
    * and legacy GPT-5 slugs). Higher effort produces more thorough reasoning at the cost of latency.
    *
    * Codex CLI model presets currently expose `low`/`medium`/`high` for `gpt-5.1` and `gpt-5.1-codex`.
+   * Per OpenAI API docs, GPT‑5.1+ models support a `none` level (no extra reasoning); older GPT‑5 slugs used `minimal` instead.
    * `gpt-5.1-codex-max` additionally supports `xhigh`. `gpt-5.1-codex-mini` only offers `medium`/`high`.
-   * The legacy `gpt-5` slug still allowed `minimal`, but GPT-5.1 rejects it.
    *
    * Maps to: `-c model_reasoning_effort=<value>`
    * @see https://platform.openai.com/docs/guides/reasoning
