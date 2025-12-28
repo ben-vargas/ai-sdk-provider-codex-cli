@@ -32,6 +32,12 @@ describe('validateSettings', () => {
     expect(res.errors).toHaveLength(0);
   });
 
+  it('accepts none reasoningEffort (GPT-5.1+)', () => {
+    const res = validateSettings({ reasoningEffort: 'none' });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
+
   it('accepts addDirs with valid paths', () => {
     const res = validateSettings({ addDirs: ['../shared', '/tmp/lib'] });
     expect(res.valid).toBe(true);

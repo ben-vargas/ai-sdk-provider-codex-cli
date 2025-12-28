@@ -25,9 +25,10 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 
 ### Reasoning & Verbosity
 
-- **`reasoningEffort`** ('minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Controls reasoning depth for reasoning-capable models (o3, o4-mini, the GPT-5.1 family, and legacy GPT-5). Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
+- **`reasoningEffort`** ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Controls reasoning depth for reasoning-capable models (o3, o4-mini, the GPT‑5.1/5.2 families, and legacy GPT‑5). Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
   - Per the Codex CLI model preset definitions (`codex-rs/common/src/model_presets.rs`), `gpt-5.1` and `gpt-5.1-codex` expose `low`, `medium`, and `high`; `gpt-5.1-codex-max` adds `xhigh`; and `gpt-5.1-codex-mini` only surfaces `medium` and `high`.
-  - The older `gpt-5` slug still exposed `minimal`, but the GPT-5.1 family does not; passing `minimal` to a GPT-5.1 slug is rejected server-side.
+  - Per OpenAI API docs, `none` is supported for GPT‑5.1+ reasoning models (and is the default for `gpt-5.1`). Models before GPT‑5.1 default to `medium` and reject `none`. Older GPT‑5 slugs used `minimal`; this provider accepts both as aliases.
+  - `xhigh` is exposed on codex-max models and newer model families that support it.
 - **`reasoningSummary`** ('auto' | 'detailed'): Controls reasoning summary detail level. **Note:** Despite API error messages claiming 'concise' and 'none' are valid, they are rejected with 400 errors. Only 'auto' and 'detailed' work. Maps to `-c model_reasoning_summary=<value>`.
 - **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.
 - **`modelVerbosity`** ('low' | 'medium' | 'high'): Controls output length/detail for GPT-5.1 **non-Codex** models (and legacy GPT-5). Codex-specific slugs (`gpt-5.1-codex`, `gpt-5.1-codex-mini`) ignore this, because the CLI disables verbosity for those model families (`codex-rs/core/src/model_family.rs`). Maps to `-c model_verbosity=<value>` when supported.
