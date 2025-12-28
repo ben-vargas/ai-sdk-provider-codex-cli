@@ -73,7 +73,6 @@ const settingsSchema = z
     modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
 
     // NEW: Advanced features
-    includePlanTool: z.boolean().optional(),
     profile: z.string().optional(),
     oss: z.boolean().optional(),
     webSearch: z.boolean().optional(),

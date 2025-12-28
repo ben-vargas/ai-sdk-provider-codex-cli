@@ -313,7 +313,6 @@ const model = codexCli('gpt-5.1-codex', {
   modelVerbosity: 'high', // low | medium | high
 
   // Advanced features
-  includePlanTool: true, // adds --include-plan-tool
   profile: 'production', // adds --profile production
   oss: false, // adds --oss when true
   webSearch: true, // maps to -c tools.web_search=true

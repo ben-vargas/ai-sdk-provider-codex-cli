@@ -34,7 +34,6 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 
 ### Advanced Codex Features
 
-- **`includePlanTool`** (boolean): Include experimental plan tool that the model can use to update its current plan. Maps to `--include-plan-tool`.
 - **`profile`** (string): Configuration profile from config.toml to specify default options. Maps to `--profile <name>`.
 - **`oss`** (boolean): Use OSS provider (experimental). Maps to `--oss`.
 - **`webSearch`** (boolean): Enable web search tool for the model. Maps to `-c tools.web_search=true`.
@@ -165,7 +164,6 @@ await generateText({
 - `reasoningSummary` → `-c model_reasoning_summary=<value>`
 - `reasoningSummaryFormat` → `-c model_reasoning_summary_format=<value>`
 - `modelVerbosity` → `-c model_verbosity=<value>`
-- `includePlanTool` → `--include-plan-tool`
 - `profile` → `--profile <name>`
 - `oss` → `--oss`
 - `webSearch` → `-c tools.web_search=true`

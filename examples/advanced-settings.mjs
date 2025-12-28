@@ -54,7 +54,6 @@ async function main() {
   const fullFeatured = codexCli('gpt-5.1-codex', {
     allowNpx: true,
     skipGitRepoCheck: true,
-    includePlanTool: true,
     rmcpClient: true,
     mcpServers: {
       repo: {
