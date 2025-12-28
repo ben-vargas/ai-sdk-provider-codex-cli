@@ -78,9 +78,11 @@ describe('CodexCliLanguageModel', () => {
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'thread-123' });
     expect(res.usage).toMatchObject({
-      inputTokens: { total: 10, noCache: 10, cacheRead: 0 },
-      outputTokens: { total: 5, text: 5 },
+      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 5, text: undefined, reasoning: undefined },
     });
+    expect(res.usage.raw).toBeDefined();
+    expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
   it('doStream yields response-metadata, text-delta, finish', async () => {
@@ -180,10 +182,12 @@ describe('CodexCliLanguageModel', () => {
     });
 
     const finish = received.find((p) => p.type === 'finish');
-    expect(finish?.usage).toEqual({
-      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: undefined },
-      outputTokens: { total: 2, text: 2, reasoning: undefined },
+    expect(finish?.usage).toMatchObject({
+      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: 0 },
+      outputTokens: { total: 2, text: undefined, reasoning: undefined },
     });
+    expect(finish?.usage.raw).toBeDefined();
+    expect(finish?.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
   it('includes approval/sandbox flags and output-last-message; uses npx with allowNpx', async () => {

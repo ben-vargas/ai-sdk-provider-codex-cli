@@ -37,9 +37,12 @@ async function example1_basicWithUsage() {
   console.log('📝 Response:');
   console.log(text);
   console.log('\n📊 Usage (from turn.completed event):');
-  console.log(`   Input tokens:  ${usage.inputTokens}`);
-  console.log(`   Output tokens: ${usage.outputTokens}`);
-  console.log(`   Total tokens:  ${usage.totalTokens}`);
+  console.log(`   Input tokens:  ${usage.inputTokens.total}`);
+  console.log(`   Output tokens: ${usage.outputTokens.total}`);
+  console.log(`   Total tokens:  ${usage.inputTokens.total + usage.outputTokens.total}`);
+  if (usage.inputTokens.cacheRead) {
+    console.log(`   Cache read:    ${usage.inputTokens.cacheRead}`);
+  }
   console.log('\n🆔 Response metadata:');
   console.log(`   ID:        ${response.id}`);
   console.log(`   Model:     ${response.modelId}`);

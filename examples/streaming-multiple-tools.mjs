@@ -100,10 +100,12 @@ try {
           console.log('─'.repeat(60));
         }
 
-        // Usage stats
+        // Usage stats - AI SDK v6 stable uses nested structure
         const usage = part.totalUsage || part.usage;
+        const inputTotal = usage?.inputTokens?.total ?? 0;
+        const outputTotal = usage?.outputTokens?.total ?? 0;
         console.log(
-          `\n🏁 Finished: ${toolCalls.length} tool calls, ${usage?.inputTokens ?? 0} input tokens, ${usage?.outputTokens ?? 0} output tokens`,
+          `\n🏁 Finished: ${toolCalls.length} tool calls, ${inputTotal} input tokens, ${outputTotal} output tokens`,
         );
         break;
       }

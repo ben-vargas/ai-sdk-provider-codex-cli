@@ -80,13 +80,11 @@ try {
         break;
       }
       case 'finish': {
-        // AI SDK fullStream delivers usage as 'totalUsage' not 'usage'
+        // AI SDK v6 stable uses nested usage structure with inputTokens.total, outputTokens.total
         const usage = part.totalUsage || part.usage;
-        console.log(
-          `\n🏁 Finished (inputTokens=${usage?.inputTokens ?? 0}, outputTokens=${
-            usage?.outputTokens ?? 0
-          })`,
-        );
+        const inputTotal = usage?.inputTokens?.total ?? 0;
+        const outputTotal = usage?.outputTokens?.total ?? 0;
+        console.log(`\n🏁 Finished (inputTokens=${inputTotal}, outputTokens=${outputTotal})`);
         break;
       }
       default:

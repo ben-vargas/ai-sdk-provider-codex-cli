@@ -13,6 +13,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
   LanguageModelV3Content,
+  JSONObject,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -29,6 +30,49 @@ import { mcpServersSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
+
+/**
+ * Creates a zero-initialized usage object for AI SDK v6 stable.
+ */
+function createEmptyCodexUsage(): LanguageModelV3Usage {
+  return {
+    inputTokens: {
+      total: 0,
+      noCache: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    outputTokens: {
+      total: 0,
+      text: undefined,
+      reasoning: undefined,
+    },
+    raw: undefined,
+  };
+}
+
+/**
+ * Maps Codex CLI finish states to AI SDK v6 stable finish reason format.
+ */
+function mapCodexCliFinishReason(reason?: string): LanguageModelV3FinishReason {
+  switch (reason) {
+    case 'stop':
+    case 'end_turn':
+    case undefined:
+      return { unified: 'stop', raw: reason };
+    case 'length':
+    case 'max_tokens':
+      return { unified: 'length', raw: reason };
+    case 'content_filter':
+      return { unified: 'content-filter', raw: reason };
+    case 'tool_calls':
+      return { unified: 'tool-calls', raw: reason };
+    case 'error':
+      return { unified: 'error', raw: reason };
+    default:
+      return { unified: 'other', raw: reason };
+  }
+}
 
 export interface CodexLanguageModelOptions {
   id: string; // model id for Codex (-m)
@@ -611,13 +655,14 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
         total: inputTotal,
         noCache: inputTotal - cachedInputTokens,
         cacheRead: cachedInputTokens,
-        cacheWrite: undefined,
+        cacheWrite: 0,
       },
       outputTokens: {
         total: outputTotal,
-        text: outputTotal,
+        text: undefined,
         reasoning: undefined,
       },
+      raw: reported as JSONObject,
     };
   }
 
@@ -869,11 +914,8 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     );
 
     let text = '';
-    let usage: LanguageModelV3Usage = {
-      inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: undefined },
-      outputTokens: { total: 0, text: 0, reasoning: undefined },
-    };
-    const finishReason: LanguageModelV3FinishReason = 'stop';
+    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
     const startTime = Date.now();
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -1249,10 +1291,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
             controller.enqueue({ type: 'text-end', id: textId });
           }
 
-          const usageSummary: LanguageModelV3Usage = lastUsage ?? {
-            inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: undefined },
-            outputTokens: { total: 0, text: 0, reasoning: undefined },
-          };
+          const usageSummary: LanguageModelV3Usage = lastUsage ?? createEmptyCodexUsage();
           const totalTokens = (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
           this.logger.info(
             `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
@@ -1262,7 +1301,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
           );
           controller.enqueue({
             type: 'finish',
-            finishReason: 'stop',
+            finishReason: mapCodexCliFinishReason(undefined),
             usage: usageSummary,
           });
           controller.close();
