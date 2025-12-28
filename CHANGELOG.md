@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-12-28
+
+### Changed
+
+- Update `@openai/codex` optional dependency from `^0.60.1` to `^0.77.0`
+
+### Removed
+
+- **BREAKING:** Remove `includePlanTool` setting - The `--include-plan-tool` CLI flag was removed in Codex CLI 0.48.0 (Oct 2025). The plan tool is now always enabled by default; no configuration needed.
+
+### Fixed
+
+- Fix `streaming-multiple-tools.mjs` example where `part.input` could be an object instead of a string, causing `substring is not a function` error
+
 ## [1.0.0] - 2025-12-27
 
 ### Breaking Changes
