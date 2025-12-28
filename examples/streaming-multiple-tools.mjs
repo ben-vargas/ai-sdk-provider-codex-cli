@@ -39,14 +39,15 @@ try {
         });
         console.log(`🔧 Tool #${toolCalls.length}: ${part.toolName} (${part.toolCallId})`);
 
-        // Show abbreviated input
+        // Show abbreviated input (handle both string and object inputs)
         try {
-          const inputData = JSON.parse(part.input);
+          const inputData = typeof part.input === 'string' ? JSON.parse(part.input) : part.input;
           const preview =
             inputData.command || inputData.query || JSON.stringify(inputData).substring(0, 100);
           console.log(`   Input: ${preview}`);
         } catch {
-          console.log(`   Input: ${part.input.substring(0, 100)}`);
+          const inputStr = typeof part.input === 'string' ? part.input : JSON.stringify(part.input);
+          console.log(`   Input: ${inputStr.substring(0, 100)}`);
         }
         break;
       }
