@@ -7,12 +7,13 @@ import { dirname, join } from 'node:path';
 import type { ReadableStreamDefaultController } from 'node:stream/web';
 import { z } from 'zod';
 import type {
-  LanguageModelV2,
-  LanguageModelV2CallWarning,
-  LanguageModelV2FinishReason,
-  LanguageModelV2StreamPart,
-  LanguageModelV2Usage,
-  LanguageModelV2Content,
+  LanguageModelV3,
+  SharedV3Warning,
+  LanguageModelV3FinishReason,
+  LanguageModelV3StreamPart,
+  LanguageModelV3Usage,
+  LanguageModelV3Content,
+  JSONObject,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -29,6 +30,49 @@ import { mcpServersSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
+
+/**
+ * Creates a zero-initialized usage object for AI SDK v6 stable.
+ */
+function createEmptyCodexUsage(): LanguageModelV3Usage {
+  return {
+    inputTokens: {
+      total: 0,
+      noCache: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    outputTokens: {
+      total: 0,
+      text: undefined,
+      reasoning: undefined,
+    },
+    raw: undefined,
+  };
+}
+
+/**
+ * Maps Codex CLI finish states to AI SDK v6 stable finish reason format.
+ */
+function mapCodexCliFinishReason(reason?: string): LanguageModelV3FinishReason {
+  switch (reason) {
+    case 'stop':
+    case 'end_turn':
+    case undefined:
+      return { unified: 'stop', raw: reason };
+    case 'length':
+    case 'max_tokens':
+      return { unified: 'length', raw: reason };
+    case 'content_filter':
+      return { unified: 'content-filter', raw: reason };
+    case 'tool_calls':
+      return { unified: 'tool-calls', raw: reason };
+    case 'error':
+      return { unified: 'error', raw: reason };
+    default:
+      return { unified: 'other', raw: reason };
+  }
+}
 
 export interface CodexLanguageModelOptions {
   id: string; // model id for Codex (-m)
@@ -110,8 +154,8 @@ function resolveCodexPath(
   }
 }
 
-export class CodexCliLanguageModel implements LanguageModelV2 {
-  readonly specificationVersion = 'v2' as const;
+export class CodexCliLanguageModel implements LanguageModelV3 {
+  readonly specificationVersion = 'v3' as const;
   readonly provider = 'codex-cli';
   readonly defaultObjectGenerationMode = 'json' as const;
   readonly supportsImageUrls = false;
@@ -571,16 +615,16 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   private mapWarnings(
-    options: Parameters<LanguageModelV2['doGenerate']>[0],
-  ): LanguageModelV2CallWarning[] {
-    const unsupported: LanguageModelV2CallWarning[] = [];
+    options: Parameters<LanguageModelV3['doGenerate']>[0],
+  ): SharedV3Warning[] {
+    const unsupported: SharedV3Warning[] = [];
     const add = (setting: unknown, name: string) => {
       if (setting !== undefined)
         unsupported.push({
-          type: 'unsupported-setting',
-          setting: name,
+          type: 'unsupported',
+          feature: name,
           details: `Codex CLI does not support ${name}; it will be ignored.`,
-        } as LanguageModelV2CallWarning);
+        });
     };
     add(options.temperature, 'temperature');
     add(options.topP, 'topP');
@@ -600,18 +644,25 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     }
   }
 
-  private extractUsage(evt: ExperimentalJsonEvent): LanguageModelV2Usage | undefined {
+  private extractUsage(evt: ExperimentalJsonEvent): LanguageModelV3Usage | undefined {
     const reported = evt.usage;
     if (!reported) return undefined;
-    const inputTokens = reported.input_tokens ?? 0;
-    const outputTokens = reported.output_tokens ?? 0;
+    const inputTotal = reported.input_tokens ?? 0;
+    const outputTotal = reported.output_tokens ?? 0;
     const cachedInputTokens = reported.cached_input_tokens ?? 0;
     return {
-      inputTokens,
-      outputTokens,
-      // totalTokens should not double-count cached tokens; track cached separately
-      totalTokens: inputTokens + outputTokens,
-      cachedInputTokens,
+      inputTokens: {
+        total: inputTotal,
+        noCache: inputTotal - cachedInputTokens,
+        cacheRead: cachedInputTokens,
+        cacheWrite: 0,
+      },
+      outputTokens: {
+        total: outputTotal,
+        text: undefined,
+        reasoning: undefined,
+      },
+      raw: reported as JSONObject,
     };
   }
 
@@ -742,7 +793,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   private emitToolInvocation(
-    controller: ReadableStreamDefaultController<LanguageModelV2StreamPart>,
+    controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
     toolCallId: string,
     toolName: string,
     inputPayload: unknown,
@@ -763,7 +814,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   private emitToolResult(
-    controller: ReadableStreamDefaultController<LanguageModelV2StreamPart>,
+    controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
     toolCallId: string,
     toolName: string,
     item: ExperimentalJsonItem,
@@ -796,7 +847,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       type: 'tool-result',
       toolCallId,
       toolName,
-      result: resultPayload ?? {},
+      result: (resultPayload ?? {}) as NonNullable<import('@ai-sdk/provider').JSONValue>,
       ...(isError ? { isError: true } : {}),
       ...(Object.keys(providerMetadataEntries).length
         ? { providerMetadata: { 'codex-cli': providerMetadataEntries } }
@@ -829,8 +880,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV2['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
+    options: Parameters<LanguageModelV3['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
     this.logger.debug(`[codex-cli] Starting doGenerate request with model: ${this.modelId}`);
 
     const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
@@ -838,7 +889,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
-    ] as LanguageModelV2CallWarning[];
+    ] as SharedV3Warning[];
 
     this.logger.debug(
       `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images), response format: ${options.responseFormat?.type ?? 'none'}`,
@@ -863,8 +914,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     );
 
     let text = '';
-    const usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-    const finishReason: LanguageModelV2FinishReason = 'stop';
+    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
     const startTime = Date.now();
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -917,9 +968,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             if (event.type === 'turn.completed') {
               const usageEvent = this.extractUsage(event);
               if (usageEvent) {
-                usage.inputTokens = usageEvent.inputTokens;
-                usage.outputTokens = usageEvent.outputTokens;
-                usage.totalTokens = usageEvent.totalTokens;
+                usage = usageEvent;
               }
             }
 
@@ -963,11 +1012,12 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
               );
               return;
             }
+            const totalTokens = (usage.inputTokens.total ?? 0) + (usage.outputTokens.total ?? 0);
             this.logger.info(
-              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usage.totalTokens}`,
+              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
             );
             this.logger.debug(
-              `[codex-cli] Token usage - Input: ${usage.inputTokens}, Output: ${usage.outputTokens}, Total: ${usage.totalTokens}`,
+              `[codex-cli] Token usage - Input: ${usage.inputTokens.total ?? 0}, Output: ${usage.outputTokens.total ?? 0}, Total: ${totalTokens}`,
             );
             resolve();
           } else {
@@ -1016,7 +1066,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
 
     // No JSON extraction needed - native schema guarantees valid JSON
 
-    const content: LanguageModelV2Content[] = [{ type: 'text', text }];
+    const content: LanguageModelV3Content[] = [{ type: 'text', text }];
     return {
       content,
       usage,
@@ -1031,8 +1081,8 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
   }
 
   async doStream(
-    options: Parameters<LanguageModelV2['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
+    options: Parameters<LanguageModelV3['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV3['doStream']>>> {
     this.logger.debug(`[codex-cli] Starting doStream request with model: ${this.modelId}`);
 
     const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
@@ -1040,7 +1090,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     const warnings = [
       ...this.mapWarnings(options),
       ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
-    ] as LanguageModelV2CallWarning[];
+    ] as SharedV3Warning[];
 
     this.logger.debug(
       `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images) for streaming, response format: ${options.responseFormat?.type ?? 'none'}`,
@@ -1064,7 +1114,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`,
     );
 
-    const stream = new ReadableStream<LanguageModelV2StreamPart>({
+    const stream = new ReadableStream<LanguageModelV3StreamPart>({
       start: (controller) => {
         const startTime = Date.now();
         const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -1076,7 +1126,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
         let accumulatedText = '';
         const activeTools = new Map<string, ActiveToolItem>();
         let responseMetadataSent = false;
-        let lastUsage: LanguageModelV2Usage | undefined;
+        let lastUsage: LanguageModelV3Usage | undefined;
         let turnFailureMessage: string | undefined;
 
         // Define cleanup early so it's available for early abort
@@ -1241,16 +1291,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
             controller.enqueue({ type: 'text-end', id: textId });
           }
 
-          const usageSummary = lastUsage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+          const usageSummary: LanguageModelV3Usage = lastUsage ?? createEmptyCodexUsage();
+          const totalTokens = (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
           this.logger.info(
-            `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${usageSummary.totalTokens}`,
+            `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
           );
           this.logger.debug(
-            `[codex-cli] Token usage - Input: ${usageSummary.inputTokens}, Output: ${usageSummary.outputTokens}, Total: ${usageSummary.totalTokens}`,
+            `[codex-cli] Token usage - Input: ${usageSummary.inputTokens.total ?? 0}, Output: ${usageSummary.outputTokens.total ?? 0}, Total: ${totalTokens}`,
           );
           controller.enqueue({
             type: 'finish',
-            finishReason: 'stop',
+            finishReason: mapCodexCliFinishReason(undefined),
             usage: usageSummary,
           });
           controller.close();
@@ -1339,7 +1390,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
     });
 
     return { stream, request: { body: promptText } } as Awaited<
-      ReturnType<LanguageModelV2['doStream']>
+      ReturnType<LanguageModelV3['doStream']>
     >;
   }
 }

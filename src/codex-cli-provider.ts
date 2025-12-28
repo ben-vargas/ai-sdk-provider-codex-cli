@@ -1,15 +1,15 @@
-import type { LanguageModelV2, ProviderV2 } from '@ai-sdk/provider';
+import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { CodexCliLanguageModel } from './codex-cli-language-model.js';
 import type { CodexCliProviderSettings, CodexCliSettings } from './types.js';
 import { getLogger } from './logger.js';
 import { validateSettings } from './validation.js';
 
-export interface CodexCliProvider extends ProviderV2 {
-  (modelId: string, settings?: CodexCliSettings): LanguageModelV2;
-  languageModel(modelId: string, settings?: CodexCliSettings): LanguageModelV2;
-  chat(modelId: string, settings?: CodexCliSettings): LanguageModelV2;
-  textEmbeddingModel(modelId: string): never;
+export interface CodexCliProvider extends ProviderV3 {
+  (modelId: string, settings?: CodexCliSettings): LanguageModelV3;
+  languageModel(modelId: string, settings?: CodexCliSettings): LanguageModelV3;
+  chat(modelId: string, settings?: CodexCliSettings): LanguageModelV3;
+  embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
 }
 
@@ -24,7 +24,7 @@ export function createCodexCli(options: CodexCliProviderSettings = {}): CodexCli
     for (const w of v.warnings) logger.warn(`Codex CLI Provider: ${w}`);
   }
 
-  const createModel = (modelId: string, settings: CodexCliSettings = {}): LanguageModelV2 => {
+  const createModel = (modelId: string, settings: CodexCliSettings = {}): LanguageModelV3 => {
     const merged: CodexCliSettings = { ...options.defaultSettings, ...settings };
     const v = validateSettings(merged);
     if (!v.valid) throw new Error(`Invalid settings: ${v.errors.join(', ')}`);
@@ -39,8 +39,8 @@ export function createCodexCli(options: CodexCliProviderSettings = {}): CodexCli
 
   provider.languageModel = createModel;
   provider.chat = createModel;
-  provider.textEmbeddingModel = ((modelId: string) => {
-    throw new NoSuchModelError({ modelId, modelType: 'textEmbeddingModel' });
+  provider.embeddingModel = ((modelId: string) => {
+    throw new NoSuchModelError({ modelId, modelType: 'embeddingModel' });
   }) as never;
   provider.imageModel = ((modelId: string) => {
     throw new NoSuchModelError({ modelId, modelType: 'imageModel' });

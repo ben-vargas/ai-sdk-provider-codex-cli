@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-12-27
+
+### Breaking Changes
+
+- **AI SDK v6 stable migration** - This release requires AI SDK v6 stable and is incompatible with AI SDK v5
+- **Provider interface**: `LanguageModelV2` → `LanguageModelV3`, `ProviderV2` → `ProviderV3`
+- **Specification version**: `specificationVersion` changed from `'v2'` to `'v3'`
+- **Warning format**: Changed from `{ type: 'unsupported-setting', setting: ... }` to `{ type: 'unsupported', feature: ... }`
+- **Finish reason format**: Changed from string to object:
+  ```typescript
+  // Old (v5)
+  finishReason: 'stop'
+
+  // New (v6)
+  finishReason: { unified: 'stop', raw: undefined }
+  ```
+- **Usage structure**: Changed from flat to hierarchical format with `raw` field:
+  ```typescript
+  // Old (v5)
+  { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 1 }
+
+  // New (v6)
+  {
+    inputTokens: { total: 10, noCache: 9, cacheRead: 1, cacheWrite: 0 },
+    outputTokens: { total: 5, text: undefined, reasoning: undefined },
+    raw: { input_tokens: 10, output_tokens: 5, cached_input_tokens: 1 }
+  }
+  ```
+- **Method rename**: `textEmbeddingModel()` → `embeddingModel()` (throws `NoSuchModelError`)
+
+### Changed
+
+- Dependencies updated to stable versions:
+  - `@ai-sdk/provider`: ^3.0.0
+  - `@ai-sdk/provider-utils`: ^4.0.1
+  - `ai` (dev): ^6.0.3
+- Examples updated for v6 stable patterns (nested usage access, finish reason object)
+
+### Migration from AI SDK v5
+
+For AI SDK v5 users:
+```bash
+npm install ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0
+```
+
+### Version Compatibility
+
+| Provider Version | AI SDK Version | NPM Installation |
+|------------------|----------------|------------------|
+| 1.x.x            | v6             | `npm i ai-sdk-provider-codex-cli ai@^6.0.0` |
+| 0.x.x            | v5             | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
+
+## [1.0.0-beta.1] - 2025-12-15
+
+### Notes
+
+- Beta release for AI SDK v6 beta - superseded by 1.0.0 stable
+
+## [0.7.0] - 2025-12-15
+
+### Added
+
+- **Multimodal image support** via `--image` flag (#10)
+  - Supports base64 data URLs, raw base64 strings, Buffer, ArrayBuffer, and Uint8Array
+  - Images extracted from AI SDK message parts and passed to Codex CLI as temp files
+  - Automatic cleanup of temp image files after request completion
+
 ## [0.6.0] - 2025-11-21
 
 ### Added
