@@ -448,7 +448,7 @@ describe('CodexCliLanguageModel', () => {
       expect(a).toContain('model_verbosity=low');
     });
 
-    it('emits advanced feature flags (--include-plan-tool, --profile, --oss) and webSearch config', async () => {
+    it('emits advanced feature flags (--profile, --oss) and webSearch config', async () => {
       let seen: any = { args: [] as string[] };
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-adv' }),
@@ -466,7 +466,6 @@ describe('CodexCliLanguageModel', () => {
         id: 'gpt-5',
         settings: {
           allowNpx: true,
-          includePlanTool: true,
           profile: 'production',
           oss: true,
           webSearch: true,
@@ -476,7 +475,6 @@ describe('CodexCliLanguageModel', () => {
       await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
       const a = seen.args as string[];
-      expect(a).toContain('--include-plan-tool');
       expect(a).toContain('--profile');
       expect(a).toContain('production');
       expect(a).toContain('--oss');

@@ -69,7 +69,7 @@ node examples/<file>.mjs
 
 - **advanced-settings.mjs:** Constructor-level model parameters (v0.4.0+)
   - Purpose: Demonstrate comprehensive reasoning controls and advanced Codex features at model creation.
-  - Demonstrates: `reasoningEffort`, `reasoningSummary`, `webSearch`, `includePlanTool`, `profile`, `mcpServers`, `rmcpClient`, and `configOverrides`. (Swap to the non-Codex `gpt-5.1` slug if you need `modelVerbosity`.)
+  - Demonstrates: `reasoningEffort`, `reasoningSummary`, `webSearch`, `profile`, `mcpServers`, `rmcpClient`, and `configOverrides`. (Swap to the non-Codex `gpt-5.1` slug if you need `modelVerbosity`.)
   - Value: See all Phase 1 parameters in action—configure behavior once at construction for consistent settings across all calls.
 
 - **provider-options.mjs:** Per-call overrides (v0.4.0+)

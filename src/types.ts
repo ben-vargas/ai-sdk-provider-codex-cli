@@ -222,13 +222,6 @@ export interface CodexCliSettings {
   // ===== Advanced Codex Features =====
 
   /**
-   * Include experimental plan tool that the model can use to update its current plan.
-   *
-   * Maps to: `--include-plan-tool`
-   */
-  includePlanTool?: boolean;
-
-  /**
    * Configuration profile from config.toml to specify default options.
    *
    * Maps to: `--profile <name>`

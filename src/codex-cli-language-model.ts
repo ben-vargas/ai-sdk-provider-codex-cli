@@ -353,9 +353,6 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     }
 
     // Advanced Codex features
-    if (settings.includePlanTool) {
-      args.push('--include-plan-tool');
-    }
     if (settings.profile) {
       args.push('--profile', settings.profile);
     }

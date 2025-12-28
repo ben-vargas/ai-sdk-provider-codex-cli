@@ -168,7 +168,6 @@ const logger = {
   - `reasoningSummaryFormat`: Experimental format control ('none' | 'experimental')
   - `modelVerbosity`: GPT-5 family output length control ('low' | 'medium' | 'high')
 - **Advanced Codex features:**
-  - `includePlanTool`: Enable experimental plan tool (`--include-plan-tool`)
   - `profile`: Load config profile from `~/.codex/config.toml` (`--profile <name>`)
   - `oss`: Use OSS provider (`--oss`)
   - `webSearch`: Enable web search tool (`-c tools.web_search=true`)
