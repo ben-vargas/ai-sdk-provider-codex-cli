@@ -5,7 +5,7 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 ## Settings
 
 - `allowNpx` (boolean): If true, runs `npx -y @openai/codex` when Codex isn’t found on PATH.
-- `codexPath` (string): Explicit path to Codex JS entry (`bin/codex.js`), bypassing PATH resolution.
+- `codexPath` (string): Explicit path to Codex CLI executable (e.g. `/opt/homebrew/bin/codex`) or JS entry (`bin/codex.js`), bypassing PATH resolution.
 - `cwd` (string): Working directory for the spawned process.
 - `addDirs` (string[]): Additional directories Codex can read/write. Emits one `--add-dir <path>` per entry (useful in monorepos or when sharing resources across packages).
 - `color` ('always' | 'never' | 'auto'): Controls ANSI color emission.
