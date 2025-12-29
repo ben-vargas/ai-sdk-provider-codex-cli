@@ -229,6 +229,67 @@ describe('CodexCliLanguageModel', () => {
     expect(seen.args).toContain('--output-last-message');
   });
 
+  it('spawns an explicit executable codexPath directly (not via node)', async () => {
+    let seen: any = { cmd: '', args: [] as string[] };
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-explicit-exe' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      seen = { cmd, args };
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        codexPath: '/opt/homebrew/bin/codex',
+        color: 'never',
+        skipGitRepoCheck: true,
+      },
+    });
+
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(seen.cmd).toBe('/opt/homebrew/bin/codex');
+    expect(seen.args[0]).toBe('exec');
+    expect(seen.args).toContain('--experimental-json');
+  });
+
+  it('spawns an explicit JS codexPath via node', async () => {
+    let seen: any = { cmd: '', args: [] as string[] };
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-explicit-js' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      seen = { cmd, args };
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        codexPath: '/fake/codex.js',
+        color: 'never',
+        skipGitRepoCheck: true,
+      },
+    });
+
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(seen.cmd).toBe('node');
+    expect(seen.args[0]).toBe('/fake/codex.js');
+    expect(seen.args).toContain('exec');
+    expect(seen.args).toContain('--experimental-json');
+  });
+
   it('retains user-provided outputLastMessageFile when fallback is used', async () => {
     let outputPath = '';
     const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-user' })];

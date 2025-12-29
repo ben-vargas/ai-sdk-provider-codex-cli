@@ -140,7 +140,15 @@ function resolveCodexPath(
   explicitPath?: string,
   allowNpx?: boolean,
 ): { cmd: string; args: string[] } {
-  if (explicitPath) return { cmd: 'node', args: [explicitPath] };
+  if (explicitPath) {
+    // `codexPath` may be either a JS entrypoint (e.g. `.../bin/codex.js`) or an executable
+    // (e.g. Homebrew's `/opt/homebrew/bin/codex`). Only force `node` for explicit JS files.
+    const lower = explicitPath.toLowerCase();
+    if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) {
+      return { cmd: 'node', args: [explicitPath] };
+    }
+    return { cmd: explicitPath, args: [] };
+  }
 
   try {
     const req = createRequire(import.meta.url);
