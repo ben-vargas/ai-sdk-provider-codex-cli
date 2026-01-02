@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-01-01
+
+### Fixed
+
+- **Image + prompt argument parsing**: Fix bug where using images with `streamText` caused "No prompt provided via stdin" error. Codex CLI's `--image` flag uses greedy argument parsing (`num_args = 1..`), which consumed the prompt text as an additional image path. Now adds `'--'` separator before the prompt when images are present to explicitly mark end of flags. (#19)
+
 ## [1.0.3] - 2025-12-29
 
 ### Fixed

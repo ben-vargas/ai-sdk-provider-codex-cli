@@ -433,6 +433,23 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       }
     }
 
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(settings.env || {}),
+      RUST_LOG: process.env.RUST_LOG || 'error',
+    };
+
+    // Configure output-last-message (must be added before '--' separator)
+    let lastMessagePath: string | undefined = settings.outputLastMessageFile;
+    let lastMessageIsTemp = false;
+    if (!lastMessagePath) {
+      // create a temp folder for this run
+      const dir = mkdtempSync(join(tmpdir(), 'codex-cli-'));
+      lastMessagePath = join(dir, 'last-message.txt');
+      lastMessageIsTemp = true;
+    }
+    args.push('--output-last-message', lastMessagePath);
+
     // Prompt as positional arg (avoid stdin for reliability)
     // IMPORTANT: Use '--' separator when images are present because Codex CLI's
     // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
@@ -443,23 +460,6 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       args.push('--');
     }
     args.push(promptText);
-
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...(settings.env || {}),
-      RUST_LOG: process.env.RUST_LOG || 'error',
-    };
-
-    // Configure output-last-message
-    let lastMessagePath: string | undefined = settings.outputLastMessageFile;
-    let lastMessageIsTemp = false;
-    if (!lastMessagePath) {
-      // create a temp folder for this run
-      const dir = mkdtempSync(join(tmpdir(), 'codex-cli-'));
-      lastMessagePath = join(dir, 'last-message.txt');
-      lastMessageIsTemp = true;
-    }
-    args.push('--output-last-message', lastMessagePath);
 
     return {
       cmd: base.cmd,
