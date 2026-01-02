@@ -21,10 +21,10 @@ A community provider for Vercel AI SDK v6 that uses OpenAI's Codex CLI (non‑in
 
 ## Version Compatibility
 
-| Provider Version | AI SDK Version | NPM Tag      | NPM Installation |
-| ---------------- | -------------- | ------------ | ---------------- |
-| 1.x.x            | v6             | `latest`     | `npm i ai-sdk-provider-codex-cli ai@^6.0.0` |
-| 0.x.x            | v5             | `ai-sdk-v5`  | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
+| Provider Version | AI SDK Version | NPM Tag     | NPM Installation                                      |
+| ---------------- | -------------- | ----------- | ----------------------------------------------------- |
+| 1.x.x            | v6             | `latest`    | `npm i ai-sdk-provider-codex-cli ai@^6.0.0`           |
+| 0.x.x            | v5             | `ai-sdk-v5` | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
 
 ## Installation
 

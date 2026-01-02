@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Specification version**: `specificationVersion` changed from `'v2'` to `'v3'`
 - **Warning format**: Changed from `{ type: 'unsupported-setting', setting: ... }` to `{ type: 'unsupported', feature: ... }`
 - **Finish reason format**: Changed from string to object:
+
   ```typescript
   // Old (v5)
   finishReason: 'stop'
@@ -54,7 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   // New (v6)
   finishReason: { unified: 'stop', raw: undefined }
   ```
+
 - **Usage structure**: Changed from flat to hierarchical format with `raw` field:
+
   ```typescript
   // Old (v5)
   { inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 1 }
@@ -66,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     raw: { input_tokens: 10, output_tokens: 5, cached_input_tokens: 1 }
   }
   ```
+
 - **Method rename**: `textEmbeddingModel()` → `embeddingModel()` (throws `NoSuchModelError`)
 
 ### Changed
@@ -79,15 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration from AI SDK v5
 
 For AI SDK v5 users:
+
 ```bash
 npm install ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0
 ```
 
 ### Version Compatibility
 
-| Provider Version | AI SDK Version | NPM Installation |
-|------------------|----------------|------------------|
-| 1.x.x            | v6             | `npm i ai-sdk-provider-codex-cli ai@^6.0.0` |
+| Provider Version | AI SDK Version | NPM Installation                                      |
+| ---------------- | -------------- | ----------------------------------------------------- |
+| 1.x.x            | v6             | `npm i ai-sdk-provider-codex-cli ai@^6.0.0`           |
 | 0.x.x            | v5             | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
 
 ## [1.0.0-beta.1] - 2025-12-15

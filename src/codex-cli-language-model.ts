@@ -627,9 +627,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     return result;
   }
 
-  private mapWarnings(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): SharedV3Warning[] {
+  private mapWarnings(options: Parameters<LanguageModelV3['doGenerate']>[0]): SharedV3Warning[] {
     const unsupported: SharedV3Warning[] = [];
     const add = (setting: unknown, name: string) => {
       if (setting !== undefined)
@@ -928,7 +926,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
 
     let text = '';
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
+    const finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
     const startTime = Date.now();
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -1305,7 +1303,8 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
           }
 
           const usageSummary: LanguageModelV3Usage = lastUsage ?? createEmptyCodexUsage();
-          const totalTokens = (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
+          const totalTokens =
+            (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
           this.logger.info(
             `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
           );

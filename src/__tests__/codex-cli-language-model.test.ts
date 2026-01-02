@@ -1154,7 +1154,11 @@ describe('CodexCliLanguageModel', () => {
             role: 'user',
             content: [
               { type: 'text', text: 'Describe this image' },
-              { type: 'image', image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' },
+              {
+                type: 'image',
+                image:
+                  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+              },
             ],
           },
         ] as any,
