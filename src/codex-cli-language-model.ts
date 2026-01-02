@@ -421,7 +421,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       }
     }
 
-    // Add image arguments (must come before prompt)
+    // Add image arguments
     const tempImagePaths: string[] = [];
     for (const img of images) {
       try {
@@ -434,6 +434,14 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     }
 
     // Prompt as positional arg (avoid stdin for reliability)
+    // IMPORTANT: Use '--' separator when images are present because Codex CLI's
+    // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
+    // values until another flag is encountered. Without '--', the prompt text
+    // would be interpreted as an additional image path.
+    // See: https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/19
+    if (tempImagePaths.length > 0) {
+      args.push('--');
+    }
     args.push(promptText);
 
     const env: NodeJS.ProcessEnv = {
