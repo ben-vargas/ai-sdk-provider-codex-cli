@@ -1126,4 +1126,92 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('model_verbosity=low');
     });
   });
+
+  describe('image argument handling (issue #19)', () => {
+    it('adds -- separator before prompt when images are present', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-img' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'I see the image' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      await model.doGenerate({
+        prompt: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe this image' },
+              {
+                type: 'image',
+                image:
+                  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+              },
+            ],
+          },
+        ] as any,
+      });
+
+      // Find indices to verify correct ordering
+      const separatorIndex = argsCaptured.indexOf('--');
+      const lastMessageIndex = argsCaptured.indexOf('--output-last-message');
+      const imageIndex = argsCaptured.findIndex((arg) => arg === '--image');
+
+      // Verify -- separator is present when images are used
+      expect(separatorIndex).toBeGreaterThan(-1);
+
+      // Verify --image comes before --output-last-message
+      expect(imageIndex).toBeLessThan(lastMessageIndex);
+
+      // Verify --output-last-message comes before -- separator
+      expect(lastMessageIndex).toBeLessThan(separatorIndex);
+
+      // Verify prompt is the last argument (after --)
+      expect(argsCaptured[separatorIndex + 1]).toContain('Describe this image');
+      expect(separatorIndex + 1).toBe(argsCaptured.length - 1);
+    });
+
+    it('does not add -- separator when no images are present', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-no-img' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'Hello' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 5, output_tokens: 3 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Say hi' }] as any,
+      });
+
+      // Verify -- separator is NOT present when no images
+      expect(argsCaptured.indexOf('--')).toBe(-1);
+
+      // Verify prompt is still the last argument
+      expect(argsCaptured[argsCaptured.length - 1]).toContain('Say hi');
+    });
+  });
 });

@@ -421,7 +421,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       }
     }
 
-    // Add image arguments (must come before prompt)
+    // Add image arguments
     const tempImagePaths: string[] = [];
     for (const img of images) {
       try {
@@ -433,16 +433,13 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       }
     }
 
-    // Prompt as positional arg (avoid stdin for reliability)
-    args.push(promptText);
-
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...(settings.env || {}),
       RUST_LOG: process.env.RUST_LOG || 'error',
     };
 
-    // Configure output-last-message
+    // Configure output-last-message (must be added before '--' separator)
     let lastMessagePath: string | undefined = settings.outputLastMessageFile;
     let lastMessageIsTemp = false;
     if (!lastMessagePath) {
@@ -452,6 +449,17 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
       lastMessageIsTemp = true;
     }
     args.push('--output-last-message', lastMessagePath);
+
+    // Prompt as positional arg (avoid stdin for reliability)
+    // IMPORTANT: Use '--' separator when images are present because Codex CLI's
+    // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
+    // values until another flag is encountered. Without '--', the prompt text
+    // would be interpreted as an additional image path.
+    // See: https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/19
+    if (tempImagePaths.length > 0) {
+      args.push('--');
+    }
+    args.push(promptText);
 
     return {
       cmd: base.cmd,
@@ -619,9 +627,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     return result;
   }
 
-  private mapWarnings(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): SharedV3Warning[] {
+  private mapWarnings(options: Parameters<LanguageModelV3['doGenerate']>[0]): SharedV3Warning[] {
     const unsupported: SharedV3Warning[] = [];
     const add = (setting: unknown, name: string) => {
       if (setting !== undefined)
@@ -920,7 +926,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
 
     let text = '';
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
+    const finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
     const startTime = Date.now();
 
     const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -1297,7 +1303,8 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
           }
 
           const usageSummary: LanguageModelV3Usage = lastUsage ?? createEmptyCodexUsage();
-          const totalTokens = (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
+          const totalTokens =
+            (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
           this.logger.info(
             `[codex-cli] Stream completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
           );
