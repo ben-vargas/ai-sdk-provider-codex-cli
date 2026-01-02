@@ -380,7 +380,7 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       }
     }
 
-    // Add image arguments (must come before prompt)
+    // Add image arguments
     const tempImagePaths: string[] = [];
     for (const img of images) {
       try {
@@ -392,16 +392,13 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       }
     }
 
-    // Prompt as positional arg (avoid stdin for reliability)
-    args.push(promptText);
-
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...(settings.env || {}),
       RUST_LOG: process.env.RUST_LOG || 'error',
     };
 
-    // Configure output-last-message
+    // Configure output-last-message (must be added before '--' separator)
     let lastMessagePath: string | undefined = settings.outputLastMessageFile;
     let lastMessageIsTemp = false;
     if (!lastMessagePath) {
@@ -411,6 +408,17 @@ export class CodexCliLanguageModel implements LanguageModelV2 {
       lastMessageIsTemp = true;
     }
     args.push('--output-last-message', lastMessagePath);
+
+    // Prompt as positional arg (avoid stdin for reliability)
+    // IMPORTANT: Use '--' separator when images are present because Codex CLI's
+    // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
+    // values until another flag is encountered. Without '--', the prompt text
+    // would be interpreted as an additional image path.
+    // See: https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/19
+    if (tempImagePaths.length > 0) {
+      args.push('--');
+    }
+    args.push(promptText);
 
     return {
       cmd: base.cmd,
