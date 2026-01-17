@@ -313,7 +313,6 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
   }
 
   private buildArgs(
-    promptText: string,
     images: ImageData[] = [],
     responseFormat?: { type: 'json'; schema: unknown },
     settings: CodexCliSettings = this.settings,
@@ -450,16 +449,17 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     }
     args.push('--output-last-message', lastMessagePath);
 
-    // Prompt as positional arg (avoid stdin for reliability)
+    // Prompt is passed via stdin to avoid command line length limits and escaping issues
+    // Use '-' to read prompt from stdin
     // IMPORTANT: Use '--' separator when images are present because Codex CLI's
     // --image flag uses `num_args = 1..` (greedy), which consumes subsequent
-    // values until another flag is encountered. Without '--', the prompt text
+    // values until another flag is encountered. Without '--', the '-' for stdin
     // would be interpreted as an additional image path.
     // See: https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/19
     if (tempImagePaths.length > 0) {
       args.push('--');
     }
-    args.push(promptText);
+    args.push('-');
 
     return {
       cmd: base.cmd,
@@ -918,7 +918,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
     const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath, tempImagePaths } =
-      this.buildArgs(promptText, images, responseFormat, effectiveSettings);
+      this.buildArgs(images, responseFormat, effectiveSettings);
 
     this.logger.debug(
       `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`,
@@ -929,7 +929,12 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     const finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
     const startTime = Date.now();
 
-    const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Use stdin to pass prompt - avoids command line length limits and escaping issues on Windows
+    const child = spawn(cmd, args, { env, cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+
+    // Write prompt to stdin
+    child.stdin.write(promptText);
+    child.stdin.end();
 
     // Abort support
     let onAbort: (() => void) | undefined;
@@ -1119,7 +1124,7 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
         ? { type: 'json' as const, schema: options.responseFormat.schema }
         : undefined;
     const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath, tempImagePaths } =
-      this.buildArgs(promptText, images, responseFormat, effectiveSettings);
+      this.buildArgs(images, responseFormat, effectiveSettings);
 
     this.logger.debug(
       `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`,
@@ -1128,7 +1133,12 @@ export class CodexCliLanguageModel implements LanguageModelV3 {
     const stream = new ReadableStream<LanguageModelV3StreamPart>({
       start: (controller) => {
         const startTime = Date.now();
-        const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+        // Use stdin to pass prompt - avoids command line length limits and escaping issues on Windows
+        const child = spawn(cmd, args, { env, cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+
+        // Write prompt to stdin
+        child.stdin.write(promptText);
+        child.stdin.end();
 
         // Emit stream-start
         controller.enqueue({ type: 'stream-start', warnings });

@@ -12,7 +12,14 @@ function makeMockSpawn(lines: string[], exitCode = 0) {
     const child = new EventEmitter() as any;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
     child.kill = vi.fn();
+
+    // Capture stdin data for testing
+    let stdinData = '';
+    child.stdin.on('data', (chunk: Buffer) => {
+      stdinData += chunk.toString();
+    });
 
     // If our code passes --output-last-message <path>, write there too
     const idx = args.indexOf('--output-last-message');
@@ -28,6 +35,9 @@ function makeMockSpawn(lines: string[], exitCode = 0) {
       child.stdout.end();
       child.emit('close', exitCode);
     }, 5);
+
+    // Store stdinData on child for test access
+    child._stdinData = () => stdinData;
 
     return child;
   });
@@ -451,6 +461,7 @@ describe('CodexCliLanguageModel', () => {
       const child = new EventEmitter() as any;
       child.stdout = new PassThrough();
       child.stderr = new PassThrough();
+      child.stdin = new PassThrough();
       child.kill = vi.fn(() => {
         killed = true;
       });
@@ -1178,8 +1189,8 @@ describe('CodexCliLanguageModel', () => {
       // Verify --output-last-message comes before -- separator
       expect(lastMessageIndex).toBeLessThan(separatorIndex);
 
-      // Verify prompt is the last argument (after --)
-      expect(argsCaptured[separatorIndex + 1]).toContain('Describe this image');
+      // Verify '-' (stdin marker) is the last argument (after --)
+      expect(argsCaptured[separatorIndex + 1]).toBe('-');
       expect(separatorIndex + 1).toBe(argsCaptured.length - 1);
     });
 
@@ -1210,8 +1221,177 @@ describe('CodexCliLanguageModel', () => {
       // Verify -- separator is NOT present when no images
       expect(argsCaptured.indexOf('--')).toBe(-1);
 
-      // Verify prompt is still the last argument
-      expect(argsCaptured[argsCaptured.length - 1]).toContain('Say hi');
+      // Verify '-' (stdin marker) is the last argument instead of the prompt text
+      expect(argsCaptured[argsCaptured.length - 1]).toBe('-');
+    });
+  });
+
+  describe('stdin prompt passing (Windows command line limit fix)', () => {
+    it('passes prompt via stdin instead of command line arguments', async () => {
+      let lastChild: any = null;
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-stdin' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'Response' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        const child = makeMockSpawn(lines, 0)(cmd, args);
+        lastChild = child;
+        return child;
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      const testPrompt = 'This is a test prompt';
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: testPrompt }] as any,
+      });
+
+      // Wait a bit for stdin to be written
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Verify prompt was passed via stdin
+      expect(lastChild._stdinData()).toContain(testPrompt);
+    });
+
+    it('uses "-" as the positional argument to indicate stdin input', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-stdin-arg' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'OK' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hello' }] as any,
+      });
+
+      // The last argument should be '-' (stdin marker), not the actual prompt
+      expect(argsCaptured[argsCaptured.length - 1]).toBe('-');
+      // The prompt text should NOT appear in args
+      expect(argsCaptured.join(' ')).not.toContain('Hello');
+    });
+
+    it('handles long prompts that would exceed Windows command line limits', async () => {
+      let lastChild: any = null;
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-long' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'Processed' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1000, output_tokens: 10 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        const child = makeMockSpawn(lines, 0)(cmd, args);
+        lastChild = child;
+        return child;
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      // Create a prompt longer than Windows command line limit (8191 chars)
+      const longPrompt = 'A'.repeat(10000);
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: longPrompt }] as any,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Verify the full prompt was passed via stdin
+      expect(lastChild._stdinData()).toContain(longPrompt);
+      expect(lastChild._stdinData().length).toBeGreaterThan(10000);
+    });
+
+    it('handles special characters (Chinese, newlines, backticks) correctly', async () => {
+      let lastChild: any = null;
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-special' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'OK' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 50, output_tokens: 5 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        const child = makeMockSpawn(lines, 0)(cmd, args);
+        lastChild = child;
+        return child;
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      const specialPrompt = '请优化登录界面\n```tsx\nconst x = `template`;\n```';
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: specialPrompt }] as any,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Verify special characters are preserved in stdin
+      const stdinData = lastChild._stdinData();
+      expect(stdinData).toContain('请优化登录界面');
+      expect(stdinData).toContain('```tsx');
+      expect(stdinData).toContain('`template`');
+    });
+
+    it('passes prompt via stdin in streaming mode', async () => {
+      let lastChild: any = null;
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-stream-stdin' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'Streamed' },
+        }),
+        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        const child = makeMockSpawn(lines, 0)(cmd, args);
+        lastChild = child;
+        return child;
+      });
+
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+
+      const testPrompt = 'Streaming test prompt';
+      const { stream } = await model.doStream({
+        prompt: [{ role: 'user', content: testPrompt }] as any,
+      });
+
+      // Exhaust the stream
+      const rs = stream as ReadableStream<any>;
+      for await (const _ of (rs as any)[Symbol.asyncIterator]()) {}
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Verify prompt was passed via stdin in streaming mode
+      expect(lastChild._stdinData()).toContain(testPrompt);
     });
   });
 });
