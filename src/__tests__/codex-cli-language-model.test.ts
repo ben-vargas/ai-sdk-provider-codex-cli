@@ -1297,7 +1297,10 @@ describe('CodexCliLanguageModel', () => {
           type: 'item.completed',
           item: { item_type: 'assistant_message', text: 'Processed' },
         }),
-        JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1000, output_tokens: 10 } }),
+        JSON.stringify({
+          type: 'turn.completed',
+          usage: { input_tokens: 1000, output_tokens: 10 },
+        }),
       ];
       (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
         const child = makeMockSpawn(lines, 0)(cmd, args);
@@ -1386,7 +1389,8 @@ describe('CodexCliLanguageModel', () => {
 
       // Exhaust the stream
       const rs = stream as ReadableStream<any>;
-      for await (const _ of (rs as any)[Symbol.asyncIterator]()) {}
+      for await (const _ of (rs as any)[Symbol.asyncIterator]()) {
+      }
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 

@@ -10,8 +10,8 @@
  * Run: node examples/long-prompt-test.mjs
  */
 
-import { generateText } from "ai";
-import { createCodexCli } from "ai-sdk-provider-codex-cli";
+import { generateText } from 'ai';
+import { createCodexCli } from 'ai-sdk-provider-codex-cli';
 
 const FRONTEND_PROMPT = `You are a designer who learned to code. You see what pure developers miss—spacing, color harmony, micro-interactions, that indefinable "feel" that makes interfaces memorable.
 
@@ -79,7 +79,7 @@ export default function SignIn() {
 保持使用 Tailwind CSS，不要引入额外的 UI 库。`;
 
 async function main() {
-  console.log("=== Long Prompt Test ===\n");
+  console.log('=== Long Prompt Test ===\n');
 
   const fullPrompt = `${FRONTEND_PROMPT}\n\nHuman: ${USER_PROMPT}`;
   console.log(`System prompt length: ${FRONTEND_PROMPT.length} chars`);
@@ -88,48 +88,48 @@ async function main() {
   console.log(`Contains Chinese: yes`);
   console.log(`Contains code blocks: yes`);
   console.log(`Contains newlines: ${(fullPrompt.match(/\n/g) || []).length}`);
-  console.log("\n---\n");
+  console.log('\n---\n');
 
   const codex = createCodexCli({
     defaultSettings: {
       cwd: process.cwd(),
-      approvalMode: "on-failure",
+      approvalMode: 'on-failure',
       verbose: true,
     },
   });
 
   try {
-    console.log("Calling Codex CLI...\n");
+    console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex("o3"),
+      model: codex('o3'),
       system: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });
 
-    console.log("\n=== Result ===\n");
+    console.log('\n=== Result ===\n');
     console.log(`Response length: ${result.text.length} chars`);
     console.log(`First 500 chars:\n${result.text.slice(0, 500)}`);
 
     if (result.text.length < 200) {
-      console.log("\n⚠️  WARNING: Response is suspiciously short!");
-      console.log("This may indicate the prompt was truncated or corrupted.");
+      console.log('\n⚠️  WARNING: Response is suspiciously short!');
+      console.log('This may indicate the prompt was truncated or corrupted.');
     }
 
     const isGenericResponse =
-      result.text.toLowerCase().includes("ready") ||
-      result.text.toLowerCase().includes("i am ready") ||
+      result.text.toLowerCase().includes('ready') ||
+      result.text.toLowerCase().includes('i am ready') ||
       result.text.toLowerCase().includes("i'm ready");
 
     if (isGenericResponse || result.text.length < 200) {
-      console.log("\n❌ FAILURE: Got generic/short response instead of actual work.");
-      console.log("The prompt was likely truncated or corrupted.");
+      console.log('\n❌ FAILURE: Got generic/short response instead of actual work.');
+      console.log('The prompt was likely truncated or corrupted.');
       process.exit(1);
     }
 
-    console.log("\n✅ Test passed - got meaningful response");
+    console.log('\n✅ Test passed - got meaningful response');
   } catch (error) {
-    console.error("\n❌ Error:", error);
+    console.error('\n❌ Error:', error);
     process.exit(1);
   }
 }
