@@ -43,12 +43,11 @@ describe('CodexCliLanguageModel schema handling', () => {
     const { schemaPath, lastMessagePath: resolvedLast } = (
       model as unknown as {
         buildArgs: (
-          promptText: string,
           images?: unknown[],
           responseFormat?: { type: 'json'; schema: unknown },
         ) => { schemaPath?: string; lastMessagePath?: string };
       }
-    ).buildArgs('Prompt text', [], { type: 'json', schema: rawSchema });
+    ).buildArgs([], { type: 'json', schema: rawSchema });
 
     expect(schemaPath).toBeDefined();
     const sanitized = JSON.parse(readFileSync(schemaPath!, 'utf8'));
