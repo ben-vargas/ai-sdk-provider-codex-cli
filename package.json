@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "AI SDK v6 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
   "keywords": [
     "ai-sdk",
@@ -64,7 +64,7 @@
     "jsonc-parser": "^3.3.1"
   },
   "optionalDependencies": {
-    "@openai/codex": "^0.77.0"
+    "@openai/codex": "^0.87.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
