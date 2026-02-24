@@ -1,0 +1,14 @@
+{
+  "method": "turn/completed",
+  "params": {
+    "threadId": "thr_123",
+    "turn": {
+      "id": "turn_1",
+      "items": [],
+      "status": "completed",
+      "error": null,
+      "newField": "future"
+    },
+    "extraOuter": 42
+  }
+}

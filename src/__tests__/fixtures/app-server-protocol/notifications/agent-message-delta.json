@@ -1,0 +1,9 @@
+{
+  "method": "item/agentMessage/delta",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_msg_1",
+    "delta": "Hello"
+  }
+}

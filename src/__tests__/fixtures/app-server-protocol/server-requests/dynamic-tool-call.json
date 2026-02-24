@@ -1,0 +1,11 @@
+{
+  "id": 105,
+  "method": "item/tool/call",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "callId": "call_1",
+    "tool": "search",
+    "arguments": { "q": "hello" }
+  }
+}

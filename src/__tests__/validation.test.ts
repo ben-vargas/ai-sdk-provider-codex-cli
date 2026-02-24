@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSettings } from '../validation.js';
+import { validateAppServerSettings, validateSettings } from '../validation.js';
 
 describe('validateSettings', () => {
   it('accepts minimal settings', () => {
@@ -54,5 +54,23 @@ describe('validateSettings', () => {
     const res = validateSettings({ outputLastMessageFile: '/tmp/last.txt' });
     expect(res.valid).toBe(true);
     expect(res.errors).toHaveLength(0);
+  });
+
+  it('accepts app-server settings', () => {
+    const res = validateAppServerSettings({
+      codexPath: '/opt/homebrew/bin/codex',
+      personality: 'pragmatic',
+      minCodexVersion: '0.105.0',
+    });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
+
+  it('rejects invalid app-server minCodexVersion', () => {
+    const res = validateAppServerSettings({
+      minCodexVersion: 'bad-version',
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /minCodexVersion/i.test(e))).toBe(true);
   });
 });

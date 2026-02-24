@@ -13,13 +13,19 @@ export function createAPICallError({
   exitCode,
   stderr,
   promptExcerpt,
+  provider = 'exec',
   isRetryable = false,
-}: CodexErrorMetadata & { message: string; isRetryable?: boolean }): APICallError {
+}: CodexErrorMetadata & {
+  message: string;
+  provider?: 'exec' | 'app-server';
+  isRetryable?: boolean;
+}): APICallError {
   const data: CodexErrorMetadata = { code, exitCode, stderr, promptExcerpt };
+  const url = provider === 'app-server' ? 'codex-cli://app-server' : 'codex-cli://exec';
   return new APICallError({
     message,
     isRetryable,
-    url: 'codex-cli://exec',
+    url,
     requestBodyValues: promptExcerpt ? { prompt: promptExcerpt } : undefined,
     data,
   });

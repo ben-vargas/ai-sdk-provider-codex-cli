@@ -1,0 +1,19 @@
+{
+  "method": "item/started",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "item": {
+      "type": "commandExecution",
+      "id": "item_cmd_1",
+      "command": "npm test",
+      "cwd": "/tmp/project",
+      "processId": null,
+      "status": "inProgress",
+      "commandActions": [],
+      "aggregatedOutput": null,
+      "exitCode": null,
+      "durationMs": null
+    }
+  }
+}

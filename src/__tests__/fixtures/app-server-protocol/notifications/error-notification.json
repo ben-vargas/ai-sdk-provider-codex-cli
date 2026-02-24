@@ -1,0 +1,13 @@
+{
+  "method": "error",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "willRetry": false,
+    "error": {
+      "message": "Something failed",
+      "codexErrorInfo": "other",
+      "additionalDetails": null
+    }
+  }
+}

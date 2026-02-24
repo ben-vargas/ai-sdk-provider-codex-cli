@@ -1,0 +1,12 @@
+{
+  "method": "turn/started",
+  "params": {
+    "threadId": "thr_123",
+    "turn": {
+      "id": "turn_1",
+      "items": [],
+      "status": "inProgress",
+      "error": null
+    }
+  }
+}

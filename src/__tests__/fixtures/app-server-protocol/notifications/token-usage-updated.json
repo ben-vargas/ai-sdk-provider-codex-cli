@@ -1,0 +1,24 @@
+{
+  "method": "thread/tokenUsage/updated",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "tokenUsage": {
+      "total": {
+        "totalTokens": 100,
+        "inputTokens": 60,
+        "cachedInputTokens": 10,
+        "outputTokens": 40,
+        "reasoningOutputTokens": 5
+      },
+      "last": {
+        "totalTokens": 100,
+        "inputTokens": 60,
+        "cachedInputTokens": 10,
+        "outputTokens": 40,
+        "reasoningOutputTokens": 5
+      },
+      "modelContextWindow": null
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "method": "item/completed",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "item": {
+      "type": "agentMessage",
+      "id": "item_msg_1",
+      "text": "Hello from app-server",
+      "phase": null
+    }
+  }
+}

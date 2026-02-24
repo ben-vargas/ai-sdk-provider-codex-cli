@@ -1,0 +1,9 @@
+{
+  "id": 106,
+  "method": "account/chatgptAuthTokens/refresh",
+  "params": {
+    "reason": "unauthorized",
+    "previousAccountId": "acct_123",
+    "futureField": true
+  }
+}

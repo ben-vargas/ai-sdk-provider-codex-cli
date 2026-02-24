@@ -1,0 +1,8 @@
+{
+  "id": 104,
+  "method": "skill/requestApproval",
+  "params": {
+    "itemId": "item_skill_1",
+    "skillName": "agent-browser"
+  }
+}

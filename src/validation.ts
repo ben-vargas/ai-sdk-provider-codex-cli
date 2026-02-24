@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CodexCliSettings } from './types.js';
+import type { CodexAppServerSettings, CodexExecSettings } from './types.js';
 
 const loggerFunctionSchema = z.object({
   debug: z.any().refine((val) => typeof val === 'function', {
@@ -48,96 +48,171 @@ const mcpServerSchema = z.discriminatedUnion('transport', [
 
 export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
 
-const settingsSchema = z
+const configOverridesSchema = z
+  .record(
+    z.string(),
+    z.union([z.string(), z.number(), z.boolean(), z.object({}).passthrough(), z.array(z.any())]),
+  )
+  .optional();
+
+export const sharedSettingsSchema = z
   .object({
-    codexPath: z.string().optional(),
     cwd: z.string().optional(),
-    addDirs: z.array(z.string().min(1)).optional(),
     approvalMode: z.enum(['untrusted', 'on-failure', 'on-request', 'never']).optional(),
     sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    verbose: z.boolean().optional(),
+    logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
+    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningSummary: z.enum(['auto', 'detailed']).optional(),
+    reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
+    modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+    mcpServers: mcpServersSchema.optional(),
+    rmcpClient: z.boolean().optional(),
+    configOverrides: configOverridesSchema,
+  })
+  .strict();
+
+export const execSettingsSchema = sharedSettingsSchema
+  .extend({
+    codexPath: z.string().optional(),
+    addDirs: z.array(z.string().min(1)).optional(),
     fullAuto: z.boolean().optional(),
     dangerouslyBypassApprovalsAndSandbox: z.boolean().optional(),
     skipGitRepoCheck: z.boolean().optional(),
     color: z.enum(['always', 'never', 'auto']).optional(),
     allowNpx: z.boolean().optional(),
     outputLastMessageFile: z.string().optional(),
-    env: z.record(z.string(), z.string()).optional(),
-    verbose: z.boolean().optional(),
-    logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
-
-    // NEW: Reasoning & Verbosity
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-    // Note: API rejects 'concise' and 'none' despite error messages claiming they're valid
-    reasoningSummary: z.enum(['auto', 'detailed']).optional(),
-    reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
-    modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
-
-    // NEW: Advanced features
     profile: z.string().optional(),
     oss: z.boolean().optional(),
     webSearch: z.boolean().optional(),
-    mcpServers: mcpServersSchema.optional(),
-    rmcpClient: z.boolean().optional(),
+  })
+  .strict();
 
-    // NEW: Generic overrides
-    configOverrides: z
-      .record(
-        z.string(),
-        z.union([
-          z.string(),
-          z.number(),
-          z.boolean(),
-          z.object({}).passthrough(),
-          z.array(z.any()),
-        ]),
-      )
+const approvalRejectSchema = z.object({
+  reject: z.object({
+    sandbox_approval: z.boolean(),
+    rules: z.boolean(),
+    mcp_elicitations: z.boolean(),
+  }),
+});
+
+const sandboxPolicySchema = z
+  .object({
+    type: z.string(),
+  })
+  .passthrough();
+
+export const appServerSettingsSchema = sharedSettingsSchema
+  .extend({
+    codexPath: z.string().optional(),
+    personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
+    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
+    approvalPolicy: z
+      .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
+      .optional(),
+    sandboxPolicy: sandboxPolicySchema.optional(),
+    autoApprove: z.boolean().optional(),
+    persistExtendedHistory: z.boolean().optional(),
+    connectionTimeoutMs: z.number().int().positive().optional(),
+    idleTimeoutMs: z.number().int().positive().optional(),
+    onServerRequest: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onServerRequest must be a function',
+      })
+      .optional(),
+    minCodexVersion: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/, 'minCodexVersion must be a semver string')
       .optional(),
   })
   .strict();
 
-export function validateSettings(settings: unknown): {
+function parseValidationIssues(error: unknown): string[] {
+  type ZodIssueLike = { path?: (string | number)[]; message?: string };
+
+  let issues: ZodIssueLike[] = [];
+  if (error && typeof error === 'object') {
+    const v4 = (error as { issues?: unknown }).issues;
+    const v3 = (error as { errors?: unknown }).errors;
+    if (Array.isArray(v4)) issues = v4 as ZodIssueLike[];
+    else if (Array.isArray(v3)) issues = v3 as ZodIssueLike[];
+  }
+
+  return issues.map((i) => {
+    const path = Array.isArray(i?.path) ? i.path.join('.') : '';
+    const message = i?.message || 'Invalid value';
+    return `${path ? path + ': ' : ''}${message}`;
+  });
+}
+
+function makeValidationResult(
+  parsed: ReturnType<typeof execSettingsSchema.safeParse>,
+  warnings: string[],
+): {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+} {
+  if (!parsed.success) {
+    return {
+      valid: false,
+      warnings,
+      errors: parseValidationIssues(parsed.error),
+    };
+  }
+
+  return { valid: true, warnings, errors: [] };
+}
+
+export function validateExecSettings(settings: unknown): {
   valid: boolean;
   warnings: string[];
   errors: string[];
 } {
   const warnings: string[] = [];
-  const errors: string[] = [];
+  const parsed = execSettingsSchema.safeParse(settings);
+  if (!parsed.success) return makeValidationResult(parsed, warnings);
 
-  const parsed = settingsSchema.safeParse(settings);
-  if (!parsed.success) {
-    // zod v3 => error.errors, zod v4 => error.issues
-    type ZodIssueLike = { path?: (string | number)[]; message?: string };
-    const raw = parsed.error as unknown;
-    let issues: ZodIssueLike[] = [];
-    if (raw && typeof raw === 'object') {
-      const v4 = (raw as { issues?: unknown }).issues;
-      const v3 = (raw as { errors?: unknown }).errors;
-      if (Array.isArray(v4)) issues = v4 as ZodIssueLike[];
-      else if (Array.isArray(v3)) issues = v3 as ZodIssueLike[];
-    }
-    for (const i of issues) {
-      const path = Array.isArray(i?.path) ? i.path.join('.') : '';
-      const message = i?.message || 'Invalid value';
-      errors.push(`${path ? path + ': ' : ''}${message}`);
-    }
-    return { valid: false, warnings, errors };
-  }
-
-  const s = parsed.data as CodexCliSettings;
+  const s = parsed.data as CodexExecSettings;
   if (s.fullAuto && s.dangerouslyBypassApprovalsAndSandbox) {
     warnings.push(
       'Both fullAuto and dangerouslyBypassApprovalsAndSandbox specified; fullAuto takes precedence.',
     );
   }
 
-  // Note: Previously warned about reasoningSummary='none', but 'none' is now rejected
-  // by the schema as an invalid value (only 'auto' and 'detailed' are accepted)
-
-  return { valid: true, warnings, errors };
+  return { valid: true, warnings, errors: [] };
 }
+
+export function validateAppServerSettings(settings: unknown): {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+} {
+  const warnings: string[] = [];
+  const parsed = appServerSettingsSchema.safeParse(settings);
+  if (!parsed.success) {
+    return {
+      valid: false,
+      warnings,
+      errors: parseValidationIssues(parsed.error),
+    };
+  }
+
+  const s = parsed.data as CodexAppServerSettings;
+  if (s.autoApprove && s.approvalPolicy && s.approvalPolicy !== 'never') {
+    warnings.push('autoApprove overrides approvalPolicy for server-initiated approval requests.');
+  }
+
+  return { valid: true, warnings, errors: [] };
+}
+
+// Backward-compatible alias
+export const validateSettings = validateExecSettings;
 
 export function validateModelId(modelId: string): string | undefined {
   if (!modelId || modelId.trim() === '') return 'Model ID cannot be empty';
-  // We don’t restrict model values here; Codex forwards to Responses API
   return undefined;
 }

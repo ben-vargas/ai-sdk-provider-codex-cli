@@ -1,0 +1,11 @@
+{
+  "id": 101,
+  "method": "item/commandExecution/requestApproval",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_cmd_1",
+    "command": "npm test",
+    "cwd": "/tmp/project"
+  }
+}

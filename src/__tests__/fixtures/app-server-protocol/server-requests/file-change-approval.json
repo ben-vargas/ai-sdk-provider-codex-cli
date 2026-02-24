@@ -1,0 +1,10 @@
+{
+  "id": 102,
+  "method": "item/fileChange/requestApproval",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_file_1",
+    "reason": "write access required"
+  }
+}

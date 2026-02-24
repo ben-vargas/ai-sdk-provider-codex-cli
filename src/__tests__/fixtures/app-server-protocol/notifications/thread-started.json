@@ -1,0 +1,11 @@
+{
+  "method": "thread/started",
+  "params": {
+    "thread": {
+      "id": "thr_123",
+      "preview": "",
+      "modelProvider": "openai",
+      "createdAt": 1730910000
+    }
+  }
+}
