@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AppServerSession } from '../app-server-session.js';
+import { AppServerSession } from '../app-server/session.js';
 
 describe('AppServerSession', () => {
   it('injects messages via turn/start and interrupts active turns', async () => {

@@ -1,5 +1,5 @@
-import { AppServerRpcClient } from './app-server-rpc-client.js';
-import type { ModelInfo } from './app-server-protocol-types.js';
+import { AppServerRpcClient } from './rpc/client.js';
+import type { ModelInfo } from './protocol/types.js';
 
 export interface ListModelsOptions {
   codexPath?: string;

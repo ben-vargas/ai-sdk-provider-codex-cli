@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   incomingNotificationSchemas,
   serverRequestSchema,
-} from '../app-server-protocol-validators.js';
+} from '../app-server/protocol/validators.js';
 
 const fixturesRoot = join(process.cwd(), 'src', '__tests__', 'fixtures', 'app-server-protocol');
 

@@ -194,6 +194,8 @@ export function mapUnsupportedSettingsWarnings(options: {
   frequencyPenalty?: unknown;
   stopSequences?: unknown[];
   seed?: unknown;
+  tools?: unknown;
+  toolChoice?: unknown;
 }): SharedV3Warning[] {
   const unsupported: SharedV3Warning[] = [];
   const add = (setting: unknown, name: string) => {
@@ -213,6 +215,8 @@ export function mapUnsupportedSettingsWarnings(options: {
   add(options.frequencyPenalty, 'frequencyPenalty');
   add(options.stopSequences?.length ? options.stopSequences : undefined, 'stopSequences');
   add(options.seed, 'seed');
+  add(options.tools, 'tools');
+  add(options.toolChoice, 'toolChoice');
 
   return unsupported;
 }

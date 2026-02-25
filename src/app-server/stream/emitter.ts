@@ -138,6 +138,7 @@ export class AppServerStreamEmitter {
       type: 'tool-result',
       toolCallId,
       toolName,
+      preliminary: true,
       result: {
         type: 'output-delta',
         delta,

@@ -33,17 +33,28 @@ export type PromptMessage = Omit<LanguageModelV3Message, 'content'> & {
   content: string | PromptContentPart[];
 };
 
+export type ConvertedWarning =
+  | {
+      type: 'unsupported';
+      feature: string;
+      details: string;
+    }
+  | {
+      type: 'other';
+      message: string;
+    };
+
 export interface ConvertedPrompt {
   systemInstruction?: string;
   text: string;
   localImages: ImageData[];
   remoteImageUrls: string[];
-  warnings: string[];
+  warnings: ConvertedWarning[];
 }
 
 export interface ConvertedToolResult {
   text: string;
-  warnings: string[];
+  warnings: ConvertedWarning[];
 }
 
 export type NormalizedToolOutput = LanguageModelV3ToolResultOutput;

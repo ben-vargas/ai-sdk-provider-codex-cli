@@ -1,4 +1,4 @@
-import type { JsonRpcId } from './app-server-protocol-types.js';
+import type { JsonRpcId } from './protocol/types.js';
 import type {
   ChatgptAuthTokensRefreshParams,
   ChatgptAuthTokensRefreshResponse,
@@ -12,14 +12,14 @@ import type {
   SkillRequestApprovalResponse,
   ToolRequestUserInputParams,
   ToolRequestUserInputResponse,
-} from './app-server-protocol-types.js';
+} from './protocol/types.js';
 import type {
   CodexConfigOverrideValue,
   Logger,
   McpServerConfig,
   ReasoningEffort,
-} from './types-shared.js';
-import type { SdkMcpServer } from './tools/sdk-mcp-server.js';
+} from '../types-shared.js';
+import type { SdkMcpServer } from '../tools/sdk-mcp-server.js';
 
 export type AppServerThreadMode = 'stateless' | 'persistent';
 
@@ -60,11 +60,29 @@ export type AppServerUserInput =
   | { type: 'image'; imageUrl: string }
   | { type: 'localImage'; path: string };
 
+/**
+ * Live session handle for an active app-server thread.
+ *
+ * Session callbacks are most useful in streaming flows where you can inject
+ * follow-up instructions while a turn is still running.
+ */
 export interface CodexAppServerSession {
   readonly threadId: string;
   readonly turnId: string | null;
+
+  /**
+   * Injects an additional user message into the current thread.
+   */
   injectMessage(content: string | AppServerUserInput[]): Promise<void>;
+
+  /**
+   * Requests interruption of the currently running turn.
+   */
   interrupt(): Promise<void>;
+
+  /**
+   * Returns whether this session currently has an active turn.
+   */
   isActive(): boolean;
 }
 
@@ -118,6 +136,15 @@ export interface AppServerUnhandledRequest {
   params: Record<string, unknown>;
 }
 
+/**
+ * Typed handlers for server-initiated JSON-RPC requests.
+ *
+ * Handler precedence:
+ * 1) per-call provider options
+ * 2) provider default settings
+ * 3) built-in defaults in the RPC client
+ * 4) `onUnhandled` fallback
+ */
 export interface CodexAppServerRequestHandlers {
   onCommandExecutionApproval?: (
     request: AppServerCommandExecutionApprovalRequest,
@@ -142,6 +169,9 @@ export interface CodexAppServerRequestHandlers {
 
 export type AppServerMcpServerConfig = McpServerConfig | SdkMcpServer;
 
+/**
+ * Provider-level and model-level settings for Codex app-server mode.
+ */
 export interface CodexAppServerSettings {
   codexPath?: string;
   cwd?: string;
@@ -175,10 +205,16 @@ export interface CodexAppServerSettings {
   onSessionCreated?: (session: CodexAppServerSession) => void | Promise<void>;
 }
 
+/**
+ * Factory options passed to `createCodexAppServer`.
+ */
 export interface CodexAppServerProviderSettings {
   defaultSettings?: CodexAppServerSettings;
 }
 
+/**
+ * Per-request overrides passed via `providerOptions['codex-app-server']`.
+ */
 export interface CodexAppServerProviderOptions {
   threadId?: string;
   resume?: string;

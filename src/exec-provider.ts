@@ -36,10 +36,13 @@ export function createCodexExec(options: CodexExecProviderSettings = {}): CodexE
     return new ExecLanguageModel({ id: modelId, settings: merged });
   };
 
-  const provider = function (modelId: CodexModelId, settings?: CodexExecSettings) {
-    if (new.target) throw new Error('The Codex CLI provider function cannot be called with new.');
-    return createModel(modelId, settings);
-  } as CodexExecProvider;
+  const provider = Object.assign(
+    function (modelId: CodexModelId, settings?: CodexExecSettings) {
+      if (new.target) throw new Error('The Codex CLI provider function cannot be called with new.');
+      return createModel(modelId, settings);
+    },
+    { specificationVersion: 'v3' as const },
+  ) as CodexExecProvider;
 
   provider.languageModel = createModel;
   provider.chat = createModel;

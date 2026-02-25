@@ -49,13 +49,24 @@ describe('tool-result-converter', () => {
 
     expect(result.text).toContain('[unsupported-tool-content-part]');
     expect(
-      result.warnings.some((warning) => warning.includes('Unsupported tool content part')),
+      result.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.details.includes('Unsupported tool content part'),
+      ),
     ).toBe(true);
   });
 
   it('returns warning for unsupported output type', () => {
     const result = formatToolResultOutput({ type: 'wat' } as never);
     expect(result.text).toBe('[unsupported-tool-result-output]');
-    expect(result.warnings[0]).toContain('Unsupported tool result output type');
+    expect(result.warnings[0]).toMatchObject({
+      type: 'unsupported',
+    });
+    expect(
+      result.warnings[0]?.type === 'unsupported'
+        ? result.warnings[0].details
+        : '[unexpected-warning-type]',
+    ).toContain('Unsupported tool result output type');
   });
 });

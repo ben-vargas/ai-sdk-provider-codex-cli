@@ -1,6 +1,6 @@
-import type { TurnStartParams, UserInput } from './app-server-protocol-types.js';
-import type { AppServerUserInput, CodexAppServerSession } from './types-app-server.js';
-import { AppServerRpcClient } from './app-server-rpc-client.js';
+import type { TurnStartParams, UserInput } from './protocol/types.js';
+import type { AppServerUserInput, CodexAppServerSession } from './types.js';
+import { AppServerRpcClient } from './rpc/client.js';
 
 function toProtocolInput(input: AppServerUserInput): UserInput {
   switch (input.type) {

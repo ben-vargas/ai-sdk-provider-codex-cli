@@ -3,6 +3,7 @@ import type {
   PromptConversionMode,
   PromptMessage,
   ConvertedPrompt,
+  ConvertedWarning,
 } from './types.js';
 import { formatToolResultOutput, safeJsonStringify } from './tool-result-converter.js';
 import { isCompatImagePart, isFilePart, toImageReference } from './image-converter.js';
@@ -78,10 +79,10 @@ function normalizeUserInputFromMessages(messages: PromptMessage[]): {
   text: string;
   localImages: ConvertedPrompt['localImages'];
   remoteImageUrls: string[];
-  warnings: string[];
+  warnings: ConvertedWarning[];
   sawImages: boolean;
 } {
-  const warnings: string[] = [];
+  const warnings: ConvertedWarning[] = [];
   const localImages: ConvertedPrompt['localImages'] = [];
   const remoteImageUrls: string[] = [];
   const userTextParts: string[] = [];
@@ -115,12 +116,20 @@ function normalizeUserInputFromMessages(messages: PromptMessage[]): {
         } else if (image.kind === 'remote') {
           remoteImageUrls.push(image.url);
         } else {
-          warnings.push(image.warning);
+          warnings.push({
+            type: 'unsupported',
+            feature: `prompt.user.${part.type}`,
+            details: image.warning,
+          });
         }
         continue;
       }
 
-      warnings.push(`Unsupported user content part "${part.type}".`);
+      warnings.push({
+        type: 'unsupported',
+        feature: `prompt.user.${part.type}`,
+        details: `Unsupported user content part "${part.type}".`,
+      });
     }
 
     const joined = inlineTextParts.join('\n').trim();
@@ -138,8 +147,11 @@ function normalizeUserInputFromMessages(messages: PromptMessage[]): {
   };
 }
 
-function formatAssistantParts(parts: PromptContentPart[]): { lines: string[]; warnings: string[] } {
-  const warnings: string[] = [];
+function formatAssistantParts(parts: PromptContentPart[]): {
+  lines: string[];
+  warnings: ConvertedWarning[];
+} {
+  const warnings: ConvertedWarning[] = [];
   const lines: string[] = [];
   const textParts: string[] = [];
 
@@ -162,9 +174,11 @@ function formatAssistantParts(parts: PromptContentPart[]): { lines: string[]; wa
       if (isToolCallPart(part)) {
         lines.push(`Tool Call (${part.toolName}): ${safeJsonStringify(part.input)}`);
       } else {
-        warnings.push(
-          'Malformed assistant tool-call part; expected toolName, toolCallId, and input.',
-        );
+        warnings.push({
+          type: 'unsupported',
+          feature: 'prompt.assistant.tool-call.malformed',
+          details: 'Malformed assistant tool-call part; expected toolName, toolCallId, and input.',
+        });
       }
       continue;
     }
@@ -183,7 +197,11 @@ function formatAssistantParts(parts: PromptContentPart[]): { lines: string[]; wa
       continue;
     }
 
-    warnings.push(`Unsupported assistant content part "${part.type}".`);
+    warnings.push({
+      type: 'unsupported',
+      feature: `prompt.assistant.${part.type}`,
+      details: `Unsupported assistant content part "${part.type}".`,
+    });
   }
 
   const text = textParts.join('\n').trim();
@@ -194,8 +212,11 @@ function formatAssistantParts(parts: PromptContentPart[]): { lines: string[]; wa
   return { lines, warnings };
 }
 
-function formatToolRoleParts(parts: PromptContentPart[]): { lines: string[]; warnings: string[] } {
-  const warnings: string[] = [];
+function formatToolRoleParts(parts: PromptContentPart[]): {
+  lines: string[];
+  warnings: ConvertedWarning[];
+} {
+  const warnings: ConvertedWarning[] = [];
   const lines: string[] = [];
 
   for (const part of parts) {
@@ -215,7 +236,11 @@ function formatToolRoleParts(parts: PromptContentPart[]): { lines: string[]; war
       continue;
     }
 
-    warnings.push(`Unsupported tool message content part "${part.type}".`);
+    warnings.push({
+      type: 'unsupported',
+      feature: `prompt.tool.${part.type}`,
+      details: `Unsupported tool message content part "${part.type}".`,
+    });
   }
 
   return { lines, warnings };
@@ -225,9 +250,9 @@ function formatStatelessTranscript(prompt: readonly PromptMessage[]): {
   text: string;
   localImages: ConvertedPrompt['localImages'];
   remoteImageUrls: string[];
-  warnings: string[];
+  warnings: ConvertedWarning[];
 } {
-  const warnings: string[] = [];
+  const warnings: ConvertedWarning[] = [];
   const lines: string[] = [];
   const localImages: ConvertedPrompt['localImages'] = [];
   const remoteImageUrls: string[] = [];
@@ -328,7 +353,7 @@ function formatPersistentInput(prompt: readonly PromptMessage[]): {
   text: string;
   localImages: ConvertedPrompt['localImages'];
   remoteImageUrls: string[];
-  warnings: string[];
+  warnings: ConvertedWarning[];
 } {
   const selectedUserTurn = selectLatestUserTurn(prompt);
   const normalized = normalizeUserInputFromMessages(selectedUserTurn);
@@ -338,9 +363,10 @@ function formatPersistentInput(prompt: readonly PromptMessage[]): {
   const warnings = [...normalized.warnings];
 
   if (nonSystemCount > selectedCount) {
-    warnings.push(
-      'Stateful mode ignores earlier prompt messages and only sends the latest user turn.',
-    );
+    warnings.push({
+      type: 'other',
+      message: 'Stateful mode ignores earlier prompt messages and only sends the latest user turn.',
+    });
   }
 
   return {

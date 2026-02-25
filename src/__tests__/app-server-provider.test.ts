@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NoSuchModelError } from '@ai-sdk/provider';
-import { createCodexAppServer } from '../app-server-provider.js';
-import { AppServerRpcClient } from '../app-server-rpc-client.js';
+import { createCodexAppServer } from '../app-server/provider.js';
+import { AppServerRpcClient } from '../app-server/rpc/client.js';
 import { UnsupportedFeatureError } from '../errors.js';
 
 describe('createCodexAppServer', () => {

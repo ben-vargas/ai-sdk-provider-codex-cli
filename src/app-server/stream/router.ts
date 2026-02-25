@@ -1,24 +1,13 @@
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
 import { generateId } from '@ai-sdk/provider-utils';
-import type {
-  ThreadItem,
-  ThreadTokenUsageUpdatedNotification,
-  Turn,
-} from './app-server-protocol-types.js';
-import { AppServerRpcClient } from './app-server-rpc-client.js';
-import { safeStringify } from './shared-utils.js';
-import { AppServerStreamEmitter } from './app-server-stream-emitter.js';
+import type { ThreadItem, ThreadTokenUsageUpdatedNotification, Turn } from '../protocol/types.js';
+import { AppServerRpcClient } from '../rpc/client.js';
+import { safeStringify } from '../../shared-utils.js';
+import { AppServerStreamEmitter } from './emitter.js';
+import { ToolTracker, type ToolExecutionStats } from './tool-tracker.js';
 
 function normalizeItemType(type: string): string {
   return type.toLowerCase();
-}
-
-type ToolStatsType = 'exec' | 'patch' | 'mcp' | 'web_search' | 'other';
-
-export interface ToolExecutionStats {
-  totalCalls: number;
-  totalDurationMs: number;
-  byType: Record<ToolStatsType, number>;
 }
 
 function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | undefined {
@@ -72,21 +61,9 @@ export class AppServerNotificationRouter {
   private readonly onError: (error: Error) => void;
 
   private turnId?: string;
-  private activeToolNames = new Map<string, { toolName: string; dynamic?: boolean }>();
-  private activeToolStarts = new Map<string, number>();
+  private readonly toolTracker = new ToolTracker();
   private textItemIdsWithDelta = new Set<string>();
   private reasoningItemIdsWithDelta = new Set<string>();
-  private toolExecutionStats: ToolExecutionStats = {
-    totalCalls: 0,
-    totalDurationMs: 0,
-    byType: {
-      exec: 0,
-      patch: 0,
-      mcp: 0,
-      web_search: 0,
-      other: 0,
-    },
-  };
 
   private notificationListener?: (method: string, params: Record<string, unknown>) => void;
   private serverRequestListener?: (
@@ -109,30 +86,10 @@ export class AppServerNotificationRouter {
   }
 
   getToolExecutionStats(): ToolExecutionStats {
-    return {
-      totalCalls: this.toolExecutionStats.totalCalls,
-      totalDurationMs: this.toolExecutionStats.totalDurationMs,
-      byType: { ...this.toolExecutionStats.byType },
-    };
+    return this.toolTracker.getStats();
   }
 
-  private toolTypeFromName(toolName: string): ToolStatsType {
-    if (toolName === 'exec') return 'exec';
-    if (toolName === 'patch') return 'patch';
-    if (toolName === 'web_search') return 'web_search';
-    if (toolName.startsWith('mcp__')) return 'mcp';
-    return 'other';
-  }
-
-  private recordToolCompletion(toolName: string, durationMs?: number): void {
-    this.toolExecutionStats.totalCalls += 1;
-    this.toolExecutionStats.byType[this.toolTypeFromName(toolName)] += 1;
-    if (typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0) {
-      this.toolExecutionStats.totalDurationMs += durationMs;
-    }
-  }
-
-  subscribe(): void {
+  subscribe(): () => void {
     this.notificationListener = (method: string, params: Record<string, unknown>) => {
       this.emitter.emitRaw(method, params);
       this.handleNotification(method, params);
@@ -148,6 +105,8 @@ export class AppServerNotificationRouter {
       this.handleServerRequest(method, params);
     };
     this.client.on('server-request', this.serverRequestListener);
+
+    return () => this.unsubscribe();
   }
 
   unsubscribe(): void {
@@ -223,8 +182,7 @@ export class AppServerNotificationRouter {
       const tool = mapTool(item);
       if (!tool) return;
       const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-      this.activeToolNames.set(toolCallId, tool);
-      this.activeToolStarts.set(toolCallId, Date.now());
+      this.toolTracker.start(toolCallId, tool);
       this.emitter.emitToolCall(toolCallId, tool.toolName, safeStringify(item), tool.dynamic);
       return;
     }
@@ -268,15 +226,13 @@ export class AppServerNotificationRouter {
       if (!tool) return;
 
       const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-      const resolved = this.activeToolNames.get(toolCallId) ?? tool;
-      const itemDurationMs =
+      const resolved = this.toolTracker.complete(
+        toolCallId,
+        tool,
         typeof (item as { durationMs?: unknown }).durationMs === 'number'
           ? (item as { durationMs: number }).durationMs
-          : undefined;
-      const startedAt = this.activeToolStarts.get(toolCallId);
-      const fallbackDurationMs =
-        startedAt !== undefined ? Math.max(0, Date.now() - startedAt) : undefined;
-      this.recordToolCompletion(resolved.toolName, itemDurationMs ?? fallbackDurationMs);
+          : undefined,
+      );
       this.emitter.emitToolResult(
         toolCallId,
         resolved.toolName,
@@ -284,8 +240,6 @@ export class AppServerNotificationRouter {
         resolved.dynamic,
         (item as { status?: unknown }).status === 'failed',
       );
-      this.activeToolNames.delete(toolCallId);
-      this.activeToolStarts.delete(toolCallId);
       return;
     }
 
@@ -296,7 +250,7 @@ export class AppServerNotificationRouter {
     ) {
       if (!this.isSameTurn(params)) return;
       const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      const tracked = this.activeToolNames.get(itemId);
+      const tracked = this.toolTracker.get(itemId);
       const defaultToolName = method === 'item/commandExecution/outputDelta' ? 'exec' : 'patch';
       this.emitter.emitToolOutputDelta(itemId, tracked?.toolName ?? defaultToolName, params.delta);
       return;

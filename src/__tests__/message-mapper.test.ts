@@ -36,7 +36,14 @@ describe('mapMessagesToPrompt', () => {
 
       expect(images).toHaveLength(1);
       expect(images[0]?.data).toBe('data:image/png;base64,abc123');
-      expect(warnings?.some((w) => w.toLowerCase().includes('ignored'))).toBeFalsy();
+      expect(
+        warnings?.some(
+          (w) =>
+            w.type === 'other' &&
+            typeof w.message === 'string' &&
+            w.message.toLowerCase().includes('ignored'),
+        ),
+      ).toBeFalsy();
     });
 
     it('extracts multiple images from single message', () => {
@@ -90,7 +97,14 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(0);
-      expect(warnings?.some((w) => w.toLowerCase().includes('unsupported'))).toBe(true);
+      expect(
+        warnings?.some(
+          (w) =>
+            w.type === 'unsupported' &&
+            typeof w.details === 'string' &&
+            w.details.toLowerCase().includes('unsupported'),
+        ),
+      ).toBe(true);
     });
 
     it('handles mixed valid and invalid images', () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { listModels } from '../list-models.js';
-import { AppServerRpcClient } from '../app-server-rpc-client.js';
+import { listModels } from '../app-server/list-models.js';
+import { AppServerRpcClient } from '../app-server/rpc/client.js';
 import { UnsupportedFeatureError } from '../errors.js';
 
 describe('listModels', () => {

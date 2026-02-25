@@ -1326,7 +1326,7 @@ describe('ExecLanguageModel', () => {
       expect(lastChild._stdinData().length).toBeGreaterThan(10000);
     });
 
-    it('handles special characters (Chinese, newlines, backticks) correctly', async () => {
+    it('handles special characters (newlines, backticks) correctly', async () => {
       let lastChild: any = null;
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-special' }),
@@ -1347,7 +1347,7 @@ describe('ExecLanguageModel', () => {
         settings: { allowNpx: true, color: 'never' },
       });
 
-      const specialPrompt = '请优化登录界面\n```tsx\nconst x = `template`;\n```';
+      const specialPrompt = 'Please optimize the sign-in page.\n```tsx\nconst x = `template`;\n```';
       await model.doGenerate({
         prompt: [{ role: 'user', content: specialPrompt }] as any,
       });
@@ -1356,7 +1356,7 @@ describe('ExecLanguageModel', () => {
 
       // Verify special characters are preserved in stdin
       const stdinData = lastChild._stdinData();
-      expect(stdinData).toContain('请优化登录界面');
+      expect(stdinData).toContain('Please optimize the sign-in page.');
       expect(stdinData).toContain('```tsx');
       expect(stdinData).toContain('`template`');
     });

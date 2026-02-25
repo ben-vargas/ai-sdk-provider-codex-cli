@@ -136,10 +136,17 @@ describe('shared-utils', () => {
       frequencyPenalty: 1,
       stopSequences: ['stop'],
       seed: 42,
+      tools: [{ name: 'x' }],
+      toolChoice: { type: 'tool', toolName: 'x' },
     });
 
-    expect(warnings).toHaveLength(7);
+    expect(warnings).toHaveLength(9);
     expect(warnings.every((warning) => warning.type === 'unsupported')).toBe(true);
+    const features = warnings
+      .map((warning) => (warning.type === 'unsupported' ? warning.feature : undefined))
+      .filter((feature): feature is string => typeof feature === 'string');
+    expect(features).toContain('tools');
+    expect(features).toContain('toolChoice');
   });
 
   it('converts MCP settings into config override keys', () => {

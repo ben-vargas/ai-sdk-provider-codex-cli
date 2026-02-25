@@ -1,4 +1,4 @@
-import type { ConvertedToolResult, NormalizedToolOutput } from './types.js';
+import type { ConvertedToolResult, ConvertedWarning, NormalizedToolOutput } from './types.js';
 
 export function safeJsonStringify(value: unknown): string {
   if (value === undefined) return '';
@@ -27,7 +27,7 @@ export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedT
     case 'error-json':
       return { text: `Tool error: ${safeJsonStringify(output.value)}`, warnings: [] };
     case 'content': {
-      const warnings: string[] = [];
+      const warnings: ConvertedWarning[] = [];
       const parts = output.value
         .map((part) => {
           if (part.type === 'text') return part.text;
@@ -40,9 +40,11 @@ export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedT
           if (part.type === 'image-url') return `[image-url: ${part.url}]`;
           if (part.type === 'image-file-id') return '[image-file-id]';
 
-          warnings.push(
-            `Unsupported tool content part "${String((part as { type?: unknown }).type)}".`,
-          );
+          warnings.push({
+            type: 'unsupported',
+            feature: `tool-result.content.${String((part as { type?: unknown }).type)}`,
+            details: `Unsupported tool content part "${String((part as { type?: unknown }).type)}".`,
+          });
           return '[unsupported-tool-content-part]';
         })
         .filter((part) => part.length > 0);
@@ -53,7 +55,11 @@ export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedT
       return {
         text: '[unsupported-tool-result-output]',
         warnings: [
-          `Unsupported tool result output type "${String((output as { type?: unknown }).type)}".`,
+          {
+            type: 'unsupported',
+            feature: `tool-result.output.${String((output as { type?: unknown }).type)}`,
+            details: `Unsupported tool result output type "${String((output as { type?: unknown }).type)}".`,
+          },
         ],
       };
   }

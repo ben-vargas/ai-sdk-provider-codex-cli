@@ -79,7 +79,10 @@ describe('prompt-converter', () => {
     expect(converted.text).toBe('newer');
     expect(converted.localImages).toHaveLength(1);
     expect(
-      converted.warnings.some((warning) => warning.includes('Stateful mode ignores earlier')),
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'other' && warning.message.includes('Stateful mode ignores earlier'),
+      ),
     ).toBe(true);
   });
 
@@ -123,7 +126,10 @@ describe('prompt-converter', () => {
     });
 
     expect(
-      converted.warnings.some((warning) => warning.includes('Unsupported file mediaType')),
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' && warning.details.includes('Unsupported file mediaType'),
+      ),
     ).toBe(true);
   });
 
@@ -146,7 +152,11 @@ describe('prompt-converter', () => {
 
     expect(converted.text).not.toContain('Tool Call (search):');
     expect(
-      converted.warnings.some((warning) => warning.includes('Malformed assistant tool-call part')),
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.details.includes('Malformed assistant tool-call part'),
+      ),
     ).toBe(true);
   });
 
@@ -169,7 +179,11 @@ describe('prompt-converter', () => {
 
     expect(converted.text).not.toContain('Tool Call (');
     expect(
-      converted.warnings.some((warning) => warning.includes('Malformed assistant tool-call part')),
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.details.includes('Malformed assistant tool-call part'),
+      ),
     ).toBe(true);
   });
 
@@ -192,7 +206,11 @@ describe('prompt-converter', () => {
 
     expect(converted.text).not.toContain('Tool Call (search):');
     expect(
-      converted.warnings.some((warning) => warning.includes('Malformed assistant tool-call part')),
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.details.includes('Malformed assistant tool-call part'),
+      ),
     ).toBe(true);
   });
 

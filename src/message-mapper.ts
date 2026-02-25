@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai';
+import type { SharedV3Warning } from '@ai-sdk/provider';
 import { convertPromptToCodexInput, type PromptMessage } from './converters/index.js';
 import type { ImageData } from './image-utils.js';
 
@@ -7,16 +8,31 @@ export type { ImageData };
 export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
   promptText: string;
   images: ImageData[];
-  warnings?: string[];
+  warnings?: SharedV3Warning[];
 } {
   const converted = convertPromptToCodexInput({
     prompt: prompt as unknown as readonly PromptMessage[],
     mode: 'stateless',
   });
 
-  const warnings = [...converted.warnings];
+  const warnings: SharedV3Warning[] = converted.warnings.map((warning) =>
+    warning.type === 'unsupported'
+      ? {
+          type: 'unsupported',
+          feature: warning.feature,
+          details: warning.details,
+        }
+      : {
+          type: 'other',
+          message: warning.message,
+        },
+  );
   if (converted.remoteImageUrls.length > 0) {
-    warnings.push('Unsupported image format in message (HTTP URLs not supported)');
+    warnings.push({
+      type: 'unsupported',
+      feature: 'prompt.user.image.remote-url.exec',
+      details: 'Unsupported image format in message (HTTP URLs not supported)',
+    });
   }
 
   const promptParts: string[] = [];

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
-import { AppServerStreamEmitter } from '../app-server-stream-emitter.js';
-import { AppServerNotificationRouter } from '../app-server-notification-router.js';
+import { AppServerStreamEmitter } from '../app-server/stream/emitter.js';
+import { AppServerNotificationRouter } from '../app-server/stream/router.js';
 
 class FakeClient extends EventEmitter {}
 

@@ -696,8 +696,10 @@ export class ExecLanguageModel implements LanguageModelV3 {
         frequencyPenalty: options.frequencyPenalty,
         stopSequences: options.stopSequences,
         seed: (options as { seed?: unknown }).seed,
+        tools: (options as { tools?: unknown }).tools,
+        toolChoice: (options as { toolChoice?: unknown }).toolChoice,
       }),
-      ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
+      ...(mappingWarnings ?? []),
     ] as SharedV3Warning[];
 
     this.logger.debug(
@@ -910,8 +912,10 @@ export class ExecLanguageModel implements LanguageModelV3 {
         frequencyPenalty: options.frequencyPenalty,
         stopSequences: options.stopSequences,
         seed: (options as { seed?: unknown }).seed,
+        tools: (options as { tools?: unknown }).tools,
+        toolChoice: (options as { toolChoice?: unknown }).toolChoice,
       }),
-      ...(mappingWarnings?.map((m) => ({ type: 'other', message: m })) || []),
+      ...(mappingWarnings ?? []),
     ] as SharedV3Warning[];
 
     this.logger.debug(

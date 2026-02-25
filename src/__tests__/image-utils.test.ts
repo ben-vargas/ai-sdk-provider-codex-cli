@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   extractImageData,
   writeImageToTempFile,
@@ -152,6 +154,23 @@ describe('extractImageData', () => {
       const result = extractImageData(part);
       expect(result).toBeNull();
     });
+
+    it('loads image data from file: URL object', () => {
+      const path = join(tmpdir(), `codex-image-utils-${Date.now()}.png`);
+      writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      try {
+        const part: ImagePart = {
+          type: 'image',
+          image: new URL(`file://${path}`),
+          mimeType: 'image/png',
+        };
+        const result = extractImageData(part);
+        expect(result?.data).toMatch(/^data:image\/png;base64,/);
+        expect(result?.mimeType).toBe('image/png');
+      } finally {
+        rmSync(path, { force: true });
+      }
+    });
   });
 
   describe('legacy data field', () => {
@@ -192,6 +211,22 @@ describe('extractImageData', () => {
       };
       const result = extractImageData(part);
       expect(result).toBeNull();
+    });
+
+    it('loads image data from legacy file:// url string', () => {
+      const path = join(tmpdir(), `codex-image-utils-${Date.now()}-legacy.png`);
+      writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      try {
+        const part: ImagePart = {
+          type: 'image',
+          url: `file://${path}`,
+          mimeType: 'image/png',
+        };
+        const result = extractImageData(part);
+        expect(result?.data).toMatch(/^data:image\/png;base64,/);
+      } finally {
+        rmSync(path, { force: true });
+      }
     });
   });
 

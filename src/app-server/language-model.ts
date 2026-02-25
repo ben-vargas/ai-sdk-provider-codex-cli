@@ -9,90 +9,31 @@ import type {
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
-import { z } from 'zod';
-import { createVerboseLogger, getLogger } from './logger.js';
-import { convertPromptToCodexInput, type PromptMessage } from './converters/index.js';
-import { cleanupTempImages, type ImageData, writeImageToTempFile } from './image-utils.js';
+import { createVerboseLogger, getLogger } from '../logger.js';
+import { convertPromptToCodexInput, type PromptMessage } from '../converters/index.js';
+import { cleanupTempImages, type ImageData, writeImageToTempFile } from '../image-utils.js';
 import {
   createEmptyCodexUsage,
   mapUnsupportedSettingsWarnings,
   mcpServersToConfigOverrides,
   mergeSingleMcpServer,
   sanitizeJsonSchema,
-} from './shared-utils.js';
+} from '../shared-utils.js';
 import type {
   AppServerMcpServerConfig,
   AppServerThreadMode,
   CodexAppServerProviderOptions,
   CodexAppServerRequestHandlers,
   CodexAppServerSettings,
-} from './types-app-server.js';
-import type { CodexModelId, Logger, McpServerConfig } from './types-shared.js';
-import type { Turn, TurnStartParams, UserInput } from './app-server-protocol-types.js';
-import { AppServerRpcClient } from './app-server-rpc-client.js';
-import { AppServerSession } from './app-server-session.js';
-import { AppServerNotificationRouter } from './app-server-notification-router.js';
-import { AppServerStreamEmitter } from './app-server-stream-emitter.js';
-import { isSdkMcpServer, type SdkMcpServer } from './tools/sdk-mcp-server.js';
-
-const appServerProviderOptionsSchema = z
-  .object({
-    threadId: z.string().optional(),
-    resume: z.string().optional(),
-    threadMode: z.enum(['stateless', 'persistent']).optional(),
-    includeRawChunks: z.boolean().optional(),
-
-    personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-    summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
-    approvalPolicy: z
-      .union([
-        z.enum(['untrusted', 'on-failure', 'on-request', 'never']),
-        z.object({
-          reject: z.object({
-            sandbox_approval: z.boolean(),
-            rules: z.boolean(),
-            mcp_elicitations: z.boolean(),
-          }),
-        }),
-      ])
-      .optional(),
-    sandboxPolicy: z
-      .union([
-        z.enum(['read-only', 'workspace-write', 'danger-full-access']),
-        z.object({ type: z.string() }).passthrough(),
-      ])
-      .optional(),
-    baseInstructions: z.string().optional(),
-    developerInstructions: z.string().optional(),
-
-    mcpServers: z.record(z.string(), z.any()).optional(),
-    rmcpClient: z.boolean().optional(),
-    configOverrides: z
-      .record(
-        z.string(),
-        z.union([
-          z.string(),
-          z.number(),
-          z.boolean(),
-          z.object({}).passthrough(),
-          z.array(z.any()),
-        ]),
-      )
-      .optional(),
-
-    autoApprove: z.boolean().optional(),
-    persistExtendedHistory: z.boolean().optional(),
-
-    serverRequests: z.object({}).passthrough().optional(),
-    onSessionCreated: z
-      .any()
-      .refine((value) => value === undefined || typeof value === 'function', {
-        message: 'onSessionCreated must be a function',
-      })
-      .optional(),
-  })
-  .strict();
+} from './types.js';
+import type { CodexModelId, Logger, McpServerConfig } from '../types-shared.js';
+import type { Turn, TurnStartParams, UserInput } from './protocol/types.js';
+import { AppServerRpcClient } from './rpc/client.js';
+import { AppServerSession } from './session.js';
+import { AppServerNotificationRouter } from './stream/router.js';
+import { AppServerStreamEmitter } from './stream/emitter.js';
+import { isSdkMcpServer, type SdkMcpServer } from '../tools/sdk-mcp-server.js';
+import { appServerProviderOptionsSchema } from '../validation.js';
 
 const INTERRUPT_COMPLETION_TIMEOUT_MS = 5_000;
 
@@ -557,7 +498,18 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         ...converted.localImages.map((image) => ({ type: 'local', data: image }) as PromptImage),
         ...converted.remoteImageUrls.map((url) => ({ type: 'remote', url }) as PromptImage),
       ],
-      warnings: converted.warnings.map((warning) => ({ type: 'other', message: warning })),
+      warnings: converted.warnings.map((warning) =>
+        warning.type === 'unsupported'
+          ? {
+              type: 'unsupported',
+              feature: warning.feature,
+              details: warning.details,
+            }
+          : {
+              type: 'other',
+              message: warning.message,
+            },
+      ),
       systemInstruction: converted.systemInstruction,
     };
   }
@@ -658,6 +610,8 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         frequencyPenalty: options.frequencyPenalty,
         stopSequences: options.stopSequences,
         seed: (options as { seed?: unknown }).seed,
+        tools: (options as { tools?: unknown }).tools,
+        toolChoice: (options as { toolChoice?: unknown }).toolChoice,
       }),
     ];
 
@@ -738,6 +692,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             settleTurn?.reject(error);
           },
         });
+        const unsubscribeRouter = router.subscribe();
 
         let aborted = false;
         let settled = false;
@@ -746,7 +701,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         const cleanup = () => {
           if (cleanedUp) return;
           cleanedUp = true;
-          router.unsubscribe();
+          unsubscribeRouter();
           this.client.clearActiveRequestHandlers(threadId);
           cleanupTempImages(tempImagePaths);
           if (options.abortSignal) {
@@ -787,7 +742,6 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           })();
         };
 
-        router.subscribe();
         this.client.setActiveRequestHandlers(threadId, settings.serverRequests ?? {});
 
         if (options.abortSignal) {

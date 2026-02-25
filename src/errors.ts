@@ -1,4 +1,4 @@
-import { APICallError, LoadAPIKeyError } from '@ai-sdk/provider';
+import { APICallError, LoadAPIKeyError, UnsupportedFunctionalityError } from '@ai-sdk/provider';
 
 export interface CodexErrorMetadata {
   code?: string;
@@ -7,7 +7,7 @@ export interface CodexErrorMetadata {
   promptExcerpt?: string;
 }
 
-export class UnsupportedFeatureError extends Error {
+export class UnsupportedFeatureError extends UnsupportedFunctionalityError {
   readonly feature: string;
   readonly minCodexVersion?: string;
   readonly serverVersion?: string;
@@ -23,12 +23,12 @@ export class UnsupportedFeatureError extends Error {
     serverVersion?: string;
     message?: string;
   }) {
-    super(
+    const resolvedMessage =
       message ??
-        `Feature '${feature}' is not supported by this codex app-server` +
-          (serverVersion ? ` (detected ${serverVersion})` : '') +
-          (minCodexVersion ? `. Requires codex CLI >= ${minCodexVersion}.` : '.'),
-    );
+      `Feature '${feature}' is not supported by this codex app-server` +
+        (serverVersion ? ` (detected ${serverVersion})` : '') +
+        (minCodexVersion ? `. Requires codex CLI >= ${minCodexVersion}.` : '.');
+    super({ functionality: feature, message: resolvedMessage });
     this.name = 'UnsupportedFeatureError';
     this.feature = feature;
     this.minCodexVersion = minCodexVersion;

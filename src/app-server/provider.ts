@@ -1,13 +1,13 @@
 import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
-import { AppServerLanguageModel } from './app-server-language-model.js';
-import { AppServerRpcClient } from './app-server-rpc-client.js';
-import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types-app-server.js';
-import type { SdkMcpServer } from './tools/sdk-mcp-server.js';
-import { validateAppServerSettings } from './validation.js';
-import { getLogger } from './logger.js';
-import type { ModelInfo } from './app-server-protocol-types.js';
-import type { CodexModelId } from './types-shared.js';
+import { AppServerLanguageModel } from './language-model.js';
+import { AppServerRpcClient } from './rpc/client.js';
+import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types.js';
+import type { SdkMcpServer } from '../tools/sdk-mcp-server.js';
+import { validateAppServerSettings } from '../validation.js';
+import { getLogger } from '../logger.js';
+import type { ModelInfo } from './protocol/types.js';
+import type { CodexModelId } from '../types-shared.js';
 
 export interface CodexAppServerModelListResult {
   models: ModelInfo[];
@@ -15,6 +15,11 @@ export interface CodexAppServerModelListResult {
   nextCursor?: string | null;
 }
 
+/**
+ * Provider interface for the persistent Codex app-server transport.
+ *
+ * Use this via `createCodexAppServer()` or the default `codexAppServer` export.
+ */
 export interface CodexAppServerProvider extends ProviderV3 {
   (modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
   languageModel(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
@@ -26,6 +31,27 @@ export interface CodexAppServerProvider extends ProviderV3 {
   listModels(modelProviders?: string[]): Promise<CodexAppServerModelListResult>;
 }
 
+/**
+ * Creates a Codex app-server provider instance.
+ *
+ * The provider maintains a shared JSON-RPC client process and can be reused
+ * across many model calls. Always call `provider.close()` (or `dispose()`)
+ * when finished.
+ *
+ * @example
+ * ```ts
+ * const provider = createCodexAppServer({
+ *   defaultSettings: { minCodexVersion: '0.105.0-alpha.0' },
+ * });
+ *
+ * try {
+ *   const model = provider('gpt-5.3-codex');
+ *   // use with generateText / streamText / generateObject
+ * } finally {
+ *   await provider.close();
+ * }
+ * ```
+ */
 export function createCodexAppServer(
   options: CodexAppServerProviderSettings = {},
 ): CodexAppServerProvider {
@@ -76,13 +102,16 @@ export function createCodexAppServer(
     });
   };
 
-  const provider = function (modelId: CodexModelId, settings?: CodexAppServerSettings) {
-    if (new.target) {
-      throw new Error('The Codex app-server provider function cannot be called with new.');
-    }
+  const provider = Object.assign(
+    function (modelId: CodexModelId, settings?: CodexAppServerSettings) {
+      if (new.target) {
+        throw new Error('The Codex app-server provider function cannot be called with new.');
+      }
 
-    return createModel(modelId, settings);
-  } as unknown as CodexAppServerProvider;
+      return createModel(modelId, settings);
+    },
+    { specificationVersion: 'v3' as const },
+  ) as unknown as CodexAppServerProvider;
 
   provider.languageModel = createModel;
   provider.chat = createModel;

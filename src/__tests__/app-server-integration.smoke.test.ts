@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateText } from 'ai';
-import { createCodexAppServer } from '../app-server-provider.js';
+import { createCodexAppServer } from '../app-server/provider.js';
 
 const runIntegration = process.env.CODEX_APP_SERVER_INTEGRATION === '1';
 const describeIntegration = runIntegration ? describe : describe.skip;

@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
-import { createAPICallError, UnsupportedFeatureError } from './errors.js';
-import { getLogger } from './logger.js';
-import type { Logger } from './types-shared.js';
+import { createAPICallError, UnsupportedFeatureError } from '../../errors.js';
+import { getLogger } from '../../logger.js';
+import type { Logger } from '../../types-shared.js';
 import type {
   AppServerAuthRefreshRequest,
   AppServerCommandExecutionApprovalRequest,
@@ -15,7 +15,7 @@ import type {
   AppServerUnhandledRequest,
   CodexAppServerRequestHandlers,
   CodexAppServerSettings,
-} from './types-app-server.js';
+} from '../types.js';
 import type {
   InitializeParams,
   InitializeResponse,
@@ -32,7 +32,7 @@ import type {
   TurnInterruptResponse,
   TurnStartParams,
   TurnStartResponse,
-} from './app-server-protocol-types.js';
+} from '../protocol/types.js';
 import {
   incomingNotificationSchemas,
   jsonRpcErrorResponseSchema,
@@ -40,7 +40,7 @@ import {
   jsonRpcRequestSchema,
   jsonRpcResponseSchema,
   serverRequestSchema,
-} from './app-server-protocol-validators.js';
+} from '../protocol/validators.js';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;

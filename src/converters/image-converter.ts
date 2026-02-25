@@ -6,6 +6,16 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
 }
 
+function isFileUrlValue(value: unknown): boolean {
+  if (value instanceof URL) {
+    return value.protocol === 'file:';
+  }
+  if (typeof value === 'string') {
+    return /^file:\/\//i.test(value.trim());
+  }
+  return false;
+}
+
 function asRemoteUrl(value: unknown): string | undefined {
   if (value instanceof URL) {
     const asString = value.toString();
@@ -56,6 +66,13 @@ export function toImageReference(
       return { kind: 'local', image };
     }
 
+    if (isFileUrlValue(part.data) || isFileUrlValue((part as { url?: unknown }).url)) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unable to load image from file:// URL (missing or unreadable file).',
+      };
+    }
+
     return {
       kind: 'unsupported',
       warning: 'Unsupported image format in message.',
@@ -71,6 +88,17 @@ export function toImageReference(
     const image = extractImageData(part);
     if (image) {
       return { kind: 'local', image };
+    }
+
+    if (
+      isFileUrlValue(part.image) ||
+      isFileUrlValue(part.url) ||
+      isFileUrlValue((part as { data?: unknown }).data)
+    ) {
+      return {
+        kind: 'unsupported',
+        warning: 'Unable to load image from file:// URL (missing or unreadable file).',
+      };
     }
 
     return {

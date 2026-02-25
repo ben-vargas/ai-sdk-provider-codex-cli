@@ -1,10 +1,10 @@
 import { createLocalMcpServer, type LocalMcpServer } from './local-mcp-server.js';
 import type { LocalTool } from './tool-builder.js';
 
-export const SDK_MCP_SERVER_MARKER = '__sdkMcpServer' as const;
+export const SDK_MCP_SERVER_MARKER = Symbol.for('ai-sdk-provider-codex-cli.sdkMcpServer');
 
 export interface SdkMcpServer {
-  readonly __sdkMcpServer: true;
+  readonly [SDK_MCP_SERVER_MARKER]: true;
   readonly name: string;
   readonly tools: LocalTool[];
   _server?: LocalMcpServer;
@@ -24,7 +24,7 @@ export function createSdkMcpServer(options: SdkMcpServerOptions): SdkMcpServer {
   let startPromise: Promise<{ transport: 'http'; url: string }> | undefined;
 
   return {
-    __sdkMcpServer: true,
+    [SDK_MCP_SERVER_MARKER]: true,
     name,
     tools,
     get _server() {
@@ -60,10 +60,14 @@ export function createSdkMcpServer(options: SdkMcpServerOptions): SdkMcpServer {
 }
 
 export function isSdkMcpServer(value: unknown): value is SdkMcpServer {
+  const marker =
+    typeof value === 'object' && value !== null
+      ? (value as Record<PropertyKey, unknown>)[SDK_MCP_SERVER_MARKER]
+      : undefined;
   return (
     typeof value === 'object' &&
     value !== null &&
-    (value as { __sdkMcpServer?: unknown }).__sdkMcpServer === true &&
+    marker === true &&
     typeof (value as { _start?: unknown })._start === 'function' &&
     typeof (value as { _stop?: unknown })._stop === 'function'
   );

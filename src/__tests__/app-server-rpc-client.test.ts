@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { AppServerRpcClient } from '../app-server-rpc-client.js';
+import { AppServerRpcClient } from '../app-server/rpc/client.js';
 
 function flush(ms = 20): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

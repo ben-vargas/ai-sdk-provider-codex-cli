@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import type { TurnStartParams } from '../app-server-protocol-types.js';
-import { AppServerLanguageModel } from '../app-server-language-model.js';
+import type { TurnStartParams } from '../app-server/protocol/types.js';
+import { AppServerLanguageModel } from '../app-server/language-model.js';
 
 class FakeClient extends EventEmitter {
   threadStartCalls: unknown[] = [];

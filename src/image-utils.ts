@@ -1,6 +1,7 @@
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Image data extracted from AI SDK image parts.
@@ -74,6 +75,9 @@ export function extractImageData(part: unknown): ImageData | null {
       const extractedMimeType = match?.[1] || mimeType;
       return { data: dataUrlStr, mimeType: extractedMimeType };
     }
+    if (primaryInput.protocol === 'file:') {
+      return extractFromFilePath(fileURLToPath(primaryInput), mimeType);
+    }
     // HTTP/HTTPS URLs not supported
     return null;
   }
@@ -115,6 +119,18 @@ export function extractImageData(part: unknown): ImageData | null {
 function extractFromString(value: string, fallbackMimeType: string): ImageData | null {
   const trimmed = value.trim();
 
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      const fileUrl = new URL(trimmed);
+      if (fileUrl.protocol === 'file:') {
+        return extractFromFilePath(fileURLToPath(fileUrl), fallbackMimeType);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   // HTTP/HTTPS URLs are not supported
   if (/^https?:\/\//i.test(trimmed)) {
     return null;
@@ -138,6 +154,18 @@ function extractFromString(value: string, fallbackMimeType: string): ImageData |
     data: `data:${fallbackMimeType};base64,${trimmed}`,
     mimeType: fallbackMimeType,
   };
+}
+
+function extractFromFilePath(path: string, mimeType: string): ImageData | null {
+  try {
+    const binary = readFileSync(path);
+    return {
+      data: `data:${mimeType};base64,${binary.toString('base64')}`,
+      mimeType,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isBinaryInput(value: unknown): value is ArrayBuffer | Uint8Array {

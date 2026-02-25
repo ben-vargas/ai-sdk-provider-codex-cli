@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
-import { AppServerStreamEmitter } from '../app-server-stream-emitter.js';
+import { AppServerStreamEmitter } from '../app-server/stream/emitter.js';
 import { createEmptyCodexUsage } from '../shared-utils.js';
 
 function createCapture() {

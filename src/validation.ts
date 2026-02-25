@@ -50,7 +50,6 @@ export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
 
 const sdkMcpServerSchema = z
   .object({
-    __sdkMcpServer: z.literal(true),
     name: z.string().min(1),
     _start: z.any().refine((val) => typeof val === 'function', {
       message: '_start must be a function',
@@ -207,6 +206,39 @@ export const appServerSettingsSchema = z
     resume: z.string().optional(),
     includeRawChunks: z.boolean().optional(),
 
+    serverRequests: serverRequestsSchema,
+    onSessionCreated: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onSessionCreated must be a function',
+      })
+      .optional(),
+  })
+  .strict();
+
+export const appServerProviderOptionsSchema = z
+  .object({
+    threadId: z.string().optional(),
+    resume: z.string().optional(),
+    threadMode: z.enum(['stateless', 'persistent']).optional(),
+    includeRawChunks: z.boolean().optional(),
+
+    personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
+    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
+    approvalPolicy: z
+      .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
+      .optional(),
+    sandboxPolicy: sandboxPolicySchema.optional(),
+    baseInstructions: z.string().optional(),
+    developerInstructions: z.string().optional(),
+
+    mcpServers: appServerMcpServersSchema.optional(),
+    rmcpClient: z.boolean().optional(),
+    configOverrides: configOverridesSchema,
+
+    autoApprove: z.boolean().optional(),
+    persistExtendedHistory: z.boolean().optional(),
     serverRequests: serverRequestsSchema,
     onSessionCreated: z
       .any()
