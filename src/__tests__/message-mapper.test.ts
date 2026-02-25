@@ -11,9 +11,9 @@ describe('mapMessagesToPrompt', () => {
     ] as any);
 
     expect(promptText).toContain('Be concise.');
-    expect(promptText).toContain('Human: Hi');
+    expect(promptText).toContain('User: Hi');
     expect(promptText).toContain('Assistant: Hello!');
-    expect(promptText).toContain('Human: How are you?');
+    expect(promptText).toContain('User: How are you?');
     expect(images).toEqual([]);
   });
 
@@ -35,7 +35,7 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toBe('data:image/png;base64,abc123');
+      expect(images[0]?.data).toBe('data:image/png;base64,abc123');
       expect(warnings?.some((w) => w.toLowerCase().includes('ignored'))).toBeFalsy();
     });
 
@@ -52,8 +52,8 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(2);
-      expect(images[0].data).toBe('data:image/png;base64,img1');
-      expect(images[1].data).toBe('data:image/jpeg;base64,img2');
+      expect(images[0]?.data).toBe('data:image/png;base64,img1');
+      expect(images[1]?.data).toBe('data:image/jpeg;base64,img2');
     });
 
     it('extracts images from multiple messages', () => {
@@ -122,7 +122,7 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toBe('data:image/png;base64,iVBORw0KGgo=');
+      expect(images[0]?.data).toBe('data:image/png;base64,iVBORw0KGgo=');
     });
 
     it('handles Buffer image input', () => {
@@ -138,7 +138,7 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toMatch(/^data:image\/png;base64,/);
+      expect(images[0]?.data).toMatch(/^data:image\/png;base64,/);
     });
 
     it('handles AI SDK v6 file parts for image input', () => {
@@ -154,8 +154,8 @@ describe('mapMessagesToPrompt', () => {
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0].data).toMatch(/^data:image\/webp;base64,/);
-      expect(images[0].mimeType).toBe('image/webp');
+      expect(images[0]?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(images[0]?.mimeType).toBe('image/webp');
     });
   });
 });

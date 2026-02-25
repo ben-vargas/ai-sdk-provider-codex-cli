@@ -167,7 +167,7 @@ export function writeImageToTempFile(imageData: ImageData): string {
     throw new Error('Invalid data URL format: expected data:[type];base64,[data]');
   }
 
-  const buffer = Buffer.from(base64Match[1], 'base64');
+  const buffer = Buffer.from(base64Match[1] ?? '', 'base64');
   writeFileSync(filePath, buffer);
 
   return filePath;

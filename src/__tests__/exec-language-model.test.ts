@@ -25,7 +25,7 @@ function makeMockSpawn(lines: string[], exitCode = 0) {
     const idx = args.indexOf('--output-last-message');
     if (idx !== -1 && args[idx + 1]) {
       try {
-        writeFileSync(args[idx + 1], 'Fallback last message\n');
+        writeFileSync(args[idx + 1]!, 'Fallback last message\n');
       } catch {}
     }
 
@@ -115,7 +115,7 @@ describe('ExecLanguageModel', () => {
     });
 
     const received: any[] = [];
-    const _reader = (stream as any).getReader ? undefined : null; // ensure Web stream compat
+    void ((stream as any).getReader ? undefined : null); // ensure Web stream compat
     const rs = stream as ReadableStream<any>;
     const it = (rs as any)[Symbol.asyncIterator]();
     for await (const part of it) received.push(part);
@@ -305,7 +305,7 @@ describe('ExecLanguageModel', () => {
     const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-user' })];
     (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
       const idx = args.indexOf('--output-last-message');
-      outputPath = idx !== -1 ? args[idx + 1] : '';
+      outputPath = idx !== -1 ? (args[idx + 1] ?? '') : '';
       return makeMockSpawn(lines, 0)(cmd, args);
     });
 
@@ -334,7 +334,7 @@ describe('ExecLanguageModel', () => {
     const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-last-auto' })];
     (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
       const idx = args.indexOf('--output-last-message');
-      outputPath = idx !== -1 ? args[idx + 1] : '';
+      outputPath = idx !== -1 ? (args[idx + 1] ?? '') : '';
       return makeMockSpawn(lines, 0)(cmd, args);
     });
 

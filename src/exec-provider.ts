@@ -4,11 +4,12 @@ import { ExecLanguageModel } from './exec-language-model.js';
 import type { CodexExecProviderSettings, CodexExecSettings } from './types.js';
 import { getLogger } from './logger.js';
 import { validateExecSettings } from './validation.js';
+import type { CodexModelId } from './types-shared.js';
 
 export interface CodexExecProvider extends ProviderV3 {
-  (modelId: string, settings?: CodexExecSettings): LanguageModelV3;
-  languageModel(modelId: string, settings?: CodexExecSettings): LanguageModelV3;
-  chat(modelId: string, settings?: CodexExecSettings): LanguageModelV3;
+  (modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
+  languageModel(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
+  chat(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
 }
@@ -24,7 +25,10 @@ export function createCodexExec(options: CodexExecProviderSettings = {}): CodexE
     for (const w of v.warnings) logger.warn(`Codex CLI Provider: ${w}`);
   }
 
-  const createModel = (modelId: string, settings: CodexExecSettings = {}): LanguageModelV3 => {
+  const createModel = (
+    modelId: CodexModelId,
+    settings: CodexExecSettings = {},
+  ): LanguageModelV3 => {
     const merged: CodexExecSettings = { ...options.defaultSettings, ...settings };
     const v = validateExecSettings(merged);
     if (!v.valid) throw new Error(`Invalid settings: ${v.errors.join(', ')}`);
@@ -32,7 +36,7 @@ export function createCodexExec(options: CodexExecProviderSettings = {}): CodexE
     return new ExecLanguageModel({ id: modelId, settings: merged });
   };
 
-  const provider = function (modelId: string, settings?: CodexExecSettings) {
+  const provider = function (modelId: CodexModelId, settings?: CodexExecSettings) {
     if (new.target) throw new Error('The Codex CLI provider function cannot be called with new.');
     return createModel(modelId, settings);
   } as CodexExecProvider;

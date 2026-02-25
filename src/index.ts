@@ -8,6 +8,33 @@ export type {
 } from './app-server-provider.js';
 export { listModels } from './list-models.js';
 export type { ListModelsOptions, ListModelsResult } from './list-models.js';
+export type {
+  JsonRpcId,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JsonRpcError,
+  JsonRpcErrorResponse,
+  JsonRpcNotification,
+  JsonRpcMessage,
+  Thread,
+  Turn,
+  ThreadItem,
+  UserInput,
+  TurnStartParams,
+  TurnStartResponse,
+  TurnInterruptParams,
+  TurnInterruptResponse,
+  ThreadStartParams,
+  ThreadStartResponse,
+  ThreadResumeParams,
+  ThreadResumeResponse,
+  ThreadStartedNotification,
+  TurnStartedNotification,
+  TurnCompletedNotification,
+  ItemStartedNotification,
+  ItemCompletedNotification,
+  ErrorNotification,
+} from './app-server-protocol-types.js';
 
 // Backward-compat exports
 export { createCodexCli, codexCli } from './codex-cli-provider.js';
@@ -24,6 +51,7 @@ export type {
   CodexAppServerSession,
   AppServerUserInput,
   AppServerThreadMode,
+  CodexModelId,
   Logger,
   ReasoningEffort,
   ReasoningSummary,

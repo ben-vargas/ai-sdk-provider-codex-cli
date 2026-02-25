@@ -325,7 +325,7 @@ describe('AppServerLanguageModel', () => {
       client: client as never,
     });
 
-    await model.doGenerate({
+    const result = await model.doGenerate({
       prompt: [
         { role: 'system', content: 'ignored' },
         { role: 'user', content: 'First' },
@@ -340,6 +340,59 @@ describe('AppServerLanguageModel', () => {
     const firstInput = ((client.turnStartCalls[0] as TurnStartParams).input[0] as { text?: string })
       .text;
     expect(firstInput).toBe('Second');
+    expect(
+      result.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('Stateful mode ignores earlier prompt messages'),
+      ),
+    ).toBe(true);
+  });
+
+  it('converts mixed stateless transcript parts into turn/start text input', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    await model.doGenerate({
+      prompt: [
+        { role: 'system', content: 'System A' },
+        { role: 'system', content: 'System B' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'User says hi' },
+            { type: 'file', mediaType: 'image/png', data: 'data:image/png;base64,AAAA' },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'Thinking' },
+            { type: 'tool-call', toolName: 'search', toolCallId: 'call_1', input: { q: 'hello' } },
+            {
+              type: 'tool-result',
+              toolName: 'search',
+              toolCallId: 'call_1',
+              output: { type: 'text', value: 'world' },
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    const threadStart = client.threadStartCalls[0] as { developerInstructions?: string };
+    const turnStart = client.turnStartCalls[0] as TurnStartParams;
+    const promptText = (turnStart.input[0] as { text?: string })?.text ?? '';
+
+    expect(threadStart.developerInstructions).toBe('System A\n\nSystem B');
+    expect(promptText).toContain('User: User says hi');
+    expect(promptText).toContain('[1 image attached]');
+    expect(promptText).toContain('Assistant Reasoning: Thinking');
+    expect(promptText).toContain('Tool Call (search): {"q":"hello"}');
+    expect(promptText).toContain('Tool Result (search): world');
   });
 
   it('doStream emits text deltas and finish', async () => {

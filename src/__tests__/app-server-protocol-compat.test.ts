@@ -26,6 +26,7 @@ describe('app-server protocol validators', () => {
     for (const fixture of fixtures) {
       const schema = incomingNotificationSchemas[fixture.method];
       expect(schema, `missing schema for notification method ${fixture.method}`).toBeDefined();
+      if (!schema) continue;
       const result = schema.safeParse(fixture.params);
       expect(result.success, `failed to parse ${fixture.method}`).toBe(true);
     }
@@ -57,10 +58,11 @@ describe('app-server protocol validators', () => {
       },
     };
 
-    const parsedNotification = incomingNotificationSchemas[notification.method].safeParse(
-      notification.params,
-    );
-    expect(parsedNotification.success).toBe(true);
+    const schema = incomingNotificationSchemas[notification.method];
+    expect(schema).toBeDefined();
+    const parsedNotification = schema?.safeParse(notification.params);
+    expect(parsedNotification).toBeDefined();
+    expect(parsedNotification?.success).toBe(true);
 
     const request = {
       id: 999,

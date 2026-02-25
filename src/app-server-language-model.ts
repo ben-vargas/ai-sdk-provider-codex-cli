@@ -11,9 +11,8 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { z } from 'zod';
 import { createVerboseLogger, getLogger } from './logger.js';
-import type { ImageData } from './message-mapper.js';
-import { mapMessagesToPrompt } from './message-mapper.js';
-import { cleanupTempImages, extractImageData, writeImageToTempFile } from './image-utils.js';
+import { convertPromptToCodexInput, type PromptMessage } from './converters/index.js';
+import { cleanupTempImages, type ImageData, writeImageToTempFile } from './image-utils.js';
 import {
   createEmptyCodexUsage,
   mapUnsupportedSettingsWarnings,
@@ -28,7 +27,7 @@ import type {
   CodexAppServerRequestHandlers,
   CodexAppServerSettings,
 } from './types-app-server.js';
-import type { Logger, McpServerConfig } from './types-shared.js';
+import type { CodexModelId, Logger, McpServerConfig } from './types-shared.js';
 import type { Turn, TurnStartParams, UserInput } from './app-server-protocol-types.js';
 import { AppServerRpcClient } from './app-server-rpc-client.js';
 import { AppServerSession } from './app-server-session.js';
@@ -208,138 +207,6 @@ function mergeServerRequests(
   };
 }
 
-function extractSystemInstruction(prompt: readonly unknown[]): string | undefined {
-  const parts: string[] = [];
-  for (const message of prompt) {
-    if (!message || typeof message !== 'object') continue;
-    if ((message as { role?: unknown }).role !== 'system') continue;
-    const content = (message as { content?: unknown }).content;
-    if (typeof content === 'string' && content.trim().length > 0) {
-      parts.push(content.trim());
-      continue;
-    }
-
-    if (Array.isArray(content)) {
-      const textParts = content
-        .filter(
-          (part) =>
-            part && typeof part === 'object' && (part as { type?: unknown }).type === 'text',
-        )
-        .map((part) => String((part as { text?: unknown }).text ?? ''))
-        .filter((text) => text.trim().length > 0);
-      if (textParts.length > 0) {
-        parts.push(textParts.join('\n'));
-      }
-    }
-  }
-
-  if (parts.length === 0) return undefined;
-  return parts.join('\n\n');
-}
-
-function filterOutSystemMessages(prompt: readonly unknown[]): unknown[] {
-  return (Array.isArray(prompt) ? prompt : []).filter((message) => {
-    if (!message || typeof message !== 'object') return true;
-    return (message as { role?: unknown }).role !== 'system';
-  });
-}
-
-function extractRemoteImageUrl(value: unknown): string | undefined {
-  const asString = (input: unknown): string | undefined =>
-    typeof input === 'string' && /^https?:\/\//i.test(input.trim()) ? input.trim() : undefined;
-
-  if (!value || typeof value !== 'object') return undefined;
-  const part = value as {
-    image?: unknown;
-    url?: unknown;
-  };
-
-  if (part.image instanceof URL) {
-    const url = part.image.toString();
-    if (/^https?:\/\//i.test(url)) return url;
-  }
-
-  return asString(part.image) ?? asString(part.url);
-}
-
-function extractTextAndImagesFromLastUserMessage(prompt: unknown[]): {
-  text: string;
-  images: PromptImage[];
-  warning?: string;
-} {
-  const messages = Array.isArray(prompt) ? prompt : [];
-  const userMessages = messages.filter((message) => {
-    if (!message || typeof message !== 'object') return false;
-    return (message as { role?: unknown }).role === 'user';
-  }) as Array<{ content?: unknown }>;
-
-  const warning =
-    messages.length > 1
-      ? 'Stateful mode ignores earlier prompt messages and only sends the last user message.'
-      : undefined;
-
-  const lastUser = userMessages[userMessages.length - 1];
-  if (!lastUser) return { text: '', images: [], warning };
-
-  if (typeof lastUser.content === 'string') {
-    return { text: lastUser.content, images: [], warning };
-  }
-
-  const textParts: string[] = [];
-  const images: PromptImage[] = [];
-
-  if (Array.isArray(lastUser.content)) {
-    for (const part of lastUser.content) {
-      if (!part || typeof part !== 'object') continue;
-      const asPart = part as { type?: unknown; text?: unknown };
-      if (asPart.type === 'text' && typeof asPart.text === 'string') {
-        textParts.push(asPart.text);
-        continue;
-      }
-
-      if (asPart.type === 'image') {
-        const remote = extractRemoteImageUrl(part);
-        if (remote) {
-          images.push({ type: 'remote', url: remote });
-          continue;
-        }
-
-        const localImage = extractImageData(part);
-        if (localImage) {
-          images.push({ type: 'local', data: localImage });
-        }
-      }
-    }
-  }
-
-  return {
-    text: textParts.join('\n').trim(),
-    images,
-    warning,
-  };
-}
-
-function collectRemoteImageUrls(prompt: readonly unknown[]): string[] {
-  const urls: string[] = [];
-
-  for (const message of prompt) {
-    if (!message || typeof message !== 'object') continue;
-    if ((message as { role?: unknown }).role !== 'user') continue;
-
-    const content = (message as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-
-    for (const part of content) {
-      if (!part || typeof part !== 'object') continue;
-      if ((part as { type?: unknown }).type !== 'image') continue;
-      const remote = extractRemoteImageUrl(part);
-      if (remote) urls.push(remote);
-    }
-  }
-
-  return urls;
-}
-
 function mergeAppServerMcpServers(
   base?: Record<string, AppServerMcpServerConfig>,
   override?: Record<string, AppServerMcpServerConfig>,
@@ -371,7 +238,7 @@ interface ResolvedConfig {
 }
 
 export interface AppServerLanguageModelOptions {
-  id: string;
+  id: CodexModelId;
   settings?: CodexAppServerSettings;
   client: AppServerRpcClient;
   onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
@@ -673,51 +540,25 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   private preparePrompt(
     prompt: readonly unknown[],
     hasExistingThreadContext: boolean,
-    developerInstructions?: string,
   ): {
     promptText: string;
     images: PromptImage[];
     warnings: SharedV3Warning[];
     systemInstruction?: string;
   } {
-    const warnings: SharedV3Warning[] = [];
-
-    if (hasExistingThreadContext) {
-      const stateful = extractTextAndImagesFromLastUserMessage(prompt as unknown[]);
-      if (stateful.warning) {
-        warnings.push({ type: 'other', message: stateful.warning });
-      }
-      return {
-        promptText: stateful.text,
-        images: stateful.images,
-        warnings,
-      };
-    }
-
-    const systemInstruction = extractSystemInstruction(prompt);
-    const promptForText =
-      !developerInstructions && systemInstruction
-        ? (filterOutSystemMessages(prompt) as import('ai').ModelMessage[])
-        : (prompt as import('ai').ModelMessage[]);
-
-    const mapped = mapMessagesToPrompt(promptForText);
-    const remoteImageUrls = collectRemoteImageUrls(prompt);
-
-    for (const warning of mapped.warnings ?? []) {
-      if (warning.includes('HTTP URLs not supported') && remoteImageUrls.length > 0) {
-        continue;
-      }
-      warnings.push({ type: 'other', message: warning });
-    }
+    const converted = convertPromptToCodexInput({
+      prompt: prompt as readonly PromptMessage[],
+      mode: hasExistingThreadContext ? 'persistent' : 'stateless',
+    });
 
     return {
-      promptText: mapped.promptText,
+      promptText: converted.text,
       images: [
-        ...mapped.images.map((image) => ({ type: 'local', data: image }) as PromptImage),
-        ...remoteImageUrls.map((url) => ({ type: 'remote', url }) as PromptImage),
+        ...converted.localImages.map((image) => ({ type: 'local', data: image }) as PromptImage),
+        ...converted.remoteImageUrls.map((url) => ({ type: 'remote', url }) as PromptImage),
       ],
-      warnings,
-      systemInstruction,
+      warnings: converted.warnings.map((warning) => ({ type: 'other', message: warning })),
+      systemInstruction: converted.systemInstruction,
     };
   }
 
@@ -824,11 +665,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       providerOptions?.developerInstructions ?? settings.developerInstructions;
 
     const threadState = this.resolveTargetThreadId(settings, providerOptions);
-    const prompt = this.preparePrompt(
-      options.prompt as unknown[],
-      Boolean(threadState.threadId),
-      developerInstructionsOverride,
-    );
+    const prompt = this.preparePrompt(options.prompt as unknown[], Boolean(threadState.threadId));
 
     warnings.push(...prompt.warnings);
 

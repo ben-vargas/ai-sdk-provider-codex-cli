@@ -162,7 +162,8 @@ describe('AppServerRpcClient', () => {
 
     const client = new AppServerRpcClient();
     const result = await client.modelList({ modelProviders: ['openai'] });
-    expect(result.data[0].id).toBe('gpt-5.1-codex');
+    expect(result.data.length).toBeGreaterThan(0);
+    expect(result.data[0]?.id).toBe('gpt-5.1-codex');
     await client.close();
   });
 
@@ -206,7 +207,7 @@ describe('AppServerRpcClient', () => {
     await flush();
 
     expect(received).toHaveLength(1);
-    expect(received[0].method).toBe('thread/started');
+    expect(received[0]?.method).toBe('thread/started');
     await client.close();
   });
 

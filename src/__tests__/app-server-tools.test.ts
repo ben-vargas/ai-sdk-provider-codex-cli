@@ -40,6 +40,38 @@ describe('app-server local tools', () => {
     await expect(add.execute({ a: 2, b: 'x' })).rejects.toBeDefined();
   });
 
+  it('tool() converts richer zod schemas to JSON schema', async () => {
+    const advanced = tool({
+      name: 'advanced',
+      description: 'Advanced schema',
+      parameters: z.object({
+        name: z.string(),
+        tags: z.array(z.string()),
+        mode: z.enum(['fast', 'safe']),
+        settings: z
+          .object({
+            retries: z.number().optional(),
+            strict: z.boolean().nullable(),
+          })
+          .optional(),
+      }),
+      execute: async (params) => params,
+    });
+
+    const schema = advanced.inputSchema as {
+      type?: string;
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(schema.type).toBe('object');
+    expect(schema.properties?.name).toBeDefined();
+    expect(schema.properties?.tags).toBeDefined();
+    expect(schema.properties?.mode).toBeDefined();
+    expect(schema.required).toContain('name');
+    expect(schema.required).toContain('tags');
+    expect(schema.required).toContain('mode');
+  });
+
   it('createLocalMcpServer handles initialize/list/call', async () => {
     const multiply = tool({
       name: 'multiply',
@@ -65,7 +97,7 @@ describe('app-server local tools', () => {
       name: 'multiply',
       arguments: { a: 4, b: 5 },
     });
-    expect(call.content[0].text).toContain('20');
+    expect(call.content[0]?.text).toContain('20');
   });
 
   it('createSdkMcpServer starts/stops and passes type guard', async () => {

@@ -7,6 +7,7 @@ import type { SdkMcpServer } from './tools/sdk-mcp-server.js';
 import { validateAppServerSettings } from './validation.js';
 import { getLogger } from './logger.js';
 import type { ModelInfo } from './app-server-protocol-types.js';
+import type { CodexModelId } from './types-shared.js';
 
 export interface CodexAppServerModelListResult {
   models: ModelInfo[];
@@ -15,9 +16,9 @@ export interface CodexAppServerModelListResult {
 }
 
 export interface CodexAppServerProvider extends ProviderV3 {
-  (modelId: string, settings?: CodexAppServerSettings): LanguageModelV3;
-  languageModel(modelId: string, settings?: CodexAppServerSettings): LanguageModelV3;
-  chat(modelId: string, settings?: CodexAppServerSettings): LanguageModelV3;
+  (modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
+  languageModel(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
+  chat(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
   close(): Promise<void>;
@@ -47,7 +48,7 @@ export function createCodexAppServer(
   const managedSdkServers = new Set<SdkMcpServer>();
 
   const createModel = (
-    modelId: string,
+    modelId: CodexModelId,
     settings: CodexAppServerSettings = {},
   ): AppServerLanguageModel => {
     const merged: CodexAppServerSettings = {
@@ -75,7 +76,7 @@ export function createCodexAppServer(
     });
   };
 
-  const provider = function (modelId: string, settings?: CodexAppServerSettings) {
+  const provider = function (modelId: CodexModelId, settings?: CodexAppServerSettings) {
     if (new.target) {
       throw new Error('The Codex app-server provider function cannot be called with new.');
     }

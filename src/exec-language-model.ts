@@ -32,9 +32,10 @@ import {
   safeStringify,
   sanitizeJsonSchema,
 } from './shared-utils.js';
+import type { CodexModelId } from './types-shared.js';
 
 export interface ExecLanguageModelOptions {
-  id: string; // model id for Codex (-m)
+  id: CodexModelId; // model id for Codex (-m)
   settings?: CodexExecSettings;
 }
 
