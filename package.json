@@ -54,6 +54,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "validate": "npm run build && npm run typecheck && npm run format && npm run lint && npm run test",
+    "validate:docs": "node scripts/validate-doc-snippets.mjs",
+    "validate:examples:app-server": "node scripts/validate-app-server-examples.mjs",
+    "validate:full": "npm run validate && npm run validate:docs && npm run validate:examples:app-server",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

@@ -2,6 +2,8 @@
 
 This migration applies to `createCodexAppServer` users.
 
+> Note: the app-server integration is currently pre-release in this repository. Architectural correctness and stability take precedence over backward compatibility until first public app-server release.
+
 ## API changes
 
 - `requestHandlers` -> `serverRequests`

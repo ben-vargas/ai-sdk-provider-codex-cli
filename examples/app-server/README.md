@@ -71,3 +71,4 @@ node examples/app-server/local-mcp-tool.mjs
 ## Validation
 
 - `node examples/app-server/check-cli.mjs` checks install/auth, verifies `app-server --help`, and performs a minimal app-server generation call.
+- `npm run validate:examples:app-server` executes all app-server examples and validates expected output rules from `examples/app-server/expectations.json`.

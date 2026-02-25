@@ -164,7 +164,7 @@ console.log(object);
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
-- **Image support** - Pass images to vision-capable models via `--image` flag
+- **Image support** - Local binary images in both providers, plus remote HTTP/HTTPS image URLs in app-server mode
 
 ### Image Support
 
@@ -172,10 +172,10 @@ The provider supports multimodal (image) inputs for vision-capable models:
 
 ```js
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { readFileSync } from 'fs';
 
-const model = codexCli('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true });
+const model = codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true });
 const imageBuffer = readFileSync('./screenshot.png');
 
 const { text } = await generateText({
@@ -199,11 +199,12 @@ console.log(text);
 - Base64 string (without data URL prefix)
 - `Buffer` / `Uint8Array` / `ArrayBuffer`
 
-**Not supported:**
+**Remote image URLs:**
 
-- HTTP/HTTPS URLs (images must be provided as binary data)
+- `codexExec` mode: HTTP/HTTPS image URLs are not supported (provide binary/image data)
+- `codexAppServer` mode: HTTP/HTTPS image URLs are supported and forwarded to app-server as remote image inputs
 
-Images are written to temporary files and passed to Codex CLI via the `--image` flag. Temp files are automatically cleaned up after the request completes.
+Local image data is written to temporary files and passed to Codex CLI via `--image` (or app-server `localImage`). Temp files are automatically cleaned up after each request.
 
 See [examples/exec/image-support.mjs](examples/exec/image-support.mjs) and [examples/app-server/image-support.mjs](examples/app-server/image-support.mjs) for complete working examples.
 
@@ -213,10 +214,10 @@ The provider supports comprehensive tool streaming, enabling real-time monitorin
 
 ```js
 import { streamText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const result = await streamText({
-  model: codexCli('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
   prompt: 'List files and count lines in the largest one',
 });
 
@@ -237,30 +238,35 @@ for await (const part of result.fullStream) {
 - Tool result events with complete output payloads
 - `providerExecuted: true` on all tool calls (Codex executes autonomously, app doesn't need to)
 
-**Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-tools.mjs`, and their app-server counterparts under `examples/app-server/`.
+**Current behavior:**
+
+- `codexExec`: tool outputs are delivered in final `tool-result` events.
+- `codexAppServer`: when Codex emits tool output delta notifications, the provider surfaces `tool-result` parts with `result.type === 'output-delta'` during streaming.
+
+See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-tools.mjs`, and their app-server counterparts under `examples/app-server/`.
 
 ### Logging Configuration (v0.5.0+)
 
 Control logging verbosity and integrate with your observability stack:
 
 ```js
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Default: warn/error only (clean production output)
-const model = codexCli('gpt-5.3-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
 });
 
 // Verbose mode: enable debug/info logs for troubleshooting
-const verboseModel = codexCli('gpt-5.3-codex', {
+const verboseModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true, // Shows all log levels
 });
 
 // Custom logger: integrate with Winston, Pino, Datadog, etc.
-const customModel = codexCli('gpt-5.3-codex', {
+const customModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true,
@@ -273,7 +279,7 @@ const customModel = codexCli('gpt-5.3-codex', {
 });
 
 // Silent: disable all logging
-const silentModel = codexCli('gpt-5.3-codex', {
+const silentModel = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   logger: false, // No logs at all
@@ -316,6 +322,10 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
   - [docs/ai-sdk-v5/limitations.md](docs/ai-sdk-v5/limitations.md) – known constraints and behavior differences
   - [docs/ai-sdk-v5/migration-app-server-v2.md](docs/ai-sdk-v5/migration-app-server-v2.md) – app-server v2 migration notes
 - See [examples/](examples/) for runnable scripts covering core usage, streaming, permissions/sandboxing, and object generation.
+- Validation helpers:
+  - `npm run validate:docs` checks markdown links and example command paths
+  - `npm run validate:examples:app-server` runs all app-server examples with intent checks
+  - `npm run validate:full` runs build/type/lint/test plus docs and app-server example validation
 
 ## Authentication
 
@@ -368,9 +378,9 @@ Additional app-server helpers:
 Control reasoning effort, verbosity, and advanced Codex features at model creation time:
 
 ```ts
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5.3-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   addDirs: ['../shared'],
@@ -422,9 +432,9 @@ values take precedence over constructor defaults while leaving other settings in
 
 ```ts
 import { generateText } from 'ai';
-import { codexCli } from 'ai-sdk-provider-codex-cli';
+import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexCli('gpt-5.3-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   reasoningEffort: 'medium',
   modelVerbosity: 'medium',

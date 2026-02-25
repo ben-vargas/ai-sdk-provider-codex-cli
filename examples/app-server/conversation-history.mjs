@@ -30,6 +30,7 @@ try {
   if (!threadId) {
     throw new Error('No threadId returned from app-server provider.');
   }
+  console.log('threadId:', threadId);
 
   const second = await generateText({
     model,

@@ -28,6 +28,13 @@ node examples/app-server/basic-usage.mjs
 node examples/app-server/list-models.mjs
 ```
 
+## Validate
+
+```bash
+npm run validate:docs
+npm run validate:examples:app-server
+```
+
 ## Parity Table
 
 | Basename                                | Exec                                                  | App-Server                                                  |
