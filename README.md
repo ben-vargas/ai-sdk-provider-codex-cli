@@ -205,7 +205,7 @@ console.log(text);
 
 Images are written to temporary files and passed to Codex CLI via the `--image` flag. Temp files are automatically cleaned up after the request completes.
 
-See [examples/image-support.mjs](examples/image-support.mjs) for a complete working example.
+See [examples/exec/image-support.mjs](examples/exec/image-support.mjs) and [examples/app-server/image-support.mjs](examples/app-server/image-support.mjs) for complete working examples.
 
 ### Tool Streaming (v0.3.0+)
 
@@ -237,7 +237,7 @@ for await (const part of result.fullStream) {
 - Tool result events with complete output payloads
 - `providerExecuted: true` on all tool calls (Codex executes autonomously, app doesn't need to)
 
-**Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/streaming-tool-calls.mjs` and `examples/streaming-multiple-tools.mjs` for usage patterns.
+**Limitation:** Real-time output streaming (`output-delta` events) not yet available. Tool outputs delivered in final `tool-result` event. See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-tools.mjs`, and their app-server counterparts under `examples/app-server/`.
 
 ### Logging Configuration (v0.5.0+)
 
@@ -289,7 +289,7 @@ const silentModel = codexCli('gpt-5.1-codex', {
 
 **Default Logger:** Adds level tags `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]` to console output. Use a custom logger or `logger: false` if you need different formatting.
 
-See `examples/logging-*.mjs` for complete examples and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
+See `examples/exec/logging-*.mjs` and `examples/app-server/logging-*.mjs` for complete examples, and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
 
 ### Text Streaming behavior
 
