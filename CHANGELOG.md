@@ -51,26 +51,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - additional router behavior/unit coverage
 - **Migration guide added**:
   - `docs/ai-sdk-v5/migration-app-server-v2.md`
-
-### Changed
-
-- **App-server settings surface is now canonicalized**:
+- **Validation tooling for docs/examples**:
+  - `validate:docs` checks markdown links and example command paths
+  - `validate:examples:app-server` executes app-server examples and validates output expectations
+  - example validation fails on unexpected repository changes/artifacts produced during runs
+- **App-server settings surface (canonical)**:
   - `approvalPolicy` / `sandboxPolicy`
   - `effort` / `summary`
   - `serverRequests` (typed handler map)
-- **App-server provider options/settings validation is strict**:
+- **Strict app-server provider/options validation**:
   - legacy app-server alias keys are rejected by app-server validation
-- **App-server defaults**:
+- **App-server default behavior**:
   - `threadMode` remains `stateless` by default
   - explicit `threadId` still takes precedence over automatic persistent reuse
-- **Standalone model-list export naming**:
+- **Standalone model-list helper naming**:
   - canonical helper is `listModels()`
-- **Protocol item handling is case-tolerant**:
+- **Case-tolerant protocol item handling**:
   - item type routing normalizes casing for safer cross-version compatibility
 - **Examples reorganized and expanded**:
   - split into `examples/exec/` and `examples/app-server/`
+  - removed redundant `*-gpt-5-codex.mjs` duplicate scripts (canonical examples now cover each flow once)
   - app-server examples updated to canonical field names
-  - app-server-only examples added (`list-models`, `session-injection`, `local-mcp-tool`)
+  - app-server-only examples added (`list-models`, `session-injection`, `local-mcp-tool`, `abort`, `raw-chunks`, `usage-metadata`)
 
 ### Fixed
 
@@ -79,6 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `UnsupportedFeatureError` added for explicit unsupported capability paths (e.g., `model/list` not supported).
 - **Stream/generate parity**:
   - `doGenerate` now aggregates from the same routed stream/event path as `doStream`, reducing divergence and duplicated event handling logic.
+- **`doGenerate` content completeness (app-server)**:
+  - generation results now retain streamed reasoning/tool parts (`reasoning`, `tool-call`, `tool-result`, plus text) instead of returning text-only content.
+- **Unknown-usage semantics aligned to AI SDK v3**:
+  - default usage fields now use `undefined` when token counts are unknown (instead of `0`), avoiding false precision in telemetry.
+- **Unsupported-setting warnings coverage**:
+  - added explicit unsupported warning for `maxOutputTokens` (ignored by Codex providers).
 
 ### Migration Notes (App-Server Users)
 

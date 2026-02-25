@@ -106,8 +106,8 @@ describe('AppServerLanguageModel', () => {
     });
 
     expect(result.content).toEqual([{ type: 'text', text: 'Hello' }]);
-    expect(result.usage.inputTokens.total).toBe(0);
-    expect(result.usage.outputTokens.total).toBe(0);
+    expect(result.usage.inputTokens.total).toBeUndefined();
+    expect(result.usage.outputTokens.total).toBeUndefined();
     expect(result.providerMetadata?.['codex-app-server']).toEqual(
       expect.objectContaining({
         threadId: 'thr_new',
@@ -157,9 +157,116 @@ describe('AppServerLanguageModel', () => {
 
     const result = await model.doGenerate({
       prompt: [{ role: 'user', content: 'Return JSON only' }] as never,
+      responseFormat: {
+        type: 'json',
+        schema: {
+          type: 'object',
+          properties: {
+            result: { type: 'string' },
+          },
+        },
+      } as never,
     });
 
     expect(result.content).toEqual([{ type: 'text', text: '{"result":"done"}' }]);
+  });
+
+  it('doGenerate includes reasoning, tool calls, and tool results in content', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/started', {
+          threadId: params.threadId,
+          turnId: 'turn_content_1',
+          item: {
+            type: 'commandExecution',
+            id: 'item_cmd_content_1',
+            command: 'npm test',
+            cwd: '/tmp/project',
+            processId: null,
+            status: 'inProgress',
+            commandActions: [],
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          },
+        });
+        client.emit('notification', 'reasoningTextDelta', {
+          threadId: params.threadId,
+          turnId: 'turn_content_1',
+          itemId: 'item_reason_content_1',
+          delta: 'Thinking',
+        });
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_content_1',
+          item: {
+            type: 'commandExecution',
+            id: 'item_cmd_content_1',
+            command: 'npm test',
+            cwd: '/tmp/project',
+            processId: null,
+            status: 'completed',
+            commandActions: [],
+            aggregatedOutput: 'ok',
+            exitCode: 0,
+            durationMs: 1,
+          },
+        });
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_content_1',
+          itemId: 'item_message_content_1',
+          delta: 'Done',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_content_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_content_1' } };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'use tools and explain' }] as never,
+    });
+
+    expect(result.content.map((part) => part.type)).toEqual([
+      'tool-call',
+      'reasoning',
+      'tool-result',
+      'text',
+    ]);
+
+    expect(result.content[0]).toEqual(
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCallId: 'item_cmd_content_1',
+        toolName: 'exec',
+      }),
+    );
+    expect(result.content[1]).toEqual(
+      expect.objectContaining({
+        type: 'reasoning',
+        text: 'Thinking',
+      }),
+    );
+    expect(result.content[2]).toEqual(
+      expect.objectContaining({
+        type: 'tool-result',
+        toolCallId: 'item_cmd_content_1',
+        toolName: 'exec',
+      }),
+    );
+    expect(result.content[3]).toEqual({
+      type: 'text',
+      text: 'Done',
+    });
   });
 
   it('maps token usage updates in doGenerate', async () => {
@@ -426,8 +533,8 @@ describe('AppServerLanguageModel', () => {
     const finish = parts.find((part) => (part as { type?: string }).type === 'finish') as
       | { usage?: { inputTokens?: { total?: number }; outputTokens?: { total?: number } } }
       | undefined;
-    expect(finish?.usage?.inputTokens?.total).toBe(0);
-    expect(finish?.usage?.outputTokens?.total).toBe(0);
+    expect(finish?.usage?.inputTokens?.total).toBeUndefined();
+    expect(finish?.usage?.outputTokens?.total).toBeUndefined();
   });
 
   it('doStream in json mode emits only the final text block', async () => {

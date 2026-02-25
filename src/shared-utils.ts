@@ -13,13 +13,13 @@ import type {
 export function createEmptyCodexUsage(): LanguageModelV3Usage {
   return {
     inputTokens: {
-      total: 0,
-      noCache: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
+      total: undefined,
+      noCache: undefined,
+      cacheRead: undefined,
+      cacheWrite: undefined,
     },
     outputTokens: {
-      total: 0,
+      total: undefined,
       text: undefined,
       reasoning: undefined,
     },
@@ -190,6 +190,7 @@ export function mapUnsupportedSettingsWarnings(options: {
   temperature?: unknown;
   topP?: unknown;
   topK?: unknown;
+  maxOutputTokens?: unknown;
   presencePenalty?: unknown;
   frequencyPenalty?: unknown;
   stopSequences?: unknown[];
@@ -211,6 +212,7 @@ export function mapUnsupportedSettingsWarnings(options: {
   add(options.temperature, 'temperature');
   add(options.topP, 'topP');
   add(options.topK, 'topK');
+  add(options.maxOutputTokens, 'maxOutputTokens');
   add(options.presencePenalty, 'presencePenalty');
   add(options.frequencyPenalty, 'frequencyPenalty');
   add(options.stopSequences?.length ? options.stopSequences : undefined, 'stopSequences');

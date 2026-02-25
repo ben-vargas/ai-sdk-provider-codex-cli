@@ -16,13 +16,13 @@ describe('shared-utils', () => {
   it('creates empty usage shape', () => {
     expect(createEmptyCodexUsage()).toEqual({
       inputTokens: {
-        total: 0,
-        noCache: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
+        total: undefined,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
       },
       outputTokens: {
-        total: 0,
+        total: undefined,
         text: undefined,
         reasoning: undefined,
       },
@@ -132,6 +132,7 @@ describe('shared-utils', () => {
       temperature: 0.2,
       topP: 0.9,
       topK: 10,
+      maxOutputTokens: 256,
       presencePenalty: 1,
       frequencyPenalty: 1,
       stopSequences: ['stop'],
@@ -140,11 +141,12 @@ describe('shared-utils', () => {
       toolChoice: { type: 'tool', toolName: 'x' },
     });
 
-    expect(warnings).toHaveLength(9);
+    expect(warnings).toHaveLength(10);
     expect(warnings.every((warning) => warning.type === 'unsupported')).toBe(true);
     const features = warnings
       .map((warning) => (warning.type === 'unsupported' ? warning.feature : undefined))
       .filter((feature): feature is string => typeof feature === 'string');
+    expect(features).toContain('maxOutputTokens');
     expect(features).toContain('tools');
     expect(features).toContain('toolChoice');
   });

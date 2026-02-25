@@ -1,9 +1,17 @@
 import type {
   LanguageModelV3,
   LanguageModelV3Content,
+  LanguageModelV3File,
   LanguageModelV3FinishReason,
+  LanguageModelV3Reasoning,
+  LanguageModelV3Source,
   LanguageModelV3StreamPart,
+  LanguageModelV3Text,
+  LanguageModelV3ToolApprovalRequest,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResult,
   LanguageModelV3Usage,
+  LanguageModelV3ResponseMetadata,
   SharedV3ProviderMetadata,
   SharedV3Warning,
 } from '@ai-sdk/provider';
@@ -521,19 +529,70 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       options as Parameters<LanguageModelV3['doStream']>[0],
     );
 
-    const textBlocks = new Map<string, string>();
-    const textBlockOrder: string[] = [];
-    const completedTextBlockIds: string[] = [];
+    const content: LanguageModelV3Content[] = [];
+    const textPartsById = new Map<string, LanguageModelV3Text>();
+    const reasoningPartsById = new Map<string, LanguageModelV3Reasoning>();
     let activeTextBlockId: string | undefined;
+    let activeReasoningBlockId: string | undefined;
+    let responseMetadata: LanguageModelV3ResponseMetadata = {
+      id: generateId(),
+      timestamp: new Date(),
+      modelId: this.modelId,
+    };
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
     let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
     let warnings: SharedV3Warning[] = [];
     let providerMetadata: SharedV3ProviderMetadata | undefined;
 
-    const ensureTextBlock = (id: string): void => {
-      if (textBlocks.has(id)) return;
-      textBlocks.set(id, '');
-      textBlockOrder.push(id);
+    const ensureTextPart = (
+      id: string,
+      metadata?: SharedV3ProviderMetadata,
+    ): LanguageModelV3Text => {
+      const existing = textPartsById.get(id);
+      if (existing) {
+        if (metadata) existing.providerMetadata = metadata;
+        return existing;
+      }
+
+      const part: LanguageModelV3Text = {
+        type: 'text',
+        text: '',
+        ...(metadata ? { providerMetadata: metadata } : {}),
+      };
+      textPartsById.set(id, part);
+      content.push(part);
+      return part;
+    };
+
+    const ensureReasoningPart = (
+      id: string,
+      metadata?: SharedV3ProviderMetadata,
+    ): LanguageModelV3Reasoning => {
+      const existing = reasoningPartsById.get(id);
+      if (existing) {
+        if (metadata) existing.providerMetadata = metadata;
+        return existing;
+      }
+
+      const part: LanguageModelV3Reasoning = {
+        type: 'reasoning',
+        text: '',
+        ...(metadata ? { providerMetadata: metadata } : {}),
+      };
+      reasoningPartsById.set(id, part);
+      content.push(part);
+      return part;
+    };
+
+    const pushContentPart = (
+      part:
+        | LanguageModelV3File
+        | LanguageModelV3Source
+        | LanguageModelV3ToolApprovalRequest
+        | LanguageModelV3ToolCall
+        | LanguageModelV3ToolResult,
+    ): void => {
+      content.push(part);
     };
 
     for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
@@ -542,9 +601,18 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         continue;
       }
 
+      if (part.type === 'response-metadata') {
+        responseMetadata = {
+          id: part.id,
+          timestamp: part.timestamp,
+          modelId: part.modelId,
+        };
+        continue;
+      }
+
       if (part.type === 'text-start') {
         activeTextBlockId = part.id;
-        ensureTextBlock(part.id);
+        ensureTextPart(part.id, part.providerMetadata);
         continue;
       }
 
@@ -552,19 +620,78 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         const blockId =
           typeof part.id === 'string' ? part.id : (activeTextBlockId ?? '__default_text_block__');
         activeTextBlockId = blockId;
-        ensureTextBlock(blockId);
-        textBlocks.set(blockId, `${textBlocks.get(blockId) ?? ''}${part.delta}`);
+        const textPart = ensureTextPart(blockId, part.providerMetadata);
+        textPart.text = `${textPart.text}${part.delta}`;
         continue;
       }
 
       if (part.type === 'text-end') {
         const blockId = typeof part.id === 'string' ? part.id : activeTextBlockId;
-        if (blockId && !completedTextBlockIds.includes(blockId)) {
-          completedTextBlockIds.push(blockId);
+        if (blockId) {
+          const textPart = ensureTextPart(blockId, part.providerMetadata);
+          if (part.providerMetadata) {
+            textPart.providerMetadata = part.providerMetadata;
+          }
         }
         if (activeTextBlockId === blockId) {
           activeTextBlockId = undefined;
         }
+        continue;
+      }
+
+      if (part.type === 'reasoning-start') {
+        activeReasoningBlockId = part.id;
+        ensureReasoningPart(part.id, part.providerMetadata);
+        continue;
+      }
+
+      if (part.type === 'reasoning-delta') {
+        const blockId =
+          typeof part.id === 'string'
+            ? part.id
+            : (activeReasoningBlockId ?? '__default_reasoning_block__');
+        activeReasoningBlockId = blockId;
+        const reasoningPart = ensureReasoningPart(blockId, part.providerMetadata);
+        reasoningPart.text = `${reasoningPart.text}${part.delta}`;
+        continue;
+      }
+
+      if (part.type === 'reasoning-end') {
+        const blockId = typeof part.id === 'string' ? part.id : activeReasoningBlockId;
+        if (blockId) {
+          const reasoningPart = ensureReasoningPart(blockId, part.providerMetadata);
+          if (part.providerMetadata) {
+            reasoningPart.providerMetadata = part.providerMetadata;
+          }
+        }
+        if (activeReasoningBlockId === blockId) {
+          activeReasoningBlockId = undefined;
+        }
+        continue;
+      }
+
+      if (part.type === 'file') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'source') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-approval-request') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-call') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-result') {
+        pushContentPart(part);
         continue;
       }
 
@@ -575,16 +702,18 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       }
     }
 
-    const selectedTextBlockId = completedTextBlockIds.at(-1) ?? textBlockOrder.at(-1);
-    const text = selectedTextBlockId ? (textBlocks.get(selectedTextBlockId) ?? '') : '';
+    const normalizedContent = content.filter((part) => {
+      if (part.type === 'text') return part.text.trim().length > 0;
+      if (part.type === 'reasoning') return part.text.trim().length > 0;
+      return true;
+    });
 
-    const content: LanguageModelV3Content[] = [{ type: 'text', text }];
     return {
-      content,
+      content: normalizedContent,
       usage,
       finishReason,
       warnings,
-      response: { id: generateId(), timestamp: new Date(), modelId: this.modelId },
+      response: responseMetadata,
       request,
       ...(providerMetadata ? { providerMetadata } : {}),
     };
@@ -606,6 +735,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         temperature: options.temperature,
         topP: options.topP,
         topK: options.topK,
+        maxOutputTokens: options.maxOutputTokens,
         presencePenalty: options.presencePenalty,
         frequencyPenalty: options.frequencyPenalty,
         stopSequences: options.stopSequences,
