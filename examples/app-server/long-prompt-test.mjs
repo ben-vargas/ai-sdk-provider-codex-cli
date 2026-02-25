@@ -1,11 +1,8 @@
 /**
- * Test case: Long prompt with Chinese characters and code blocks
+ * Test case: Long prompt with code blocks and multiline content.
  *
- * This example reproduces the issue where prompts are passed as command-line
- * arguments, which can cause problems on Windows due to:
- * 1. Command line length limit (~8191 chars)
- * 2. Special character escaping issues
- * 3. UTF-8 encoding problems
+ * This example verifies large prompt transport without truncation.
+ * It is intentionally read-only and expects text-only output.
  *
  * Run: node examples/app-server/long-prompt-test.mjs
  */
@@ -13,32 +10,27 @@
 import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
-const FRONTEND_PROMPT = `You are a designer who learned to code. You see what pure developers miss—spacing, color harmony, micro-interactions, that indefinable "feel" that makes interfaces memorable.
+const FRONTEND_PROMPT = `You are a designer who also writes production code.
+You care about spacing, visual hierarchy, and interaction quality.
 
-**Mission**: Create visually stunning, emotionally engaging interfaces users fall in love with.
+Mission: produce a polished sign-in page redesign proposal.
 
-## Work Principles
-1. Complete what's asked — Execute the exact task. No scope creep.
-2. Leave it better — Ensure the project is in a working state.
-3. Study before acting — Examine existing patterns, conventions.
-4. Blend seamlessly — Match existing code patterns.
+Work principles:
+1. Complete the requested task exactly.
+2. Keep output practical and implementation-ready.
+3. Respect existing stack and conventions.
+4. Return only final code and short notes.
 
-## Design Process
-Before coding, commit to a **BOLD aesthetic direction**:
-1. Purpose: What problem does this solve?
-2. Tone: Pick an extreme—brutally minimal, maximalist, retro-futuristic, etc.
-3. Constraints: Technical requirements
-4. Differentiation: What's the ONE thing someone will remember?
+Design guidelines:
+- Use a clear color system and consistent spacing.
+- Keep typography intentional and readable.
+- Add subtle motion only where it improves clarity.
+- Do not introduce external UI libraries.`;
 
-## Aesthetic Guidelines
-- Typography: Choose distinctive fonts. AVOID Arial, Inter, Roboto, system fonts
-- Color: Commit to a cohesive palette. Use CSS variables.
-- Motion: Focus on high-impact moments. Use animation-delay for staggered reveals.
-- Spatial Composition: Unexpected layouts. Asymmetry. Overlap.`;
+const USER_PROMPT = `Review the following sign-in page component and suggest improvements.
+Stack: Next.js + Tailwind CSS.
 
-const USER_PROMPT = `请优化登录界面 src/app/auth/signin/page.tsx。当前是一个简单的登录页面，使用 Next.js + Tailwind CSS。
-
-当前代码：
+Current code:
 \`\`\`tsx
 "use client";
 import { signIn } from "next-auth/react";
@@ -53,7 +45,7 @@ export default function SignIn() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            登录您的账户
+            Sign in to your account
           </h2>
         </div>
         <div className="mt-8 space-y-6">
@@ -61,7 +53,7 @@ export default function SignIn() {
             onClick={() => signIn("linuxdo", { callbackUrl })}
             className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
-            使用 Linux.do 登录
+            Continue with Linux.do
           </button>
         </div>
       </div>
@@ -70,13 +62,14 @@ export default function SignIn() {
 }
 \`\`\`
 
-请设计一个更现代、美观的登录界面，可以添加：
-1. 更好的视觉效果（渐变背景、卡片阴影等）
-2. Logo 或品牌标识占位符
-3. 更好的按钮样式和悬停效果
-4. 可能的动画效果
+Requirements:
+1. Improve visual design (background depth, card treatment, spacing).
+2. Add a logo/brand placeholder.
+3. Improve button styling and hover/focus states.
+4. Add subtle animation.
+5. Keep Tailwind CSS only.
 
-保持使用 Tailwind CSS，不要引入额外的 UI 库。`;
+Return text only. Do not execute commands. Do not write or modify files.`;
 
 async function main() {
   console.log('=== Long Prompt Test ===\n');
@@ -85,8 +78,7 @@ async function main() {
   console.log(`System prompt length: ${FRONTEND_PROMPT.length} chars`);
   console.log(`User prompt length: ${USER_PROMPT.length} chars`);
   console.log(`Total prompt length: ${fullPrompt.length} chars`);
-  console.log(`Contains Chinese: yes`);
-  console.log(`Contains code blocks: yes`);
+  console.log('Contains code blocks: yes');
   console.log(`Contains newlines: ${(fullPrompt.match(/\n/g) || []).length}`);
   console.log('\n---\n');
 
@@ -96,6 +88,7 @@ async function main() {
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
       approvalPolicy: 'on-failure',
+      sandboxPolicy: { type: 'readOnly' },
       verbose: true,
     },
   });
@@ -114,8 +107,8 @@ async function main() {
     console.log(`First 500 chars:\n${result.text.slice(0, 500)}`);
 
     if (result.text.length < 200) {
-      console.log('\n⚠️  WARNING: Response is suspiciously short!');
-      console.log('This may indicate the prompt was truncated or corrupted.');
+      console.log('\nWARNING: Response is suspiciously short.');
+      console.log('This may indicate prompt truncation or corruption.');
     }
 
     const isGenericResponse =
@@ -124,15 +117,14 @@ async function main() {
       result.text.toLowerCase().includes("i'm ready");
 
     if (isGenericResponse || result.text.length < 200) {
-      console.log('\n❌ FAILURE: Got generic/short response instead of actual work.');
-      console.log('The prompt was likely truncated or corrupted.');
+      console.log('\nFAILURE: Got generic/short response instead of actual work.');
       process.exitCode = 1;
       return;
     }
 
-    console.log('\n✅ Test passed - got meaningful response');
+    console.log('\nPASS: Long prompt produced meaningful output.');
   } catch (error) {
-    console.error('\n❌ Error:', error);
+    console.error('\nError:', error);
     process.exitCode = 1;
   } finally {
     await codex.close();

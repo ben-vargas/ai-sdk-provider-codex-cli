@@ -11,7 +11,7 @@ import { generateObject } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
-console.log('🏗️  Codex CLI - Nested Object Generation\n');
+console.log('  Codex CLI - Nested Object Generation\n');
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -23,7 +23,7 @@ const model = codexExec('gpt-5.3-codex', {
 
 // Example 1: Company organization structure
 async function example1_organization() {
-  console.log('1️⃣  Organization Structure\n');
+  console.log('1  Organization Structure\n');
 
   const orgSchema = z.object({
     organization: z.object({
@@ -61,9 +61,9 @@ async function example1_organization() {
   console.log();
 }
 
-// Example 2: E‑commerce product with variants and inventory
+// Example 2: Ecommerce product with variants and inventory
 async function example2_product() {
-  console.log('2️⃣  Product with Variants & Inventory\n');
+  console.log('2  Product with Variants & Inventory\n');
 
   const productSchema = z.object({
     sku: z.string(),
@@ -104,4 +104,4 @@ async function example2_product() {
 await example1_organization();
 await example2_product();
 
-console.log('✅ Done');
+console.log(' Done');

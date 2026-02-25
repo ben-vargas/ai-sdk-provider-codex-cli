@@ -16,7 +16,7 @@ const appServer = createCodexAppServer({
 });
 
 try {
-  console.log('🎯 Codex CLI - Basic Object Generation\n');
+  console.log(' Codex CLI - Basic Object Generation\n');
 
   const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
@@ -25,7 +25,7 @@ try {
 
   // Example 1: Simple object with primitives
   async function example1_simpleObject() {
-    console.log('1️⃣  Simple Object with Primitives\n');
+    console.log('1  Simple Object with Primitives\n');
 
     const { object } = await generateObject({
       model,
@@ -45,7 +45,7 @@ try {
 
   // Example 2: Arrays
   async function example2_arrays() {
-    console.log('2️⃣  Object with Arrays\n');
+    console.log('2  Object with Arrays\n');
 
     const { object } = await generateObject({
       model,
@@ -66,7 +66,7 @@ try {
   // Example 3: Constraints (min/max)
   // NOTE: Optional fields are not supported with --output-schema (OpenAI strict mode limitation)
   async function example3_constraints() {
-    console.log('3️⃣  Numeric Constraints\n');
+    console.log('3  Numeric Constraints\n');
 
     const { object } = await generateObject({
       model,
@@ -88,7 +88,7 @@ try {
   await example2_arrays();
   await example3_constraints();
 
-  console.log('✅ Done');
+  console.log(' Done');
 } finally {
   await appServer.close();
 }

@@ -17,7 +17,7 @@
  * - Only explicit console.log statements from your code
  * - Completely silent provider operation
  *
- * ⚠️  Warning: With logging disabled, you won't see:
+ *   Warning: With logging disabled, you won't see:
  * - Warning messages about misconfigurations
  * - Error messages from the provider
  * - Any diagnostic information
@@ -60,17 +60,17 @@ try {
       const usage = await result.usage;
       console.log('Token usage:', usage);
 
-      console.log('\n✓ Notice: Zero logs from the provider appeared above');
+      console.log('\n Notice: Zero logs from the provider appeared above');
       console.log('  The provider operated completely silently');
       console.log('  Only our explicit console.log statements were shown');
 
-      console.log('\n⚠️  Important:');
+      console.log('\n  Important:');
       console.log("  With logging disabled, you won't see warnings or errors");
       console.log('  from the provider. Use this mode carefully!');
     } catch (error) {
       // Even with logging disabled, you can still catch and handle errors
       console.error('Error:', error);
-      console.log('\n💡 Troubleshooting:');
+      console.log('\n Troubleshooting:');
       console.log('1. Install Codex CLI: npm install -g @openai/codex');
       console.log('2. Authenticate: codex login (or set OPENAI_API_KEY)');
       console.log('3. Run check-cli.mjs to verify setup');

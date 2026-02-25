@@ -10,7 +10,7 @@ import { generateObject } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
-console.log('🧪 Codex CLI - Object Generation with Constraints\n');
+console.log(' Codex CLI - Object Generation with Constraints\n');
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -22,7 +22,7 @@ const model = codexExec('gpt-5.3-codex', {
 
 // Example 1: User account with constraints
 async function example1_userAccount() {
-  console.log('1️⃣  User Account\n');
+  console.log('1  User Account\n');
 
   const userSchema = z.object({
     id: z.string().describe('Unique user id (UUID format)'),
@@ -45,7 +45,7 @@ async function example1_userAccount() {
 
 // Example 2: Booking with logical constraints in prompt
 async function example2_booking() {
-  console.log('2️⃣  Booking with Logical Constraints\n');
+  console.log('2  Booking with Logical Constraints\n');
 
   const bookingSchema = z.object({
     bookingId: z.string().describe('Booking ID in UUID format'),
@@ -71,4 +71,4 @@ async function example2_booking() {
 await example1_userAccount();
 await example2_booking();
 
-console.log('✅ Done');
+console.log(' Done');

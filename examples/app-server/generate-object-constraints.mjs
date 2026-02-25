@@ -15,7 +15,7 @@ const appServer = createCodexAppServer({
 });
 
 try {
-  console.log('🧪 Codex CLI - Object Generation with Constraints\n');
+  console.log(' Codex CLI - Object Generation with Constraints\n');
 
   const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
@@ -24,7 +24,7 @@ try {
 
   // Example 1: User account with constraints
   async function example1_userAccount() {
-    console.log('1️⃣  User Account\n');
+    console.log('1  User Account\n');
 
     const userSchema = z.object({
       id: z.string().describe('Unique user id (UUID format)'),
@@ -47,7 +47,7 @@ try {
 
   // Example 2: Booking with logical constraints in prompt
   async function example2_booking() {
-    console.log('2️⃣  Booking with Logical Constraints\n');
+    console.log('2  Booking with Logical Constraints\n');
 
     const bookingSchema = z.object({
       bookingId: z.string().describe('Booking ID in UUID format'),
@@ -73,7 +73,7 @@ try {
   await example1_userAccount();
   await example2_booking();
 
-  console.log('✅ Done');
+  console.log(' Done');
 } finally {
   await appServer.close();
 }

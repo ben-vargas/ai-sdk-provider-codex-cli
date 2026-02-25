@@ -66,6 +66,9 @@ node examples/app-server/conversation-history.mjs
 node examples/app-server/list-models.mjs
 node examples/app-server/session-injection.mjs
 node examples/app-server/local-mcp-tool.mjs
+node examples/app-server/abort.mjs
+node examples/app-server/raw-chunks.mjs
+node examples/app-server/usage-metadata.mjs
 ```
 
 ## Validation

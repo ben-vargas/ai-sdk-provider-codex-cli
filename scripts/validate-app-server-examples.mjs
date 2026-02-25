@@ -12,6 +12,9 @@ const expectationsPath = join(examplesDir, 'expectations.json');
 const expectations = JSON.parse(readFileSync(expectationsPath, 'utf8'));
 const defaults = expectations.default ?? {};
 const perFile = expectations.files ?? {};
+const allowCreatedPaths = Array.isArray(defaults.allowCreatedPaths)
+  ? defaults.allowCreatedPaths
+  : [];
 
 const files = readdirSync(examplesDir)
   .filter((name) => name.endsWith('.mjs'))
@@ -21,6 +24,55 @@ const defaultTimeoutMs = Number(process.env.EXAMPLES_TIMEOUT_MS ?? defaults.time
 
 const failures = [];
 const rows = [];
+
+function readChangedPaths() {
+  const status = spawnSync('git', ['status', '--short'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: process.env,
+    maxBuffer: 1024 * 1024,
+  });
+
+  if (status.error || status.status !== 0) {
+    return null;
+  }
+
+  const paths = new Set();
+  for (const line of (status.stdout ?? '').split('\n')) {
+    const trimmed = line.trimEnd();
+    if (trimmed.length === 0) continue;
+
+    if (trimmed.startsWith('?? ')) {
+      const path = trimmed.slice(3).trim();
+      if (path.length > 0) paths.add(path);
+      continue;
+    }
+
+    const arrowIndex = trimmed.indexOf(' -> ');
+    if (arrowIndex > -1) {
+      const renamedPath = trimmed.slice(arrowIndex + 4).trim();
+      if (renamedPath.length > 0) paths.add(renamedPath);
+      continue;
+    }
+
+    const path = trimmed.slice(3).trim();
+    if (path.length > 0) paths.add(path);
+  }
+
+  return paths;
+}
+
+const baselineChangedPaths = readChangedPaths();
+
+function isAllowedCreatedPath(path) {
+  return allowCreatedPaths.some((allowed) => {
+    if (typeof allowed !== 'string' || allowed.length === 0) return false;
+    if (allowed.endsWith('/**')) {
+      return path.startsWith(allowed.slice(0, -3));
+    }
+    return path === allowed;
+  });
+}
 
 for (const file of files) {
   const filePath = join(examplesDir, file);
@@ -123,4 +175,24 @@ if (failures.length > 0) {
     }
   }
   process.exit(1);
+}
+
+const finalChangedPaths = readChangedPaths();
+if (baselineChangedPaths && finalChangedPaths) {
+  const newEntries = Array.from(finalChangedPaths)
+    .filter((path) => !baselineChangedPaths.has(path))
+    .filter((path) => !isAllowedCreatedPath(path));
+  if (newEntries.length > 0) {
+    console.log('');
+    console.log('Example validation produced unexpected repo changes:');
+    for (const path of newEntries) {
+      console.log(`- ${path}`);
+    }
+    console.log('');
+    if (allowCreatedPaths.length > 0) {
+      console.log(`Allowed created paths: ${allowCreatedPaths.join(', ')}`);
+    }
+    console.log('Clean up generated artifacts (or allowlist intentional outputs) and run again.');
+    process.exit(1);
+  }
 }

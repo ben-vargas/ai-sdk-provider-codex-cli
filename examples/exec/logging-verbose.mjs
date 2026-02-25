@@ -53,12 +53,12 @@ async function main() {
     const usage = await result.usage;
     console.log('Token usage:', usage);
 
-    console.log('\n✓ Notice: Debug and info logs appeared above');
+    console.log('\n Notice: Debug and info logs appeared above');
     console.log('  Verbose mode provides detailed execution information');
     console.log('  This is helpful for development and troubleshooting');
   } catch (error) {
     console.error('Error:', error);
-    console.log('\n💡 Troubleshooting:');
+    console.log('\n Troubleshooting:');
     console.log('1. Install Codex CLI: npm install -g @openai/codex');
     console.log('2. Authenticate: codex login (or set OPENAI_API_KEY)');
     console.log('3. Run check-cli.mjs to verify setup');

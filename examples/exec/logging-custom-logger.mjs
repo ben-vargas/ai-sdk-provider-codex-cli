@@ -69,12 +69,12 @@ async function main() {
     const usage = await result.usage;
     console.log('Token usage:', usage);
 
-    console.log('\n✓ Custom logger successfully integrated!');
+    console.log('\n Custom logger successfully integrated!');
     console.log('  All logs above are formatted with custom prefixes and timestamps');
     console.log('  You can route these to any logging service (Datadog, Sentry, etc.)');
   } catch (error) {
     console.error('Error:', error);
-    console.log('\n💡 Troubleshooting:');
+    console.log('\n Troubleshooting:');
     console.log('1. Install Codex CLI: npm install -g @openai/codex');
     console.log('2. Authenticate: codex login (or set OPENAI_API_KEY)');
     console.log('3. Run check-cli.mjs to verify setup');
@@ -84,7 +84,7 @@ async function main() {
 main().catch(console.error);
 
 // Example: Integration with popular logging libraries
-console.log('\n📚 Integration Examples:\n');
+console.log('\n Integration Examples:\n');
 console.log('// Winston integration:');
 console.log('const logger = {');
 console.log('  debug: (msg) => winston.debug(msg),');

@@ -26,6 +26,9 @@ npm run build
 node examples/exec/basic-usage.mjs
 node examples/app-server/basic-usage.mjs
 node examples/app-server/list-models.mjs
+node examples/app-server/abort.mjs
+node examples/app-server/raw-chunks.mjs
+node examples/app-server/usage-metadata.mjs
 ```
 
 ## Validate
@@ -78,6 +81,9 @@ These demonstrate features that only exist in `codex app-server` mode:
 - `examples/app-server/list-models.mjs` - calls `listModels()`
 - `examples/app-server/session-injection.mjs` - uses `onSessionCreated` + `session.injectMessage()`
 - `examples/app-server/local-mcp-tool.mjs` - registers in-process tools with `createSdkMcpServer()`
+- `examples/app-server/abort.mjs` - demonstrates aborting an in-flight stream with `AbortController`
+- `examples/app-server/raw-chunks.mjs` - enables `includeRawChunks` and inspects raw protocol events
+- `examples/app-server/usage-metadata.mjs` - prints token usage and provider metadata from a generation
 
 ## Troubleshooting
 

@@ -16,7 +16,7 @@ const appServer = createCodexAppServer({
 });
 
 try {
-  console.log('🏗️  Codex CLI - Nested Object Generation\n');
+  console.log('  Codex CLI - Nested Object Generation\n');
 
   const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
@@ -25,7 +25,7 @@ try {
 
   // Example 1: Company organization structure
   async function example1_organization() {
-    console.log('1️⃣  Organization Structure\n');
+    console.log('1  Organization Structure\n');
 
     const orgSchema = z.object({
       organization: z.object({
@@ -63,9 +63,9 @@ try {
     console.log();
   }
 
-  // Example 2: E‑commerce product with variants and inventory
+  // Example 2: Ecommerce product with variants and inventory
   async function example2_product() {
-    console.log('2️⃣  Product with Variants & Inventory\n');
+    console.log('2  Product with Variants & Inventory\n');
 
     const productSchema = z.object({
       sku: z.string(),
@@ -105,7 +105,7 @@ try {
   await example1_organization();
   await example2_product();
 
-  console.log('✅ Done');
+  console.log(' Done');
 } finally {
   await appServer.close();
 }

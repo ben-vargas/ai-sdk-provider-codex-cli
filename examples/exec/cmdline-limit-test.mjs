@@ -46,13 +46,13 @@ async function main() {
     console.log(`Response: ${result.text.slice(0, 200)}...`);
 
     if (result.text.toLowerCase().includes('ok')) {
-      console.log('\n✅ Test passed - Codex received the full prompt correctly');
+      console.log('\n Test passed - Codex received the full prompt correctly');
     } else {
-      console.log("\n⚠️  Response doesn't contain 'OK', but no error occurred");
+      console.log("\n  Response doesn't contain 'OK', but no error occurred");
       console.log('The prompt was likely received correctly.');
     }
   } catch (error) {
-    console.error('\n❌ Error:', error);
+    console.error('\n Error:', error);
     console.log('\nIf this error mentions command line length, the stdin fix may not be working.');
     process.exit(1);
   }

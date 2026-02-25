@@ -14,15 +14,16 @@
     "advanced-settings.mjs": {
       "mustInclude": ["=== Example 1: Deep Reasoning ===", "=== Example 4: Combined Settings ==="]
     },
+    "abort.mjs": { "mustInclude": ["Abort example complete."] },
     "basic-usage.mjs": { "mustInclude": ["Result:"] },
     "basic-usage-gpt-5-codex.mjs": { "mustInclude": ["Result:"] },
     "check-cli.mjs": { "mustInclude": ["app-server"] },
     "conversation-history.mjs": { "mustInclude": ["threadId"] },
-    "generate-object-basic.mjs": { "mustInclude": ["✅ Done"] },
-    "generate-object-basic-gpt-5-codex.mjs": { "mustInclude": ["✅ Done"] },
-    "generate-object-constraints.mjs": { "mustInclude": ["✅ Done"] },
-    "generate-object-native-schema.mjs": { "mustInclude": ["✅ Native schema showcase complete!"] },
-    "generate-object-nested.mjs": { "mustInclude": ["✅ Done"], "timeoutMs": 90000 },
+    "generate-object-basic.mjs": { "mustInclude": ["Done"] },
+    "generate-object-basic-gpt-5-codex.mjs": { "mustInclude": ["Done"] },
+    "generate-object-constraints.mjs": { "mustInclude": ["Done"] },
+    "generate-object-native-schema.mjs": { "mustInclude": ["Native schema showcase complete!"] },
+    "generate-object-nested.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
     "image-support.mjs": {
       "mustInclude": ["Example 2: streamText with Buffer", "Examples completed successfully!"],
       "mustNotInclude": ["no image was provided", "can't assess", "did not receive image context"]
@@ -30,12 +31,14 @@
     "list-models.mjs": { "mustInclude": ["model(s)"] },
     "local-mcp-tool.mjs": { "mustInclude": ["42"] },
     "long-prompt-test.mjs": { "mustInclude": ["Long Prompt Test"], "timeoutMs": 120000 },
+    "raw-chunks.mjs": { "mustInclude": ["Raw chunks example complete."] },
     "provider-options.mjs": {
       "mustInclude": ["Quick Response", "Deep Analysis"],
       "timeoutMs": 120000
     },
     "session-injection.mjs": { "mustInclude": ["```"] },
     "streaming-tool-calls.mjs": { "mustInclude": ["Tool"] },
-    "streaming-multiple-tools.mjs": { "mustInclude": ["tool"] }
+    "streaming-multiple-tools.mjs": { "mustInclude": ["tool"] },
+    "usage-metadata.mjs": { "mustInclude": ["Usage metadata example complete."] }
   }
 }

@@ -14,14 +14,14 @@ import { generateObject } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
-console.log('🎯 Native JSON Schema Showcase\n');
+console.log(' Native JSON Schema Showcase\n');
 console.log('This example demonstrates v0.2.0 native schema support.');
 console.log('The schema is passed to OpenAI API with strict: true.\n');
 console.log('Benefits:');
-console.log('  ✅ No verbose JSON instructions in prompt');
-console.log('  ✅ 100-200 fewer tokens per request');
-console.log('  ✅ API-level enforcement (more reliable)');
-console.log('  ✅ Guaranteed valid JSON output\n');
+console.log('   No verbose JSON instructions in prompt');
+console.log('   100-200 fewer tokens per request');
+console.log('   API-level enforcement (more reliable)');
+console.log('   Guaranteed valid JSON output\n');
 
 const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
@@ -32,7 +32,7 @@ const model = codexExec('gpt-5.3-codex', {
 
 // Example 1: Complex nested schema with constraints
 async function example1_complexSchema() {
-  console.log('1️⃣  Complex Nested Schema with Constraints\n');
+  console.log('1  Complex Nested Schema with Constraints\n');
 
   const schema = z.object({
     company: z.object({
@@ -71,12 +71,12 @@ async function example1_complexSchema() {
   });
 
   console.log(JSON.stringify(object, null, 2));
-  console.log('\n✅ Schema enforced by API, not prompt engineering!\n');
+  console.log('\n Schema enforced by API, not prompt engineering!\n');
 }
 
 // Example 2: Enum-heavy schema
 async function example2_enumSchema() {
-  console.log('2️⃣  Schema with Multiple Enums\n');
+  console.log('2  Schema with Multiple Enums\n');
 
   const schema = z.object({
     incident: z.object({
@@ -107,13 +107,13 @@ async function example2_enumSchema() {
   });
 
   console.log(JSON.stringify(object, null, 2));
-  console.log('\n✅ All enums validated at API level!\n');
+  console.log('\n All enums validated at API level!\n');
 }
 
 // Example 3: Complex types with arrays
 // NOTE: Optional fields and regex patterns not supported in OpenAI strict mode
 async function example3_complexTypes() {
-  console.log('3️⃣  Complex Nested Types\n');
+  console.log('3  Complex Nested Types\n');
 
   const schema = z.object({
     user: z.object({
@@ -150,14 +150,14 @@ async function example3_complexTypes() {
   });
 
   console.log(JSON.stringify(object, null, 2));
-  console.log('\n✅ Complex nested objects validated!\n');
+  console.log('\n Complex nested objects validated!\n');
 }
 
 await example1_complexSchema();
 await example2_enumSchema();
 await example3_complexTypes();
 
-console.log('✅ Native schema showcase complete!');
-console.log('\n💡 Key Takeaway:');
+console.log(' Native schema showcase complete!');
+console.log('\n Key Takeaway:');
 console.log('   With v0.2.0, schemas are enforced by the OpenAI API');
 console.log('   using strict mode. No prompt engineering needed!');

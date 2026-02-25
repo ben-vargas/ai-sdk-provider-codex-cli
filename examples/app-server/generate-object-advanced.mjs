@@ -16,7 +16,7 @@ const appServer = createCodexAppServer({
 });
 
 try {
-  console.log('🚀 Codex CLI - Advanced Object Generation\n');
+  console.log(' Codex CLI - Advanced Object Generation\n');
 
   // Use the Codex flagship model to exercise extra-high reasoning effort.
   // Requires codex-cli >= 0.60 for gpt-5.3-codex + xhigh.
@@ -28,7 +28,7 @@ try {
 
   // Example 1: Product comparison with scoring and rationale
   async function example1_productComparison() {
-    console.log('1️⃣  Product Comparison with Scoring\n');
+    console.log('1  Product Comparison with Scoring\n');
 
     const comparisonSchema = z.object({
       products: z
@@ -70,7 +70,7 @@ Phone B (Aurora Pro):
 
   // Example 2: HTML content extraction to typed JSON
   async function example2_htmlExtraction() {
-    console.log('2️⃣  HTML Content Extraction\n');
+    console.log('2  HTML Content Extraction\n');
 
     const articleSchema = z.object({
       title: z.string(),
@@ -87,7 +87,7 @@ Phone B (Aurora Pro):
     const html = `
 <article>
   <h1>Type-Safe APIs with Zod</h1>
-  <div class="byline">By Jane Developer • 2025-07-29</div>
+  <div class="byline">By Jane Developer  2025-07-29</div>
   <p>Zod is a TypeScript-first schema validation library that pairs nicely with API builders.</p>
   <p>In this guide, we explore patterns for validating inputs and emitting typed outputs.</p>
   <ul class="tags">
@@ -111,7 +111,7 @@ ${html}
 
   // Example 3: Incident classification with enums and derived fields
   async function example3_incidentClassification() {
-    console.log('3️⃣  Incident Classification\n');
+    console.log('3  Incident Classification\n');
 
     const incidentSchema = z.object({
       id: z.string(),
@@ -137,7 +137,7 @@ ${html}
   await example2_htmlExtraction();
   await example3_incidentClassification();
 
-  console.log('✅ Advanced examples complete');
+  console.log(' Advanced examples complete');
 } finally {
   await appServer.close();
 }
