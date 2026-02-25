@@ -174,6 +174,7 @@ export class AppServerRpcClient extends EventEmitter {
   private lastStderr = '';
   private idleTimer?: NodeJS.Timeout;
   private serverCapabilities?: Record<string, unknown> | null;
+  private expectedExitSignal?: NodeJS.Signals;
 
   public serverVersion?: string;
 
@@ -351,6 +352,7 @@ export class AppServerRpcClient extends EventEmitter {
     this.serverCapabilities = undefined;
 
     if (this.child) {
+      this.expectedExitSignal = 'SIGTERM';
       this.child.kill('SIGTERM');
       this.child = undefined;
     }
@@ -365,6 +367,7 @@ export class AppServerRpcClient extends EventEmitter {
     const args = [...base.args, 'app-server', '--listen', 'stdio://'];
 
     this.lastStderr = '';
+    this.expectedExitSignal = undefined;
     this.child = spawn(base.cmd, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
@@ -390,6 +393,14 @@ export class AppServerRpcClient extends EventEmitter {
 
     this.child.on('exit', (code, signal) => {
       const message = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
+      const expected =
+        this.state === 'closed' || (signal !== null && signal === this.expectedExitSignal);
+      this.expectedExitSignal = undefined;
+      if (expected) {
+        this.logger.info(`[codex-app-server] ${message}`);
+        return;
+      }
+
       this.logger.warn(`[codex-app-server] ${message}`);
       this.handleCrash(new Error(message));
     });
@@ -744,6 +755,7 @@ export class AppServerRpcClient extends EventEmitter {
         this.logger.info(
           `[codex-app-server] Closing idle app-server process after ${idleTimeoutMs}ms inactivity.`,
         );
+        this.expectedExitSignal = 'SIGTERM';
         this.child.kill('SIGTERM');
         this.child = undefined;
       }

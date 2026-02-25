@@ -412,6 +412,34 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('logs expected SIGTERM shutdowns at info level instead of warn', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const client = new AppServerRpcClient({
+      settings: { logger },
+    });
+    await client.ensureReady();
+
+    await client.close();
+    child.emit('exit', null, 'SIGTERM');
+    await flush();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('[codex-app-server] codex app-server exited'),
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('[codex-app-server] codex app-server exited'),
+    );
+  });
+
   it('times out requests that do not receive responses', async () => {
     vi.useFakeTimers();
     const { child } = createMockProcess();
