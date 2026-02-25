@@ -4,8 +4,8 @@ import type {
   LanguageModelV3FinishReason,
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
+  SharedV3ProviderMetadata,
   SharedV3Warning,
-  JSONObject,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -17,28 +17,52 @@ import { cleanupTempImages, extractImageData, writeImageToTempFile } from './ima
 import {
   createEmptyCodexUsage,
   mapUnsupportedSettingsWarnings,
+  mcpServersToConfigOverrides,
+  mergeSingleMcpServer,
   sanitizeJsonSchema,
-  safeStringify,
 } from './shared-utils.js';
-import type { CodexAppServerProviderOptions, CodexAppServerSettings } from './types-app-server.js';
-import type { Logger } from './types-shared.js';
 import type {
-  ThreadItem,
-  ThreadTokenUsageUpdatedNotification,
-  Turn,
-  TurnStartParams,
-  UserInput,
-} from './app-server-protocol-types.js';
+  AppServerMcpServerConfig,
+  AppServerThreadMode,
+  CodexAppServerProviderOptions,
+  CodexAppServerRequestHandlers,
+  CodexAppServerSettings,
+} from './types-app-server.js';
+import type { Logger, McpServerConfig } from './types-shared.js';
+import type { Turn, TurnStartParams, UserInput } from './app-server-protocol-types.js';
 import { AppServerRpcClient } from './app-server-rpc-client.js';
+import { AppServerSession } from './app-server-session.js';
+import { AppServerNotificationRouter } from './app-server-notification-router.js';
+import { AppServerStreamEmitter } from './app-server-stream-emitter.js';
+import { isSdkMcpServer, type SdkMcpServer } from './tools/sdk-mcp-server.js';
 
 const appServerProviderOptionsSchema = z
   .object({
     threadId: z.string().optional(),
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-    reasoningSummary: z.enum(['auto', 'detailed']).optional(),
-    reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
-    textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
-    mcpServers: z.record(z.string(), z.object({}).passthrough()).optional(),
+    resume: z.string().optional(),
+    threadMode: z.enum(['stateless', 'persistent']).optional(),
+    includeRawChunks: z.boolean().optional(),
+
+    personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
+    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
+    approvalPolicy: z
+      .union([
+        z.enum(['untrusted', 'on-failure', 'on-request', 'never']),
+        z.object({
+          reject: z.object({
+            sandbox_approval: z.boolean(),
+            rules: z.boolean(),
+            mcp_elicitations: z.boolean(),
+          }),
+        }),
+      ])
+      .optional(),
+    sandboxPolicy: z.object({ type: z.string() }).passthrough().optional(),
+    baseInstructions: z.string().optional(),
+    developerInstructions: z.string().optional(),
+
+    mcpServers: z.record(z.string(), z.any()).optional(),
     rmcpClient: z.boolean().optional(),
     configOverrides: z
       .record(
@@ -52,137 +76,31 @@ const appServerProviderOptionsSchema = z
         ]),
       )
       .optional(),
-    personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-    summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
-    approvalPolicy: z.any().optional(),
-    sandboxPolicy: z.any().optional(),
+
     autoApprove: z.boolean().optional(),
     persistExtendedHistory: z.boolean().optional(),
+
+    serverRequests: z.object({}).passthrough().optional(),
+    onSessionCreated: z
+      .any()
+      .refine((value) => value === undefined || typeof value === 'function', {
+        message: 'onSessionCreated must be a function',
+      })
+      .optional(),
   })
   .strict();
 
-function mapTurnStatusToFinishReason(turn: Turn): LanguageModelV3FinishReason {
-  switch (turn.status) {
-    case 'completed':
-      return { unified: 'stop', raw: 'completed' };
-    case 'interrupted':
-      return { unified: 'stop', raw: 'interrupted' };
-    case 'failed': {
-      const errorInfo = turn.error?.codexErrorInfo;
-      if (errorInfo === 'contextWindowExceeded') {
-        return { unified: 'length', raw: 'context_window_exceeded' };
-      }
-      if (errorInfo === 'usageLimitExceeded') {
-        return { unified: 'length', raw: 'usage_limit_exceeded' };
-      }
-      return { unified: 'error', raw: turn.error?.message ?? 'failed' };
-    }
-    default:
-      return { unified: 'other', raw: turn.status };
-  }
-}
-
-function mapTokenUsageToAiSdkUsage(
-  event: ThreadTokenUsageUpdatedNotification,
-): LanguageModelV3Usage {
-  const last = event.tokenUsage.last;
-
-  return {
-    inputTokens: {
-      total: last.inputTokens,
-      noCache: Math.max(0, last.inputTokens - last.cachedInputTokens),
-      cacheRead: last.cachedInputTokens,
-      cacheWrite: 0,
-    },
-    outputTokens: {
-      total: last.outputTokens,
-      text: undefined,
-      reasoning: last.reasoningOutputTokens,
-    },
-    raw: last as unknown as JSONObject,
-  };
-}
-
-function mapSandboxModeToThreadSandbox(
-  mode?: CodexAppServerSettings['sandboxMode'],
-): string | undefined {
-  if (!mode) return undefined;
-  if (mode === 'read-only') return 'readOnly';
-  if (mode === 'workspace-write') return 'workspaceWrite';
-  return 'dangerFullAccess';
-}
-
-function mapApprovalPolicy(
-  settings: CodexAppServerSettings,
-  overrides?: CodexAppServerProviderOptions,
-): unknown {
-  return overrides?.approvalPolicy ?? settings.approvalPolicy ?? settings.approvalMode;
-}
-
-function extractTextAndImagesFromLastUserMessage(prompt: unknown[]): {
-  text: string;
-  images: ImageData[];
-  warning?: string;
-} {
-  const messages = Array.isArray(prompt) ? prompt : [];
-  const userMessages = messages.filter((m) => {
-    if (!m || typeof m !== 'object') return false;
-    return (m as { role?: unknown }).role === 'user';
-  }) as Array<{ content?: unknown }>;
-
-  const warning =
-    messages.length > 1
-      ? 'Stateful mode ignores earlier prompt messages and only sends the last user message.'
-      : undefined;
-
-  const lastUser = userMessages[userMessages.length - 1];
-  if (!lastUser) return { text: '', images: [], warning };
-
-  if (typeof lastUser.content === 'string') {
-    return { text: lastUser.content, images: [], warning };
-  }
-
-  const textParts: string[] = [];
-  const images: ImageData[] = [];
-  if (Array.isArray(lastUser.content)) {
-    for (const part of lastUser.content) {
-      if (part && typeof part === 'object') {
-        const data = part as { type?: unknown; text?: unknown };
-        if (data.type === 'text' && typeof data.text === 'string') {
-          textParts.push(data.text);
-        }
-        if (data.type === 'image') {
-          const image = extractImageData(part);
-          if (image) images.push(image);
-        }
-      }
-    }
-  }
-
-  return {
-    text: textParts.join('\n').trim(),
-    images,
-    warning,
-  };
-}
-
-function mapToolName(item: ThreadItem): string | undefined {
-  switch (item.type) {
-    case 'commandExecution':
-      return 'exec';
-    case 'fileChange':
-      return 'patch';
-    case 'mcpToolCall':
-      return typeof item.tool === 'string' && item.tool.length > 0 ? item.tool : 'mcp_tool';
-    case 'webSearch':
-      return 'web_search';
-    default:
-      return undefined;
-  }
-}
-
 const INTERRUPT_COMPLETION_TIMEOUT_MS = 5_000;
+
+type PromptImage =
+  | {
+      type: 'local';
+      data: ImageData;
+    }
+  | {
+      type: 'remote';
+      url: string;
+    };
 
 function waitForPromiseOrTimeout<T>(
   promise: Promise<T>,
@@ -223,30 +141,220 @@ function createStaleThreadError(threadId: string): Error {
   );
 }
 
-function getErrorNotificationMessage(params: Record<string, unknown>): string | undefined {
-  if (typeof params.message === 'string') return params.message;
-  const nested = params.error;
-  if (
-    nested &&
-    typeof nested === 'object' &&
-    typeof (nested as { message?: unknown }).message === 'string'
-  ) {
-    return (nested as { message: string }).message;
+function mapTurnStatusToFinishReason(turn: Turn): LanguageModelV3FinishReason {
+  switch (turn.status) {
+    case 'completed':
+      return { unified: 'stop', raw: 'completed' };
+    case 'interrupted':
+      return { unified: 'stop', raw: 'interrupted' };
+    case 'failed': {
+      const errorInfo = turn.error?.codexErrorInfo;
+      if (errorInfo === 'contextWindowExceeded') {
+        return { unified: 'length', raw: 'context_window_exceeded' };
+      }
+      if (errorInfo === 'usageLimitExceeded') {
+        return { unified: 'length', raw: 'usage_limit_exceeded' };
+      }
+      return { unified: 'error', raw: turn.error?.message ?? 'failed' };
+    }
+    default:
+      return { unified: 'other', raw: turn.status };
   }
-  return undefined;
+}
+
+function mapSandboxToThreadSandbox(settings: CodexAppServerSettings): unknown {
+  return settings.sandboxPolicy;
+}
+
+function mapApprovalPolicy(settings: CodexAppServerSettings): unknown {
+  return settings.approvalPolicy;
+}
+
+function mergeServerRequests(
+  base?: CodexAppServerRequestHandlers,
+  override?: Partial<CodexAppServerRequestHandlers>,
+): CodexAppServerRequestHandlers | undefined {
+  if (!base && !override) return undefined;
+  return {
+    ...(base ?? {}),
+    ...(override ?? {}),
+  };
+}
+
+function extractSystemInstruction(prompt: readonly unknown[]): string | undefined {
+  const parts: string[] = [];
+  for (const message of prompt) {
+    if (!message || typeof message !== 'object') continue;
+    if ((message as { role?: unknown }).role !== 'system') continue;
+    const content = (message as { content?: unknown }).content;
+    if (typeof content === 'string' && content.trim().length > 0) {
+      parts.push(content.trim());
+      continue;
+    }
+
+    if (Array.isArray(content)) {
+      const textParts = content
+        .filter(
+          (part) =>
+            part && typeof part === 'object' && (part as { type?: unknown }).type === 'text',
+        )
+        .map((part) => String((part as { text?: unknown }).text ?? ''))
+        .filter((text) => text.trim().length > 0);
+      if (textParts.length > 0) {
+        parts.push(textParts.join('\n'));
+      }
+    }
+  }
+
+  if (parts.length === 0) return undefined;
+  return parts.join('\n\n');
+}
+
+function filterOutSystemMessages(prompt: readonly unknown[]): unknown[] {
+  return (Array.isArray(prompt) ? prompt : []).filter((message) => {
+    if (!message || typeof message !== 'object') return true;
+    return (message as { role?: unknown }).role !== 'system';
+  });
+}
+
+function extractRemoteImageUrl(value: unknown): string | undefined {
+  const asString = (input: unknown): string | undefined =>
+    typeof input === 'string' && /^https?:\/\//i.test(input.trim()) ? input.trim() : undefined;
+
+  if (!value || typeof value !== 'object') return undefined;
+  const part = value as {
+    image?: unknown;
+    url?: unknown;
+  };
+
+  if (part.image instanceof URL) {
+    const url = part.image.toString();
+    if (/^https?:\/\//i.test(url)) return url;
+  }
+
+  return asString(part.image) ?? asString(part.url);
+}
+
+function extractTextAndImagesFromLastUserMessage(prompt: unknown[]): {
+  text: string;
+  images: PromptImage[];
+  warning?: string;
+} {
+  const messages = Array.isArray(prompt) ? prompt : [];
+  const userMessages = messages.filter((message) => {
+    if (!message || typeof message !== 'object') return false;
+    return (message as { role?: unknown }).role === 'user';
+  }) as Array<{ content?: unknown }>;
+
+  const warning =
+    messages.length > 1
+      ? 'Stateful mode ignores earlier prompt messages and only sends the last user message.'
+      : undefined;
+
+  const lastUser = userMessages[userMessages.length - 1];
+  if (!lastUser) return { text: '', images: [], warning };
+
+  if (typeof lastUser.content === 'string') {
+    return { text: lastUser.content, images: [], warning };
+  }
+
+  const textParts: string[] = [];
+  const images: PromptImage[] = [];
+
+  if (Array.isArray(lastUser.content)) {
+    for (const part of lastUser.content) {
+      if (!part || typeof part !== 'object') continue;
+      const asPart = part as { type?: unknown; text?: unknown };
+      if (asPart.type === 'text' && typeof asPart.text === 'string') {
+        textParts.push(asPart.text);
+        continue;
+      }
+
+      if (asPart.type === 'image') {
+        const remote = extractRemoteImageUrl(part);
+        if (remote) {
+          images.push({ type: 'remote', url: remote });
+          continue;
+        }
+
+        const localImage = extractImageData(part);
+        if (localImage) {
+          images.push({ type: 'local', data: localImage });
+        }
+      }
+    }
+  }
+
+  return {
+    text: textParts.join('\n').trim(),
+    images,
+    warning,
+  };
+}
+
+function collectRemoteImageUrls(prompt: readonly unknown[]): string[] {
+  const urls: string[] = [];
+
+  for (const message of prompt) {
+    if (!message || typeof message !== 'object') continue;
+    if ((message as { role?: unknown }).role !== 'user') continue;
+
+    const content = (message as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue;
+      if ((part as { type?: unknown }).type !== 'image') continue;
+      const remote = extractRemoteImageUrl(part);
+      if (remote) urls.push(remote);
+    }
+  }
+
+  return urls;
+}
+
+function mergeAppServerMcpServers(
+  base?: Record<string, AppServerMcpServerConfig>,
+  override?: Record<string, AppServerMcpServerConfig>,
+): Record<string, AppServerMcpServerConfig> | undefined {
+  if (!base) return override ? { ...override } : undefined;
+  if (!override) return { ...base };
+
+  const merged: Record<string, AppServerMcpServerConfig> = { ...base };
+  for (const [name, incoming] of Object.entries(override)) {
+    const existing = merged[name];
+
+    if (!existing || isSdkMcpServer(existing) || isSdkMcpServer(incoming)) {
+      merged[name] = incoming;
+      continue;
+    }
+
+    if (existing.transport === incoming.transport) {
+      merged[name] = mergeSingleMcpServer(existing, incoming);
+    } else {
+      merged[name] = incoming;
+    }
+  }
+
+  return merged;
+}
+
+interface ResolvedConfig {
+  configOverrides: Record<string, unknown> | undefined;
 }
 
 export interface AppServerLanguageModelOptions {
   id: string;
   settings?: CodexAppServerSettings;
   client: AppServerRpcClient;
+  onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
 }
 
 export class AppServerLanguageModel implements LanguageModelV3 {
   readonly specificationVersion = 'v3' as const;
   readonly provider = 'codex-app-server';
   readonly defaultObjectGenerationMode = 'json' as const;
-  readonly supportsImageUrls = false;
+  readonly supportsImageUrls = true;
   readonly supportedUrls = {};
   readonly supportsStructuredOutputs = true;
 
@@ -255,11 +363,16 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
   private readonly client: AppServerRpcClient;
   private readonly logger: Logger;
+  private readonly onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
+
+  private persistentThreadId?: string;
+  private persistentSession?: AppServerSession;
 
   constructor(options: AppServerLanguageModelOptions) {
     this.modelId = options.id;
     this.settings = options.settings ?? {};
     this.client = options.client;
+    this.onSdkMcpServerUsed = options.onSdkMcpServerUsed;
     const baseLogger = getLogger(this.settings.logger);
     this.logger = createVerboseLogger(baseLogger, this.settings.verbose ?? false);
 
@@ -270,31 +383,111 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
   private mergeSettings(providerOptions?: CodexAppServerProviderOptions): CodexAppServerSettings {
     if (!providerOptions) return this.settings;
-    return {
+
+    const merged: CodexAppServerSettings = {
       ...this.settings,
-      reasoningEffort: providerOptions.reasoningEffort ?? this.settings.reasoningEffort,
-      reasoningSummary: providerOptions.reasoningSummary ?? this.settings.reasoningSummary,
-      reasoningSummaryFormat:
-        providerOptions.reasoningSummaryFormat ?? this.settings.reasoningSummaryFormat,
-      modelVerbosity: providerOptions.textVerbosity ?? this.settings.modelVerbosity,
-      configOverrides: {
-        ...(this.settings.configOverrides ?? {}),
-        ...(providerOptions.configOverrides ?? {}),
-      },
       personality: providerOptions.personality ?? this.settings.personality,
       effort: providerOptions.effort ?? this.settings.effort,
       summary: providerOptions.summary ?? this.settings.summary,
       approvalPolicy: providerOptions.approvalPolicy ?? this.settings.approvalPolicy,
       sandboxPolicy: providerOptions.sandboxPolicy ?? this.settings.sandboxPolicy,
+      baseInstructions: providerOptions.baseInstructions ?? this.settings.baseInstructions,
+      developerInstructions:
+        providerOptions.developerInstructions ?? this.settings.developerInstructions,
       autoApprove: providerOptions.autoApprove ?? this.settings.autoApprove,
       persistExtendedHistory:
         providerOptions.persistExtendedHistory ?? this.settings.persistExtendedHistory,
+      threadMode: providerOptions.threadMode ?? this.settings.threadMode,
+      resume: providerOptions.resume ?? this.settings.resume,
+      includeRawChunks: providerOptions.includeRawChunks ?? this.settings.includeRawChunks,
+      rmcpClient: providerOptions.rmcpClient ?? this.settings.rmcpClient,
+      configOverrides: {
+        ...(this.settings.configOverrides ?? {}),
+        ...(providerOptions.configOverrides ?? {}),
+      },
+      serverRequests: mergeServerRequests(
+        this.settings.serverRequests,
+        providerOptions.serverRequests,
+      ),
+      onSessionCreated: providerOptions.onSessionCreated ?? this.settings.onSessionCreated,
+    };
+
+    merged.mcpServers = mergeAppServerMcpServers(
+      this.settings.mcpServers,
+      providerOptions.mcpServers,
+    );
+
+    return merged;
+  }
+
+  private resolveThreadMode(
+    settings: CodexAppServerSettings,
+    providerOptions?: CodexAppServerProviderOptions,
+  ): AppServerThreadMode {
+    return providerOptions?.threadMode ?? settings.threadMode ?? 'stateless';
+  }
+
+  private resolveTargetThreadId(
+    settings: CodexAppServerSettings,
+    providerOptions?: CodexAppServerProviderOptions,
+  ): { threadId?: string; explicit: boolean; persistent: boolean } {
+    const mode = this.resolveThreadMode(settings, providerOptions);
+    const explicit = providerOptions?.threadId ?? providerOptions?.resume ?? settings.resume;
+    if (explicit) {
+      return {
+        threadId: explicit,
+        explicit: true,
+        persistent: mode === 'persistent',
+      };
+    }
+
+    if (mode === 'persistent' && this.persistentThreadId) {
+      return {
+        threadId: this.persistentThreadId,
+        explicit: false,
+        persistent: true,
+      };
+    }
+
+    return {
+      threadId: undefined,
+      explicit: false,
+      persistent: mode === 'persistent',
+    };
+  }
+
+  private async resolveConfig(settings: CodexAppServerSettings): Promise<ResolvedConfig> {
+    const resolvedMcpServers: Record<string, McpServerConfig> = {};
+
+    for (const [name, server] of Object.entries(settings.mcpServers ?? {})) {
+      if (isSdkMcpServer(server)) {
+        const started = await server._start();
+        this.onSdkMcpServerUsed?.(server);
+        resolvedMcpServers[name] = started;
+        continue;
+      }
+
+      resolvedMcpServers[name] = server;
+    }
+
+    const mcpOverrides = mcpServersToConfigOverrides(
+      Object.keys(resolvedMcpServers).length > 0 ? resolvedMcpServers : undefined,
+      settings.rmcpClient,
+    );
+
+    const configOverrides = {
+      ...mcpOverrides,
+      ...(settings.configOverrides ?? {}),
+    };
+
+    return {
+      configOverrides: Object.keys(configOverrides).length > 0 ? configOverrides : undefined,
     };
   }
 
   private async buildUserInput(
     text: string,
-    images: ImageData[],
+    images: PromptImage[],
   ): Promise<{ input: UserInput[]; tempImagePaths: string[] }> {
     const input: UserInput[] = [];
     const tempImagePaths: string[] = [];
@@ -304,8 +497,13 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     }
 
     for (const image of images) {
+      if (image.type === 'remote') {
+        input.push({ type: 'image', url: image.url, imageUrl: image.url });
+        continue;
+      }
+
       try {
-        const tempPath = writeImageToTempFile(image);
+        const tempPath = writeImageToTempFile(image.data);
         tempImagePaths.push(tempPath);
         input.push({ type: 'localImage', path: tempPath });
       } catch (error) {
@@ -316,251 +514,227 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     return { input, tempImagePaths };
   }
 
-  async doGenerate(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
-    const providerOptions = await parseProviderOptions<CodexAppServerProviderOptions>({
-      provider: this.provider,
-      providerOptions: options.providerOptions,
-      schema: appServerProviderOptionsSchema as never,
-    });
+  private async startOrResumeThread(args: {
+    settings: CodexAppServerSettings;
+    providerOptions?: CodexAppServerProviderOptions;
+    configOverrides?: Record<string, unknown>;
+    developerInstructions?: string;
+  }): Promise<{
+    threadId: string;
+    persistent: boolean;
+    explicit: boolean;
+    recreatedFromStale: boolean;
+  }> {
+    const { settings, providerOptions, configOverrides, developerInstructions } = args;
+    const threadState = this.resolveTargetThreadId(settings, providerOptions);
 
-    const settings = this.mergeSettings(providerOptions);
-
-    const warnings = [
-      ...mapUnsupportedSettingsWarnings({
-        temperature: options.temperature,
-        topP: options.topP,
-        topK: options.topK,
-        presencePenalty: options.presencePenalty,
-        frequencyPenalty: options.frequencyPenalty,
-        stopSequences: options.stopSequences,
-        seed: (options as { seed?: unknown }).seed,
-      }),
-    ] as SharedV3Warning[];
-
-    let mappedText = '';
-    let mappedImages: ImageData[] = [];
-
-    if (providerOptions?.threadId) {
-      const stateful = extractTextAndImagesFromLastUserMessage(options.prompt as unknown[]);
-      mappedText = stateful.text;
-      mappedImages = stateful.images;
-      if (stateful.warning) {
-        warnings.push({ type: 'other', message: stateful.warning });
-      }
-    } else {
-      const mapped = mapMessagesToPrompt(options.prompt);
-      mappedText = mapped.promptText;
-      mappedImages = mapped.images;
-      for (const warning of mapped.warnings ?? []) {
-        warnings.push({ type: 'other', message: warning });
-      }
-    }
-
-    let threadId = providerOptions?.threadId;
-
-    if (!threadId) {
+    const startThread = async (ephemeral: boolean) => {
       const thread = await this.client.threadStart({
         model: this.modelId,
         cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings, providerOptions),
-        sandbox: mapSandboxModeToThreadSandbox(settings.sandboxMode),
-        config: settings.configOverrides,
+        approvalPolicy: mapApprovalPolicy(settings),
+        sandbox: mapSandboxToThreadSandbox(settings),
+        config: configOverrides,
+        baseInstructions: settings.baseInstructions,
+        developerInstructions,
         personality: settings.personality,
-        ephemeral: true,
-        experimentalRawEvents: false,
+        ephemeral,
+        experimentalRawEvents: Boolean(
+          providerOptions?.includeRawChunks ?? settings.includeRawChunks,
+        ),
         persistExtendedHistory: settings.persistExtendedHistory ?? false,
       });
-      threadId = thread.thread.id;
-    } else {
-      try {
-        await this.client.threadResume({
-          threadId,
-          model: this.modelId,
-          cwd: settings.cwd,
-          approvalPolicy: mapApprovalPolicy(settings, providerOptions),
-          personality: settings.personality,
-          persistExtendedHistory: settings.persistExtendedHistory ?? false,
-        });
-      } catch (error) {
-        if (isThreadNotFoundError(error)) {
-          throw createStaleThreadError(threadId);
-        }
-        throw error;
-      }
-    }
-
-    const { input, tempImagePaths } = await this.buildUserInput(mappedText, mappedImages);
-
-    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let text = '';
-    let turnId: string | undefined;
-    let aborted = false;
-    let resolveAbort: (() => void) | undefined;
-    const abortSignal = new Promise<void>((resolve) => {
-      resolveAbort = resolve;
-    });
-    let completionListener: ((method: string, params: Record<string, unknown>) => void) | undefined;
-
-    const removeCompletionListener = () => {
-      if (completionListener) {
-        this.client.off('notification', completionListener);
-        completionListener = undefined;
-      }
+      return thread.thread.id;
     };
 
-    const completion = new Promise<Turn>((resolve, reject) => {
-      completionListener = (method: string, params: Record<string, unknown>) => {
-        const notificationThreadId =
-          typeof params.threadId === 'string' ? params.threadId : undefined;
-        if (notificationThreadId && notificationThreadId !== threadId) return;
-
-        if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
-          const notificationTurnId = typeof params.turnId === 'string' ? params.turnId : undefined;
-          if (!turnId || !notificationTurnId || notificationTurnId === turnId) {
-            text += params.delta;
-          }
-          return;
-        }
-
-        if (method === 'item/completed' && params.item && typeof params.item === 'object') {
-          const item = params.item as ThreadItem;
-          if (item.type === 'agentMessage' && typeof item.text === 'string') {
-            text = item.text;
-          }
-          return;
-        }
-
-        if (method === 'thread/tokenUsage/updated') {
-          const parsed = params as unknown as ThreadTokenUsageUpdatedNotification;
-          usage = mapTokenUsageToAiSdkUsage(parsed);
-          return;
-        }
-
-        if (method === 'turn/completed' && params.turn && typeof params.turn === 'object') {
-          const turn = params.turn as Turn;
-          if (!turnId || turn.id === turnId) {
-            removeCompletionListener();
-            resolve(turn);
-          }
-          return;
-        }
-
-        if (method === 'error') {
-          const message = getErrorNotificationMessage(params);
-          if (message) {
-            removeCompletionListener();
-            reject(new Error(message));
-          }
-        }
+    if (!threadState.threadId) {
+      const newThreadId = await startThread(!threadState.persistent);
+      if (threadState.persistent) {
+        this.persistentThreadId = newThreadId;
+      }
+      return {
+        threadId: newThreadId,
+        persistent: threadState.persistent,
+        explicit: false,
+        recreatedFromStale: false,
       };
-
-      this.client.on('notification', completionListener);
-    });
-
-    let interruptWaitPromise: Promise<void> | undefined;
-    const interruptAndAwaitCompletion = async (): Promise<void> => {
-      if (!turnId) return;
-      if (!interruptWaitPromise) {
-        interruptWaitPromise = (async () => {
-          await this.client.turnInterrupt({ threadId: threadId!, turnId }).catch(() => undefined);
-          await waitForPromiseOrTimeout(
-            completion.then(() => undefined),
-            INTERRUPT_COMPLETION_TIMEOUT_MS,
-          );
-        })();
-      }
-      await interruptWaitPromise;
-    };
-
-    const abortError = () => options.abortSignal?.reason ?? new Error('Request aborted');
-
-    const onAbort = () => {
-      aborted = true;
-      resolveAbort?.();
-      if (turnId) {
-        void interruptAndAwaitCompletion();
-      }
-    };
-
-    if (options.abortSignal) {
-      if (options.abortSignal.aborted) onAbort();
-      options.abortSignal.addEventListener('abort', onAbort, { once: true });
     }
 
     try {
-      const turnParams: TurnStartParams = {
-        threadId,
-        input,
-        cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings, providerOptions),
-        sandboxPolicy: settings.sandboxPolicy,
+      await this.client.threadResume({
+        threadId: threadState.threadId,
         model: this.modelId,
-        effort: settings.effort,
-        summary: settings.summary,
+        cwd: settings.cwd,
+        approvalPolicy: mapApprovalPolicy(settings),
+        sandbox: mapSandboxToThreadSandbox(settings),
+        config: configOverrides,
+        baseInstructions: settings.baseInstructions,
+        developerInstructions,
         personality: settings.personality,
-        ...(options.responseFormat?.type === 'json' && options.responseFormat.schema
-          ? { outputSchema: sanitizeJsonSchema(options.responseFormat.schema) }
-          : {}),
-      };
+        persistExtendedHistory: settings.persistExtendedHistory ?? false,
+      });
 
-      const startTurn = async () => await this.client.turnStart(turnParams);
-      let turnResponse: Awaited<ReturnType<typeof startTurn>>;
-      try {
-        turnResponse = providerOptions?.threadId
-          ? await this.client.withThreadLock(threadId, startTurn)
-          : await startTurn();
-      } catch (error) {
-        if (providerOptions?.threadId && isThreadNotFoundError(error)) {
-          throw createStaleThreadError(threadId);
-        }
-        if (aborted) {
-          throw abortError();
-        }
+      if (threadState.persistent) {
+        this.persistentThreadId = threadState.threadId;
+      }
+
+      return {
+        threadId: threadState.threadId,
+        persistent: threadState.persistent,
+        explicit: threadState.explicit,
+        recreatedFromStale: false,
+      };
+    } catch (error) {
+      if (!isThreadNotFoundError(error)) {
         throw error;
       }
 
-      turnId = turnResponse.turn.id;
-      if (aborted) {
-        await interruptAndAwaitCompletion();
+      if (!threadState.persistent || threadState.explicit) {
+        throw createStaleThreadError(threadState.threadId);
       }
 
-      const raceResult = await Promise.race([
-        completion.then((turn) => ({ type: 'completed' as const, turn })),
-        abortSignal.then(async () => {
-          await interruptAndAwaitCompletion();
-          return { type: 'aborted' as const };
-        }),
-      ]);
-
-      if (aborted) {
-        throw abortError();
-      }
-      if (raceResult.type === 'aborted') {
-        throw abortError();
-      }
-
-      const completedTurn = raceResult.turn;
-      const content: LanguageModelV3Content[] = [{ type: 'text', text }];
+      const recreatedThreadId = await startThread(false);
+      this.persistentThreadId = recreatedThreadId;
       return {
-        content,
-        usage,
-        finishReason: mapTurnStatusToFinishReason(completedTurn),
-        warnings,
-        response: { id: generateId(), timestamp: new Date(), modelId: this.modelId },
-        request: { body: mappedText },
-        providerMetadata: { 'codex-app-server': { threadId } },
+        threadId: recreatedThreadId,
+        persistent: true,
+        explicit: false,
+        recreatedFromStale: true,
       };
-    } finally {
-      removeCompletionListener();
-      if (options.abortSignal) {
-        options.abortSignal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private async createOrReuseSession(args: {
+    threadId: string;
+    settings: CodexAppServerSettings;
+    providerOptions?: CodexAppServerProviderOptions;
+  }): Promise<AppServerSession | undefined> {
+    const { threadId, settings, providerOptions } = args;
+    const onSessionCreated = providerOptions?.onSessionCreated ?? settings.onSessionCreated;
+
+    if (!onSessionCreated) {
+      return undefined;
+    }
+
+    const persistent = this.resolveThreadMode(settings, providerOptions) === 'persistent';
+    if (persistent && this.persistentSession && this.persistentSession.threadId === threadId) {
+      return this.persistentSession;
+    }
+
+    const session = new AppServerSession({
+      threadId,
+      modelId: this.modelId,
+      client: this.client,
+      defaultTurnParams: {
+        cwd: settings.cwd,
+        approvalPolicy: mapApprovalPolicy(settings),
+        sandboxPolicy: settings.sandboxPolicy,
+        effort: settings.effort,
+        summary: settings.summary,
+        personality: settings.personality,
+      },
+    });
+
+    if (persistent) {
+      this.persistentSession = session;
+    }
+
+    await onSessionCreated(session);
+    return session;
+  }
+
+  private preparePrompt(
+    prompt: readonly unknown[],
+    hasExistingThreadContext: boolean,
+    developerInstructions?: string,
+  ): {
+    promptText: string;
+    images: PromptImage[];
+    warnings: SharedV3Warning[];
+    systemInstruction?: string;
+  } {
+    const warnings: SharedV3Warning[] = [];
+
+    if (hasExistingThreadContext) {
+      const stateful = extractTextAndImagesFromLastUserMessage(prompt as unknown[]);
+      if (stateful.warning) {
+        warnings.push({ type: 'other', message: stateful.warning });
       }
-      if (tempImagePaths.length > 0) {
-        cleanupTempImages(tempImagePaths);
+      return {
+        promptText: stateful.text,
+        images: stateful.images,
+        warnings,
+      };
+    }
+
+    const systemInstruction = extractSystemInstruction(prompt);
+    const promptForText =
+      !developerInstructions && systemInstruction
+        ? (filterOutSystemMessages(prompt) as import('ai').ModelMessage[])
+        : (prompt as import('ai').ModelMessage[]);
+
+    const mapped = mapMessagesToPrompt(promptForText);
+    const remoteImageUrls = collectRemoteImageUrls(prompt);
+
+    for (const warning of mapped.warnings ?? []) {
+      if (warning.includes('HTTP URLs not supported') && remoteImageUrls.length > 0) {
+        continue;
+      }
+      warnings.push({ type: 'other', message: warning });
+    }
+
+    return {
+      promptText: mapped.promptText,
+      images: [
+        ...mapped.images.map((image) => ({ type: 'local', data: image }) as PromptImage),
+        ...remoteImageUrls.map((url) => ({ type: 'remote', url }) as PromptImage),
+      ],
+      warnings,
+      systemInstruction,
+    };
+  }
+
+  async doGenerate(
+    options: Parameters<LanguageModelV3['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
+    const { stream, request } = await this.doStream(
+      options as Parameters<LanguageModelV3['doStream']>[0],
+    );
+
+    let text = '';
+    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
+    let warnings: SharedV3Warning[] = [];
+    let providerMetadata: SharedV3ProviderMetadata | undefined;
+
+    for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
+      if (part.type === 'stream-start') {
+        warnings = part.warnings;
+        continue;
+      }
+
+      if (part.type === 'text-delta') {
+        text += part.delta;
+        continue;
+      }
+
+      if (part.type === 'finish') {
+        usage = part.usage;
+        finishReason = part.finishReason;
+        providerMetadata = part.providerMetadata;
       }
     }
+
+    const content: LanguageModelV3Content[] = [{ type: 'text', text }];
+    return {
+      content,
+      usage,
+      finishReason,
+      warnings,
+      response: { id: generateId(), timestamp: new Date(), modelId: this.modelId },
+      request,
+      ...(providerMetadata ? { providerMetadata } : {}),
+    };
   }
 
   async doStream(
@@ -574,7 +748,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     const settings = this.mergeSettings(providerOptions);
 
-    const warnings = [
+    const warnings: SharedV3Warning[] = [
       ...mapUnsupportedSettingsWarnings({
         temperature: options.temperature,
         topP: options.topP,
@@ -584,187 +758,101 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         stopSequences: options.stopSequences,
         seed: (options as { seed?: unknown }).seed,
       }),
-    ] as SharedV3Warning[];
+    ];
 
-    let mappedText = '';
-    let mappedImages: ImageData[] = [];
+    const developerInstructionsOverride =
+      providerOptions?.developerInstructions ?? settings.developerInstructions;
 
-    if (providerOptions?.threadId) {
-      const stateful = extractTextAndImagesFromLastUserMessage(options.prompt as unknown[]);
-      mappedText = stateful.text;
-      mappedImages = stateful.images;
-      if (stateful.warning) {
-        warnings.push({ type: 'other', message: stateful.warning });
-      }
-    } else {
-      const mapped = mapMessagesToPrompt(options.prompt);
-      mappedText = mapped.promptText;
-      mappedImages = mapped.images;
-      for (const warning of mapped.warnings ?? []) {
-        warnings.push({ type: 'other', message: warning });
-      }
-    }
+    const threadState = this.resolveTargetThreadId(settings, providerOptions);
+    const prompt = this.preparePrompt(
+      options.prompt as unknown[],
+      Boolean(threadState.threadId),
+      developerInstructionsOverride,
+    );
 
-    let threadId = providerOptions?.threadId;
-    if (!threadId) {
-      const thread = await this.client.threadStart({
-        model: this.modelId,
-        cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings, providerOptions),
-        sandbox: mapSandboxModeToThreadSandbox(settings.sandboxMode),
-        config: settings.configOverrides,
-        personality: settings.personality,
-        ephemeral: true,
-        experimentalRawEvents: false,
-        persistExtendedHistory: settings.persistExtendedHistory ?? false,
+    warnings.push(...prompt.warnings);
+
+    const effectiveDeveloperInstructions =
+      developerInstructionsOverride ??
+      (!threadState.threadId ? prompt.systemInstruction : undefined);
+
+    const resolvedConfig = await this.resolveConfig(settings);
+
+    const threadResolution = await this.startOrResumeThread({
+      settings,
+      providerOptions,
+      configOverrides: resolvedConfig.configOverrides,
+      developerInstructions: effectiveDeveloperInstructions,
+    });
+
+    const threadId = threadResolution.threadId;
+
+    if (threadResolution.recreatedFromStale) {
+      warnings.push({
+        type: 'other',
+        message:
+          'Persistent thread no longer exists after app-server restart; created a new thread automatically.',
       });
-      threadId = thread.thread.id;
-    } else {
-      try {
-        await this.client.threadResume({
-          threadId,
-          model: this.modelId,
-          cwd: settings.cwd,
-          approvalPolicy: mapApprovalPolicy(settings, providerOptions),
-          personality: settings.personality,
-          persistExtendedHistory: settings.persistExtendedHistory ?? false,
-        });
-      } catch (error) {
-        if (isThreadNotFoundError(error)) {
-          throw createStaleThreadError(threadId);
-        }
-        throw error;
-      }
     }
 
-    const { input, tempImagePaths } = await this.buildUserInput(mappedText, mappedImages);
+    const { input, tempImagePaths } = await this.buildUserInput(prompt.promptText, prompt.images);
+    const session = await this.createOrReuseSession({ threadId, settings, providerOptions });
 
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
 
     const stream = new ReadableStream<LanguageModelV3StreamPart>({
       start: async (controller) => {
-        controller.enqueue({ type: 'stream-start', warnings });
+        const emitter = new AppServerStreamEmitter(controller, {
+          modelId: this.modelId,
+          threadId,
+          includeRawChunks:
+            options.includeRawChunks ??
+            providerOptions?.includeRawChunks ??
+            settings.includeRawChunks,
+        });
+
+        emitter.emitStreamStart(warnings);
+        emitter.emitResponseMetadata();
 
         let turnId: string | undefined;
+        let settleTurn:
+          | {
+              resolve: (turn: Turn) => void;
+              reject: (error: unknown) => void;
+            }
+          | undefined;
+        const turnCompletionPromise = new Promise<Turn>((resolve, reject) => {
+          settleTurn = { resolve, reject };
+        });
+
+        const router = new AppServerNotificationRouter({
+          client: this.client,
+          emitter,
+          threadId,
+          onUsage: (nextUsage) => {
+            usage = nextUsage;
+          },
+          onTurnCompleted: (turn) => {
+            session?.setInactive();
+            settleTurn?.resolve(turn);
+          },
+          onError: (error) => {
+            settleTurn?.reject(error);
+          },
+        });
+
         let aborted = false;
         let settled = false;
         let cleanedUp = false;
-        let markTurnCompleted: (() => void) | undefined;
-        const turnCompletedSignal = new Promise<void>((resolve) => {
-          markTurnCompleted = resolve;
-        });
-        const activeToolIds = new Set<string>();
 
         const cleanup = () => {
           if (cleanedUp) return;
           cleanedUp = true;
-          this.client.off('notification', onNotification);
+          router.unsubscribe();
+          this.client.clearActiveRequestHandlers(threadId);
           cleanupTempImages(tempImagePaths);
           if (options.abortSignal) {
             options.abortSignal.removeEventListener('abort', onAbort);
-          }
-        };
-
-        const emitToolCall = (item: ThreadItem) => {
-          const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-          const toolName = mapToolName(item);
-          if (!toolName || activeToolIds.has(toolCallId)) return;
-
-          activeToolIds.add(toolCallId);
-          const inputText = safeStringify(item);
-
-          controller.enqueue({ type: 'tool-input-start', id: toolCallId, toolName });
-          if (inputText)
-            controller.enqueue({ type: 'tool-input-delta', id: toolCallId, delta: inputText });
-          controller.enqueue({ type: 'tool-input-end', id: toolCallId });
-          controller.enqueue({
-            type: 'tool-call',
-            toolCallId,
-            toolName,
-            input: inputText,
-            providerExecuted: true,
-          });
-        };
-
-        const emitToolResult = (item: ThreadItem) => {
-          const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-          const toolName = mapToolName(item);
-          if (!toolName) return;
-
-          controller.enqueue({
-            type: 'tool-result',
-            toolCallId,
-            toolName,
-            result: item as unknown as NonNullable<import('@ai-sdk/provider').JSONValue>,
-          });
-        };
-
-        const onNotification = (method: string, params: Record<string, unknown>) => {
-          const notificationThreadId =
-            typeof params.threadId === 'string' ? params.threadId : undefined;
-          if (notificationThreadId && notificationThreadId !== threadId) return;
-
-          if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
-            const notificationTurnId =
-              typeof params.turnId === 'string' ? params.turnId : undefined;
-            const notificationItemId =
-              typeof params.itemId === 'string' ? params.itemId : generateId();
-            if (!turnId || !notificationTurnId || notificationTurnId === turnId) {
-              controller.enqueue({
-                type: 'text-delta',
-                id: notificationItemId,
-                delta: params.delta,
-              });
-            }
-            return;
-          }
-
-          if (
-            (method === 'item/started' || method === 'item/completed') &&
-            params.item &&
-            typeof params.item === 'object'
-          ) {
-            const item = params.item as ThreadItem;
-            if (method === 'item/started') emitToolCall(item);
-            if (method === 'item/completed') emitToolResult(item);
-            return;
-          }
-
-          if (method === 'thread/tokenUsage/updated') {
-            usage = mapTokenUsageToAiSdkUsage(
-              params as unknown as ThreadTokenUsageUpdatedNotification,
-            );
-            return;
-          }
-
-          if (method === 'turn/completed' && params.turn && typeof params.turn === 'object') {
-            const turn = params.turn as Turn;
-            if (!turnId || turn.id === turnId) {
-              markTurnCompleted?.();
-              if (aborted) {
-                return;
-              }
-              if (settled) return;
-              settled = true;
-              controller.enqueue({
-                type: 'finish',
-                finishReason: mapTurnStatusToFinishReason(turn),
-                usage,
-                providerMetadata: { 'codex-app-server': { threadId } },
-              });
-              controller.close();
-              cleanup();
-            }
-            return;
-          }
-
-          if (method === 'error') {
-            const message = getErrorNotificationMessage(params);
-            if (!message) return;
-            if (settled) return;
-            settled = true;
-            controller.error(new Error(message));
-            cleanup();
           }
         };
 
@@ -773,10 +861,11 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           if (!turnId) return;
           if (!interruptWaitPromise) {
             interruptWaitPromise = (async () => {
-              await this.client
-                .turnInterrupt({ threadId: threadId!, turnId })
-                .catch(() => undefined);
-              await waitForPromiseOrTimeout(turnCompletedSignal, INTERRUPT_COMPLETION_TIMEOUT_MS);
+              await this.client.turnInterrupt({ threadId, turnId }).catch(() => undefined);
+              await waitForPromiseOrTimeout(
+                turnCompletionPromise.then(() => undefined),
+                INTERRUPT_COMPLETION_TIMEOUT_MS,
+              );
             })();
           }
           await interruptWaitPromise;
@@ -784,43 +873,38 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
         const abortError = () => options.abortSignal?.reason ?? new Error('Request aborted');
 
-        const finishAbortedTurn = async () => {
+        const failWithError = async (error: unknown) => {
           if (settled) return;
           settled = true;
-          await interruptAndAwaitCompletion();
-          controller.error(abortError());
+          emitter.error(error);
           cleanup();
         };
 
         const onAbort = () => {
           aborted = true;
-          if (turnId) {
-            void finishAbortedTurn();
-          }
+          if (!turnId) return;
+          void (async () => {
+            await interruptAndAwaitCompletion();
+            await failWithError(abortError());
+          })();
         };
 
-        this.client.on('notification', onNotification);
+        router.subscribe();
+        this.client.setActiveRequestHandlers(threadId, settings.serverRequests ?? {});
+
         if (options.abortSignal) {
           if (options.abortSignal.aborted) {
-            onAbort();
-            return;
+            aborted = true;
           }
           options.abortSignal.addEventListener('abort', onAbort, { once: true });
         }
-
-        controller.enqueue({
-          type: 'response-metadata',
-          id: generateId(),
-          timestamp: new Date(),
-          modelId: this.modelId,
-        });
 
         try {
           const turnParams: TurnStartParams = {
             threadId,
             input,
             cwd: settings.cwd,
-            approvalPolicy: mapApprovalPolicy(settings, providerOptions),
+            approvalPolicy: mapApprovalPolicy(settings),
             sandboxPolicy: settings.sandboxPolicy,
             model: this.modelId,
             effort: settings.effort,
@@ -832,41 +916,55 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           };
 
           const startTurn = async () => await this.client.turnStart(turnParams);
-          let turnResponse: Awaited<ReturnType<typeof startTurn>>;
-          try {
-            turnResponse = providerOptions?.threadId
-              ? await this.client.withThreadLock(threadId!, startTurn)
-              : await startTurn();
-          } catch (error) {
-            if (aborted) {
-              await finishAbortedTurn();
-              return;
-            }
-            if (providerOptions?.threadId && isThreadNotFoundError(error)) {
-              settled = true;
-              controller.error(createStaleThreadError(threadId!));
-              cleanup();
-              return;
-            }
-            throw error;
-          }
+          const turnResponse = threadState.threadId
+            ? await this.client.withThreadLock(threadId, startTurn)
+            : await startTurn();
 
           turnId = turnResponse.turn.id;
+          router.setTurnId(turnId);
+          session?.setTurnId(turnId);
+
           if (aborted) {
-            await finishAbortedTurn();
+            await interruptAndAwaitCompletion();
+            throw abortError();
           }
-        } catch (error) {
+
+          const turn = await turnCompletionPromise;
+          if (aborted) {
+            throw abortError();
+          }
+
           if (settled) return;
           settled = true;
-          controller.error(error);
+          const toolExecutionStats =
+            router.getToolExecutionStats() as unknown as import('@ai-sdk/provider').JSONObject;
+
+          emitter.emitFinish(mapTurnStatusToFinishReason(turn), usage, {
+            'codex-app-server': {
+              threadId,
+              ...(turnId ? { turnId } : {}),
+              toolExecutionStats,
+            },
+          });
+          emitter.close();
           cleanup();
+        } catch (error) {
+          if (threadState.threadId && isThreadNotFoundError(error)) {
+            await failWithError(createStaleThreadError(threadId));
+            return;
+          }
+
+          if (aborted && turnId) {
+            await interruptAndAwaitCompletion();
+          }
+          await failWithError(error);
         }
       },
     });
 
     return {
       stream,
-      request: { body: mappedText },
+      request: { body: prompt.promptText },
     };
   }
 }

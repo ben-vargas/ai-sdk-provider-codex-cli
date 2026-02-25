@@ -1,0 +1,9 @@
+{
+  "method": "item/fileChange/outputDelta",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_file_1",
+    "delta": "patch chunk"
+  }
+}

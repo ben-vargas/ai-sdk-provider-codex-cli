@@ -2,16 +2,28 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
-import { createAPICallError } from './errors.js';
+import { createAPICallError, UnsupportedFeatureError } from './errors.js';
 import { getLogger } from './logger.js';
 import type { Logger } from './types-shared.js';
-import type { CodexAppServerSettings } from './types-app-server.js';
+import type {
+  AppServerAuthRefreshRequest,
+  AppServerCommandExecutionApprovalRequest,
+  AppServerDynamicToolCallRequest,
+  AppServerFileChangeApprovalRequest,
+  AppServerSkillApprovalRequest,
+  AppServerToolRequestUserInputRequest,
+  AppServerUnhandledRequest,
+  CodexAppServerRequestHandlers,
+  CodexAppServerSettings,
+} from './types-app-server.js';
 import type {
   InitializeParams,
   InitializeResponse,
   JsonRpcId,
   JsonRpcRequest,
   JsonRpcResponse,
+  ModelListParams,
+  ModelListResponse,
   ThreadResumeParams,
   ThreadResumeResponse,
   ThreadStartParams,
@@ -40,7 +52,7 @@ type ClientState = 'idle' | 'starting' | 'ready' | 'error' | 'closed';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
-function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
+export function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
   if (explicitPath) {
     const lower = explicitPath.toLowerCase();
     if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) {
@@ -132,6 +144,18 @@ export interface AppServerRpcClientOptions {
   clientVersion?: string;
 }
 
+type ActiveHandlers = Partial<CodexAppServerRequestHandlers>;
+
+class JsonRpcRequestError extends Error {
+  readonly code: number;
+
+  constructor(code: number, message: string) {
+    super(`JSON-RPC error ${code}: ${message}`);
+    this.name = 'JsonRpcRequestError';
+    this.code = code;
+  }
+}
+
 export class AppServerRpcClient extends EventEmitter {
   private readonly settings: CodexAppServerSettings;
   private readonly logger: Logger;
@@ -145,8 +169,11 @@ export class AppServerRpcClient extends EventEmitter {
   private nextId = 1;
   private pending = new Map<JsonRpcId, PendingRequest>();
   private threadLocks = new Map<string, Promise<void>>();
+  private activeRequestHandlers = new Map<string, ActiveHandlers>();
+  private lastActiveThreadId?: string;
   private lastStderr = '';
   private idleTimer?: NodeJS.Timeout;
+  private serverCapabilities?: Record<string, unknown> | null;
 
   public serverVersion?: string;
 
@@ -154,7 +181,8 @@ export class AppServerRpcClient extends EventEmitter {
     super();
     this.settings = options.settings ?? {};
     this.logger = getLogger(options.logger ?? this.settings.logger);
-    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.requestTimeoutMs =
+      options.requestTimeoutMs ?? this.settings.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.clientVersion = options.clientVersion ?? '0.0.0';
   }
 
@@ -241,6 +269,47 @@ export class AppServerRpcClient extends EventEmitter {
     return await this.request<TurnInterruptResponse>('turn/interrupt', params as unknown as object);
   }
 
+  async modelList(params?: ModelListParams): Promise<ModelListResponse> {
+    await this.ensureReady();
+    this.touchActivity();
+
+    if (this.serverCapabilities?.modelList === false) {
+      throw new UnsupportedFeatureError({
+        feature: 'model/list',
+        minCodexVersion: this.settings.minCodexVersion ?? '0.105.0',
+        serverVersion: this.serverVersion,
+      });
+    }
+
+    try {
+      return await this.requestInternal<ModelListResponse>(
+        'model/list',
+        params as unknown as object,
+      );
+    } catch (error) {
+      if (error instanceof JsonRpcRequestError && error.code === -32601) {
+        throw new UnsupportedFeatureError({
+          feature: 'model/list',
+          minCodexVersion: this.settings.minCodexVersion ?? '0.105.0',
+          serverVersion: this.serverVersion,
+        });
+      }
+      throw error;
+    }
+  }
+
+  setActiveRequestHandlers(threadId: string, handlers: ActiveHandlers): void {
+    this.activeRequestHandlers.set(threadId, handlers);
+    this.lastActiveThreadId = threadId;
+  }
+
+  clearActiveRequestHandlers(threadId: string): void {
+    this.activeRequestHandlers.delete(threadId);
+    if (this.lastActiveThreadId === threadId) {
+      this.lastActiveThreadId = Array.from(this.activeRequestHandlers.keys()).at(-1);
+    }
+  }
+
   async withThreadLock<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
     const previous = this.threadLocks.get(threadId) ?? Promise.resolve();
 
@@ -277,11 +346,18 @@ export class AppServerRpcClient extends EventEmitter {
     }
     this.pending.clear();
     this.threadLocks.clear();
+    this.activeRequestHandlers.clear();
+    this.lastActiveThreadId = undefined;
+    this.serverCapabilities = undefined;
 
     if (this.child) {
       this.child.kill('SIGTERM');
       this.child = undefined;
     }
+  }
+
+  async dispose(): Promise<void> {
+    await this.close();
   }
 
   private async startAndInitialize(): Promise<void> {
@@ -361,6 +437,7 @@ export class AppServerRpcClient extends EventEmitter {
     this.writeMessage({ method: 'initialized' });
     this.touchActivity();
     this.checkVersion(initializeResult.userAgent);
+    this.serverCapabilities = initializeResult.capabilities ?? null;
   }
 
   private checkVersion(userAgent: string): void {
@@ -405,6 +482,9 @@ export class AppServerRpcClient extends EventEmitter {
       );
     }
     this.pending.clear();
+    this.activeRequestHandlers.clear();
+    this.lastActiveThreadId = undefined;
+    this.serverCapabilities = undefined;
   }
 
   private handleLine(line: string): void {
@@ -483,7 +563,23 @@ export class AppServerRpcClient extends EventEmitter {
 
     clearTimeout(pending.timer);
     this.pending.delete(id);
-    pending.reject(new Error(`JSON-RPC error ${error.code}: ${error.message}`));
+    pending.reject(new JsonRpcRequestError(error.code, error.message));
+  }
+
+  private getThreadIdFromServerRequest(params: Record<string, unknown>): string | undefined {
+    return typeof params.threadId === 'string' ? params.threadId : undefined;
+  }
+
+  private getHandlersForThread(threadId?: string): ActiveHandlers {
+    if (threadId) {
+      const active = this.activeRequestHandlers.get(threadId);
+      if (active) return active;
+    }
+    if (this.lastActiveThreadId) {
+      const active = this.activeRequestHandlers.get(this.lastActiveThreadId);
+      if (active) return active;
+    }
+    return this.settings.serverRequests ?? {};
   }
 
   private async handleServerRequest(
@@ -508,46 +604,109 @@ export class AppServerRpcClient extends EventEmitter {
       this.writeMessage({ id: normalized.id, error: { code, message } });
     };
 
-    const handler = this.settings.onServerRequest;
-    if (handler) {
-      try {
-        const result = await handler({
-          id: normalized.id,
-          method: normalized.method,
-          params: normalized.params,
-        });
+    const threadId = this.getThreadIdFromServerRequest(normalized.params);
+    const handlers = this.getHandlersForThread(threadId);
+    this.emit('server-request', normalized.method, normalized.params, normalized.id);
 
-        if (result !== undefined) {
-          sendResult(result);
-          return;
-        }
+    const runHandler = async <T>(
+      handlerCall: (() => Promise<T | undefined> | undefined) | undefined,
+    ) => {
+      if (!handlerCall) return undefined;
+      try {
+        const pending = handlerCall();
+        if (!pending) return undefined;
+        return await pending;
       } catch (error) {
         this.logger.warn(
-          `[codex-app-server] onServerRequest handler failed for '${normalized.method}': ${String(error)}`,
+          `[codex-app-server] request handler failed for '${normalized.method}': ${String(error)}`,
         );
+        return undefined;
       }
-    }
+    };
 
     switch (normalized.method) {
-      case 'item/commandExecution/requestApproval':
+      case 'item/commandExecution/requestApproval': {
+        const handled = await runHandler(() =>
+          handlers.onCommandExecutionApproval?.(
+            normalized as unknown as AppServerCommandExecutionApprovalRequest,
+          ),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendResult({ decision: this.settings.autoApprove ? 'accept' : 'decline' });
         return;
-      case 'item/fileChange/requestApproval':
+      }
+      case 'item/fileChange/requestApproval': {
+        const handled = await runHandler(() =>
+          handlers.onFileChangeApproval?.(
+            normalized as unknown as AppServerFileChangeApprovalRequest,
+          ),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendResult({ decision: this.settings.autoApprove ? 'accept' : 'decline' });
         return;
-      case 'skill/requestApproval':
+      }
+      case 'skill/requestApproval': {
+        const handled = await runHandler(() =>
+          handlers.onSkillApproval?.(normalized as unknown as AppServerSkillApprovalRequest),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendResult({ decision: this.settings.autoApprove ? 'approve' : 'decline' });
         return;
-      case 'item/tool/requestUserInput':
+      }
+      case 'item/tool/requestUserInput': {
+        const handled = await runHandler(() =>
+          handlers.onToolRequestUserInput?.(
+            normalized as unknown as AppServerToolRequestUserInputRequest,
+          ),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendResult({ answers: {} });
         return;
-      case 'item/tool/call':
+      }
+      case 'item/tool/call': {
+        const handled = await runHandler(() =>
+          handlers.onDynamicToolCall?.(normalized as unknown as AppServerDynamicToolCallRequest),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendResult({ contentItems: [], success: false });
         return;
-      case 'account/chatgptAuthTokens/refresh':
+      }
+      case 'account/chatgptAuthTokens/refresh': {
+        const handled = await runHandler(() =>
+          handlers.onAuthRefresh?.(normalized as unknown as AppServerAuthRefreshRequest),
+        );
+        if (handled !== undefined) {
+          sendResult(handled);
+          return;
+        }
         sendError(-32603, 'Auth token refresh not supported by this client');
         return;
+      }
       default:
+        {
+          const handled = await runHandler(() =>
+            handlers.onUnhandled?.(normalized as unknown as AppServerUnhandledRequest),
+          );
+          if (handled !== undefined) {
+            sendResult(handled);
+            return;
+          }
+        }
         sendError(-32601, 'Method not supported');
     }
   }

@@ -19,8 +19,8 @@ try {
   console.log('🎯 Codex CLI - Basic Object Generation\n');
 
   const model = appServer('gpt-5.1-codex', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   // Example 1: Simple object with primitives

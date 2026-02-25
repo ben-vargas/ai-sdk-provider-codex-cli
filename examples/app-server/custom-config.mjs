@@ -13,8 +13,8 @@ try {
     // Optional app-server style policy overrides:
     // approvalPolicy: 'on-request',
     // personality: 'pragmatic',
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   const { text } = await generateText({

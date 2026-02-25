@@ -24,16 +24,16 @@ try {
   }
 
   await run('on-failure + workspace-write', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
   await run('on-request + read-only', {
-    approvalMode: 'on-request',
-    sandboxMode: 'read-only',
+    approvalPolicy: 'on-request',
+    sandboxPolicy: { type: 'readOnly' },
   });
   await run('never + danger-full-access', {
-    approvalMode: 'never',
-    sandboxMode: 'danger-full-access',
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'dangerFullAccess' },
   });
 
   console.log('Note: These modes affect how Codex would execute tools/commands if needed.');

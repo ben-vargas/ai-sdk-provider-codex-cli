@@ -32,7 +32,7 @@ async function main() {
       minCodexVersion: '0.105.0',
       idleTimeoutMs: 100,
       cwd: process.cwd(),
-      approvalMode: 'on-failure',
+      approvalPolicy: 'on-failure',
     },
   });
 

@@ -38,8 +38,8 @@ try {
       // Enable verbose logging to see debug and info messages
       const result = streamText({
         model: appServer('gpt-5.1', {
-          approvalMode: 'on-failure',
-          sandboxMode: 'workspace-write',
+          approvalPolicy: 'on-failure',
+          sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging
         }),
         prompt: 'Say hello in 5 words',

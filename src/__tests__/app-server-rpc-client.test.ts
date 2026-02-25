@@ -35,7 +35,13 @@ interface MockProcess {
   emitServerMessage(message: unknown): void;
 }
 
-function createMockProcess(options: { userAgent?: string } = {}): MockProcess {
+function createMockProcess(
+  options: {
+    userAgent?: string;
+    disableModelList?: boolean;
+    initializeCapabilities?: Record<string, unknown> | null;
+  } = {},
+): MockProcess {
   const child = new EventEmitter() as MockProcess['child'];
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -51,8 +57,33 @@ function createMockProcess(options: { userAgent?: string } = {}): MockProcess {
 
       if (message.method === 'initialize') {
         child.stdout.write(
-          `${JSON.stringify({ id: message.id, result: { userAgent: options.userAgent ?? 'codex-cli 0.105.0' } })}\n`,
+          `${JSON.stringify({
+            id: message.id,
+            result: {
+              userAgent: options.userAgent ?? 'codex-cli 0.105.0',
+              capabilities: options.initializeCapabilities ?? null,
+            },
+          })}\n`,
         );
+      } else if (message.method === 'model/list') {
+        if (options.disableModelList) {
+          child.stdout.write(
+            `${JSON.stringify({
+              id: message.id,
+              error: { code: -32601, message: 'Method not supported' },
+            })}\n`,
+          );
+        } else {
+          child.stdout.write(
+            `${JSON.stringify({
+              id: message.id,
+              result: {
+                data: [{ id: 'gpt-5.1-codex', isDefault: true }],
+                nextCursor: null,
+              },
+            })}\n`,
+          );
+        }
       } else if (message.method === 'thread/start') {
         child.stdout.write(
           `${JSON.stringify({
@@ -122,6 +153,40 @@ describe('AppServerRpcClient', () => {
     });
 
     expect(result.thread.id).toBe('thr_1');
+    await client.close();
+  });
+
+  it('supports model/list requests', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    const result = await client.modelList({ modelProviders: ['openai'] });
+    expect(result.data[0].id).toBe('gpt-5.1-codex');
+    await client.close();
+  });
+
+  it('throws UnsupportedFeatureError when model/list returns method-not-supported', async () => {
+    const { child, writes } = createMockProcess({ disableModelList: true });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await expect(client.modelList()).rejects.toThrow(/not supported/i);
+    expect(writes.some((message) => (message as { method?: string }).method === 'model/list')).toBe(
+      true,
+    );
+    await client.close();
+  });
+
+  it('capability-gates model/list when initialize reports modelList=false', async () => {
+    const { child, writes } = createMockProcess({ initializeCapabilities: { modelList: false } });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await expect(client.modelList()).rejects.toThrow(/not supported/i);
+    expect(writes.some((message) => (message as { method?: string }).method === 'model/list')).toBe(
+      false,
+    );
     await client.close();
   });
 
@@ -242,20 +307,19 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
-  it('uses onServerRequest handler return values when provided', async () => {
+  it('uses typed serverRequests return values when provided', async () => {
     const { child, writes } = createMockProcess();
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient({
       settings: {
-        onServerRequest: async ({ method, id }) => {
-          if (method === 'item/tool/call') {
+        serverRequests: {
+          onDynamicToolCall: async ({ id }) => {
             return {
               contentItems: [{ type: 'outputText', text: `handled-${String(id)}` }],
               success: true,
             };
-          }
-          return undefined;
+          },
         },
       },
     });
@@ -272,6 +336,44 @@ describe('AppServerRpcClient', () => {
     expect(writes).toContainEqual({
       id: 41,
       result: { contentItems: [{ type: 'outputText', text: 'handled-41' }], success: true },
+    });
+    await client.close();
+  });
+
+  it('prefers active per-thread handlers over settings-level handlers', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: {
+        serverRequests: {
+          onDynamicToolCall: async () => ({
+            contentItems: [{ type: 'outputText', text: 'settings-handler' }],
+            success: true,
+          }),
+        },
+      },
+    });
+    await client.ensureReady();
+
+    client.setActiveRequestHandlers('thr_1', {
+      onDynamicToolCall: async () => ({
+        contentItems: [{ type: 'outputText', text: 'active-handler' }],
+        success: true,
+      }),
+    });
+
+    await callServerRequest(client, 71, 'item/tool/call', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      callId: 'call_1',
+      tool: 'search',
+      arguments: { q: 'hello' },
+    });
+
+    expect(writes).toContainEqual({
+      id: 71,
+      result: { contentItems: [{ type: 'outputText', text: 'active-handler' }], success: true },
     });
     await client.close();
   });

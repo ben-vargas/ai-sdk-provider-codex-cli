@@ -16,6 +16,8 @@ class FakeClient extends EventEmitter {
   turnInterruptImpl?: (params: { threadId: string; turnId: string }) => Promise<unknown>;
   withThreadLockCalls: string[] = [];
   withThreadLockImpl?: (threadId: string, fn: () => Promise<unknown>) => Promise<unknown>;
+  setActiveRequestHandlersCalls: Array<{ threadId: string }> = [];
+  clearActiveRequestHandlersCalls: string[] = [];
 
   async threadStart(params: unknown) {
     this.threadStartCalls.push(params);
@@ -81,6 +83,14 @@ class FakeClient extends EventEmitter {
     }
     return await fn();
   }
+
+  setActiveRequestHandlers(threadId: string) {
+    this.setActiveRequestHandlersCalls.push({ threadId });
+  }
+
+  clearActiveRequestHandlers(threadId: string) {
+    this.clearActiveRequestHandlersCalls.push(threadId);
+  }
 }
 
 describe('AppServerLanguageModel', () => {
@@ -98,7 +108,12 @@ describe('AppServerLanguageModel', () => {
     expect(result.content).toEqual([{ type: 'text', text: 'Hello' }]);
     expect(result.usage.inputTokens.total).toBe(0);
     expect(result.usage.outputTokens.total).toBe(0);
-    expect(result.providerMetadata?.['codex-app-server']).toEqual({ threadId: 'thr_new' });
+    expect(result.providerMetadata?.['codex-app-server']).toEqual(
+      expect.objectContaining({
+        threadId: 'thr_new',
+        turnId: 'turn_1',
+      }),
+    );
     expect(client.threadStartCalls).toHaveLength(1);
   });
 
@@ -362,10 +377,21 @@ describe('AppServerLanguageModel', () => {
     ).toBe(true);
 
     const finish = parts.find((part) => (part as { type?: string }).type === 'finish') as
-      | { usage?: { inputTokens?: { total?: number }; outputTokens?: { total?: number } } }
+      | {
+          usage?: { inputTokens?: { total?: number }; outputTokens?: { total?: number } };
+          providerMetadata?: {
+            'codex-app-server'?: {
+              toolExecutionStats?: { totalCalls?: number; byType?: { exec?: number } };
+            };
+          };
+        }
       | undefined;
     expect(finish?.usage?.inputTokens?.total).toBe(10);
     expect(finish?.usage?.outputTokens?.total).toBe(15);
+    expect(finish?.providerMetadata?.['codex-app-server']?.toolExecutionStats?.totalCalls).toBe(1);
+    expect(finish?.providerMetadata?.['codex-app-server']?.toolExecutionStats?.byType?.exec).toBe(
+      1,
+    );
   });
 
   it('doStream maps failed finish reason for usage limit exceeded', async () => {
@@ -405,6 +431,262 @@ describe('AppServerLanguageModel', () => {
       unified: 'length',
       raw: 'usage_limit_exceeded',
     });
+  });
+
+  it('emits raw chunks when includeRawChunks is enabled', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_raw_1',
+          itemId: 'item_raw_1',
+          delta: 'raw text',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_raw_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_raw_1' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'raw please' }] as never,
+      includeRawChunks: true,
+    });
+
+    const parts: unknown[] = [];
+    for await (const part of stream as AsyncIterable<unknown>) {
+      parts.push(part);
+    }
+
+    const rawParts = parts.filter((part) => (part as { type?: string }).type === 'raw') as Array<{
+      rawValue?: { method?: string };
+    }>;
+    expect(rawParts.length).toBeGreaterThan(0);
+    expect(rawParts.some((part) => part.rawValue?.method === 'item/agentMessage/delta')).toBe(true);
+  });
+
+  it('uses settings includeRawChunks as default when per-call option is absent', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_raw_default_1',
+          itemId: 'item_raw_default_1',
+          delta: 'raw from defaults',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_raw_default_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_raw_default_1' } };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { includeRawChunks: true },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'raw default please' }] as never,
+    });
+
+    const parts: Array<{ type?: string }> = [];
+    for await (const part of stream as AsyncIterable<{ type?: string }>) {
+      parts.push(part);
+    }
+
+    expect(parts.some((part) => part.type === 'raw')).toBe(true);
+  });
+
+  it('streams reasoning lifecycle parts from reasoning deltas', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'reasoningTextDelta', {
+          threadId: params.threadId,
+          turnId: 'turn_reason_1',
+          itemId: 'item_reason_1',
+          delta: 'Thinking...',
+        });
+        client.emit('notification', 'reasoningSummaryTextDelta', {
+          threadId: params.threadId,
+          turnId: 'turn_reason_1',
+          itemId: 'item_reason_1',
+          delta: 'Summary',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_reason_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_reason_1' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'reason please' }] as never,
+    });
+
+    const parts: Array<{ type?: string }> = [];
+    for await (const part of stream as AsyncIterable<{ type?: string }>) {
+      parts.push(part);
+    }
+
+    expect(parts.some((part) => part.type === 'reasoning-start')).toBe(true);
+    expect(parts.some((part) => part.type === 'reasoning-delta')).toBe(true);
+    expect(parts.some((part) => part.type === 'reasoning-end')).toBe(true);
+  });
+
+  it('emits tool-approval-request on approval server requests', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit(
+          'server-request',
+          'item/commandExecution/requestApproval',
+          {
+            threadId: params.threadId,
+            turnId: 'turn_approval_1',
+            itemId: 'item_approval_1',
+            command: 'npm test',
+          },
+          101,
+        );
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_approval_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_approval_1' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'approval event' }] as never,
+    });
+
+    const parts: unknown[] = [];
+    for await (const part of stream as AsyncIterable<unknown>) {
+      parts.push(part);
+    }
+
+    expect(
+      parts.some((part) => {
+        const p = part as { type?: string; approvalId?: string };
+        return p.type === 'tool-approval-request' && p.approvalId === 'item_approval_1';
+      }),
+    ).toBe(true);
+  });
+
+  it('reuses persistent thread automatically when threadMode is persistent', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second' }] as never,
+    });
+
+    expect(client.threadStartCalls).toHaveLength(1);
+    expect(client.threadResumeCalls).toHaveLength(1);
+    expect((client.threadResumeCalls[0] as { threadId: string }).threadId).toBe('thr_new');
+  });
+
+  it('recreates stale persistent thread with warning instead of throwing', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    client.threadResumeError = new Error('thread not found');
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second' }] as never,
+    });
+
+    expect(client.threadStartCalls).toHaveLength(2);
+    expect(
+      result.warnings.some(
+        (warning) =>
+          warning.type === 'other' && /Persistent thread no longer exists/i.test(warning.message),
+      ),
+    ).toBe(true);
+  });
+
+  it('invokes onSessionCreated and supports injectMessage()', async () => {
+    const client = new FakeClient();
+    let session:
+      | {
+          threadId: string;
+          injectMessage: (content: string) => Promise<void>;
+        }
+      | undefined;
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: {
+        onSessionCreated: (created) => {
+          session = created as typeof session;
+        },
+      },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'start' }] as never,
+    });
+
+    expect(session?.threadId).toBe('thr_new');
+    await session?.injectMessage('follow-up');
+
+    const followUpCall = client.turnStartCalls.find((call) =>
+      (call as TurnStartParams).input.some(
+        (item) =>
+          typeof item === 'object' &&
+          item !== null &&
+          (item as { type?: unknown }).type === 'text' &&
+          (item as { text?: unknown }).text === 'follow-up',
+      ),
+    );
+    expect(followUpCall).toBeDefined();
+  });
+
+  it('sends remote image URLs directly as image inputs', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+
+    await model.doGenerate({
+      prompt: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe remote image' },
+            { type: 'image', image: 'https://example.com/cat.png' },
+          ],
+        },
+      ] as never,
+    });
+
+    const turnStart = client.turnStartCalls[0] as TurnStartParams;
+    expect(turnStart.input.some((item) => item.type === 'image')).toBe(true);
+    expect(turnStart.input.some((item) => item.type === 'localImage')).toBe(false);
   });
 
   it('passes sanitized output schema in doStream turn/start', async () => {

@@ -1,0 +1,9 @@
+{
+  "method": "item/commandExecution/outputDelta",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_cmd_1",
+    "delta": "stdout chunk"
+  }
+}

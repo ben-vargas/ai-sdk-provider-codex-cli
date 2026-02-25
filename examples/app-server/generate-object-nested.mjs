@@ -19,8 +19,8 @@ try {
   console.log('🏗️  Codex CLI - Nested Object Generation\n');
 
   const model = appServer('gpt-5.1', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   // Example 1: Company organization structure

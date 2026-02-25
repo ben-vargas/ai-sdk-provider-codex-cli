@@ -1,0 +1,37 @@
+// Run: node examples/app-server/session-injection.mjs
+
+import { streamText } from 'ai';
+import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+const provider = createCodexAppServer({
+  defaultSettings: {
+    threadMode: 'persistent',
+    effort: 'medium',
+  },
+});
+
+try {
+  const result = streamText({
+    model: provider('gpt-5.1-codex'),
+    prompt: 'Write a tiny Node.js utility that parses CSV with no dependencies.',
+    providerOptions: {
+      'codex-app-server': {
+        onSessionCreated: (session) => {
+          // Demonstrates mid-execution guidance while the turn is in-flight.
+          setTimeout(() => {
+            void session.injectMessage(
+              'Also include basic input validation and one usage example.',
+            );
+          }, 500);
+        },
+      },
+    },
+  });
+
+  for await (const textChunk of result.textStream) {
+    process.stdout.write(textChunk);
+  }
+  process.stdout.write('\n');
+} finally {
+  await provider.close();
+}

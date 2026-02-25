@@ -42,8 +42,8 @@ try {
       // Disable all logging
       const result = streamText({
         model: appServer('gpt-5.1', {
-          approvalMode: 'on-failure',
-          sandboxMode: 'workspace-write',
+          approvalPolicy: 'on-failure',
+          sandboxPolicy: { type: 'workspaceWrite' },
           logger: false, // Disable all logging
         }),
         prompt: 'Say hello in 5 words',

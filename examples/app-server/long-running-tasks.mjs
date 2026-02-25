@@ -13,8 +13,8 @@ const appServer = createCodexAppServer({
 
 try {
   const model = appServer('gpt-5.1', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   const ac = new AbortController();

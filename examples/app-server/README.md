@@ -6,7 +6,7 @@ These examples use `createCodexAppServer` and a persistent `codex app-server` JS
 
 - Best for higher-throughput or stateful workflows.
 - Stateful continuation uses `providerOptions['codex-app-server'].threadId`.
-- Per-provider server request handling can be configured with `onServerRequest`.
+- Server-initiated JSON-RPC requests can be handled with `serverRequests`.
 - Requires Codex CLI `>= 0.105.0`.
 
 ## Thread Lifecycle
@@ -63,6 +63,9 @@ npx vitest run src/__tests__/app-server-integration.smoke.test.ts
 npm run build
 node examples/app-server/basic-usage.mjs
 node examples/app-server/conversation-history.mjs
+node examples/app-server/list-models.mjs
+node examples/app-server/session-injection.mjs
+node examples/app-server/local-mcp-tool.mjs
 ```
 
 ## Validation

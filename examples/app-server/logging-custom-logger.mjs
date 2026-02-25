@@ -53,8 +53,8 @@ try {
       // Use custom logger with verbose mode enabled
       const result = streamText({
         model: appServer('gpt-5.1', {
-          approvalMode: 'on-failure',
-          sandboxMode: 'workspace-write',
+          approvalPolicy: 'on-failure',
+          sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging to see debug/info
           logger: customLogger, // Use our custom logger
         }),

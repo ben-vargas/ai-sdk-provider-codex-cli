@@ -7,6 +7,35 @@ export interface CodexErrorMetadata {
   promptExcerpt?: string;
 }
 
+export class UnsupportedFeatureError extends Error {
+  readonly feature: string;
+  readonly minCodexVersion?: string;
+  readonly serverVersion?: string;
+
+  constructor({
+    feature,
+    minCodexVersion,
+    serverVersion,
+    message,
+  }: {
+    feature: string;
+    minCodexVersion?: string;
+    serverVersion?: string;
+    message?: string;
+  }) {
+    super(
+      message ??
+        `Feature '${feature}' is not supported by this codex app-server` +
+          (serverVersion ? ` (detected ${serverVersion})` : '') +
+          (minCodexVersion ? `. Requires codex CLI >= ${minCodexVersion}.` : '.'),
+    );
+    this.name = 'UnsupportedFeatureError';
+    this.feature = feature;
+    this.minCodexVersion = minCodexVersion;
+    this.serverVersion = serverVersion;
+  }
+}
+
 export function createAPICallError({
   message,
   code,
@@ -44,4 +73,8 @@ export function isAuthenticationError(err: unknown): boolean {
     if (data?.exitCode === 401) return true;
   }
   return false;
+}
+
+export function isUnsupportedFeatureError(err: unknown): err is UnsupportedFeatureError {
+  return err instanceof UnsupportedFeatureError;
 }

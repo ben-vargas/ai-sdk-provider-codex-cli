@@ -17,8 +17,8 @@ describeIntegration('app-server integration smoke', () => {
           minCodexVersion: '0.105.0',
           connectionTimeoutMs: 60_000,
           codexPath,
-          approvalMode: 'never',
-          sandboxMode: 'read-only',
+          approvalPolicy: 'never',
+          sandboxPolicy: { type: 'readOnly' },
         },
       });
 

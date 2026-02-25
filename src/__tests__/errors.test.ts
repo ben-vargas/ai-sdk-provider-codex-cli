@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { createAPICallError, createAuthenticationError, isAuthenticationError } from '../errors.js';
+import {
+  createAPICallError,
+  createAuthenticationError,
+  isAuthenticationError,
+  isUnsupportedFeatureError,
+  UnsupportedFeatureError,
+} from '../errors.js';
 
 describe('errors', () => {
   it('creates API call error with metadata', () => {
@@ -21,5 +27,14 @@ describe('errors', () => {
   it('authentication error helper is detected', () => {
     const err = createAuthenticationError('auth');
     expect(isAuthenticationError(err)).toBe(true);
+  });
+
+  it('unsupported feature helper is detected', () => {
+    const err = new UnsupportedFeatureError({
+      feature: 'model/list',
+      minCodexVersion: '0.105.0',
+      serverVersion: '0.104.0',
+    });
+    expect(isUnsupportedFeatureError(err)).toBe(true);
   });
 });

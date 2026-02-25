@@ -18,8 +18,8 @@ try {
   console.log('🧪 Codex CLI - Object Generation with Constraints\n');
 
   const model = appServer('gpt-5.1', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   // Example 1: User account with constraints

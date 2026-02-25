@@ -1,0 +1,9 @@
+{
+  "method": "reasoningSummaryTextDelta",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_reason_1",
+    "delta": "Summary delta"
+  }
+}

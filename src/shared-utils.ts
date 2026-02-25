@@ -3,7 +3,12 @@ import type {
   LanguageModelV3Usage,
   SharedV3Warning,
 } from '@ai-sdk/provider';
-import type { McpServerConfig, McpServerHttp, McpServerStdio } from './types-shared.js';
+import type {
+  CodexConfigOverrideValue,
+  McpServerConfig,
+  McpServerHttp,
+  McpServerStdio,
+} from './types-shared.js';
 
 export function createEmptyCodexUsage(): LanguageModelV3Usage {
   return {
@@ -210,4 +215,62 @@ export function mapUnsupportedSettingsWarnings(options: {
   add(options.seed, 'seed');
 
   return unsupported;
+}
+
+export function mcpServersToConfigOverrides(
+  mcpServers?: Record<string, McpServerConfig>,
+  rmcpClient?: boolean,
+): Record<string, CodexConfigOverrideValue> {
+  const overrides: Record<string, CodexConfigOverrideValue> = {};
+
+  if (rmcpClient !== undefined) {
+    overrides['features.rmcp_client'] = rmcpClient;
+  }
+
+  if (!mcpServers) {
+    return overrides;
+  }
+
+  for (const [rawName, server] of Object.entries(mcpServers)) {
+    const name = rawName.trim();
+    if (!name) continue;
+    const prefix = `mcp_servers.${name}`;
+
+    if (server.enabled !== undefined) {
+      overrides[`${prefix}.enabled`] = server.enabled;
+    }
+    if (server.startupTimeoutSec !== undefined) {
+      overrides[`${prefix}.startup_timeout_sec`] = server.startupTimeoutSec;
+    }
+    if (server.toolTimeoutSec !== undefined) {
+      overrides[`${prefix}.tool_timeout_sec`] = server.toolTimeoutSec;
+    }
+    if (server.enabledTools !== undefined) {
+      overrides[`${prefix}.enabled_tools`] = server.enabledTools;
+    }
+    if (server.disabledTools !== undefined) {
+      overrides[`${prefix}.disabled_tools`] = server.disabledTools;
+    }
+
+    if (server.transport === 'stdio') {
+      overrides[`${prefix}.command`] = server.command;
+      if (server.args !== undefined) overrides[`${prefix}.args`] = server.args;
+      if (server.env !== undefined) overrides[`${prefix}.env`] = server.env;
+      if (server.cwd) overrides[`${prefix}.cwd`] = server.cwd;
+    } else {
+      overrides[`${prefix}.url`] = server.url;
+      if (server.bearerToken !== undefined)
+        overrides[`${prefix}.bearer_token`] = server.bearerToken;
+      if (server.bearerTokenEnvVar !== undefined) {
+        overrides[`${prefix}.bearer_token_env_var`] = server.bearerTokenEnvVar;
+      }
+      if (server.httpHeaders !== undefined)
+        overrides[`${prefix}.http_headers`] = server.httpHeaders;
+      if (server.envHttpHeaders !== undefined) {
+        overrides[`${prefix}.env_http_headers`] = server.envHttpHeaders;
+      }
+    }
+  }
+
+  return overrides;
 }

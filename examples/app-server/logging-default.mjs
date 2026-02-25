@@ -32,8 +32,8 @@ try {
       // Default logging - only warn/error messages will appear
       const result = streamText({
         model: appServer('gpt-5.1', {
-          approvalMode: 'on-failure',
-          sandboxMode: 'workspace-write',
+          approvalPolicy: 'on-failure',
+          sandboxPolicy: { type: 'workspaceWrite' },
         }),
         prompt: 'Say hello in 5 words',
       });

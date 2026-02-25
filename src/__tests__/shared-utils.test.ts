@@ -4,6 +4,7 @@ import {
   isPlainObject,
   mapCodexCliFinishReason,
   mapUnsupportedSettingsWarnings,
+  mcpServersToConfigOverrides,
   mergeSingleMcpServer,
   mergeStringRecord,
   safeStringify,
@@ -139,5 +140,25 @@ describe('shared-utils', () => {
 
     expect(warnings).toHaveLength(7);
     expect(warnings.every((warning) => warning.type === 'unsupported')).toBe(true);
+  });
+
+  it('converts MCP settings into config override keys', () => {
+    const overrides = mcpServersToConfigOverrides(
+      {
+        local: { transport: 'stdio', command: 'node', args: ['server.js'] },
+        remote: {
+          transport: 'http',
+          url: 'https://mcp.example.com',
+          bearerTokenEnvVar: 'TOKEN_ENV',
+        },
+      },
+      true,
+    );
+
+    expect(overrides['features.rmcp_client']).toBe(true);
+    expect(overrides['mcp_servers.local.command']).toBe('node');
+    expect(overrides['mcp_servers.local.args']).toEqual(['server.js']);
+    expect(overrides['mcp_servers.remote.url']).toBe('https://mcp.example.com');
+    expect(overrides['mcp_servers.remote.bearer_token_env_var']).toBe('TOKEN_ENV');
   });
 });

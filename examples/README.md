@@ -25,6 +25,7 @@ Provider-specific notes:
 npm run build
 node examples/exec/basic-usage.mjs
 node examples/app-server/basic-usage.mjs
+node examples/app-server/list-models.mjs
 ```
 
 ## Parity Table
@@ -62,6 +63,14 @@ node examples/app-server/basic-usage.mjs
 | `streaming.mjs`                         | `examples/exec/streaming.mjs`                         | `examples/app-server/streaming.mjs`                         |
 | `system-messages-gpt-5-codex.mjs`       | `examples/exec/system-messages-gpt-5-codex.mjs`       | `examples/app-server/system-messages-gpt-5-codex.mjs`       |
 | `system-messages.mjs`                   | `examples/exec/system-messages.mjs`                   | `examples/app-server/system-messages.mjs`                   |
+
+## App-Server-Only Examples
+
+These demonstrate features that only exist in `codex app-server` mode:
+
+- `examples/app-server/list-models.mjs` - calls `listModels()`
+- `examples/app-server/session-injection.mjs` - uses `onSessionCreated` + `session.injectMessage()`
+- `examples/app-server/local-mcp-tool.mjs` - registers in-process tools with `createSdkMcpServer()`
 
 ## Troubleshooting
 

@@ -10,8 +10,8 @@ try {
     // Example 1: High reasoning effort
     console.log('=== Example 1: Deep Reasoning ===');
     const deepThinking = appServer('gpt-5.1-codex', {
-      reasoningEffort: 'high',
-      reasoningSummary: 'detailed',
+      effort: 'high',
+      summary: 'detailed',
     });
 
     const result1 = await generateText({

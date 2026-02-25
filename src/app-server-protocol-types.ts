@@ -51,6 +51,27 @@ export interface InitializeParams {
 
 export interface InitializeResponse {
   userAgent: string;
+  capabilities?: Record<string, unknown> | null;
+}
+
+export interface ModelListParams {
+  modelProviders?: string[] | null;
+  cursor?: string | null;
+  limit?: number | null;
+}
+
+export interface ModelInfo {
+  id: string;
+  name?: string | null;
+  modelProvider?: string | null;
+  description?: string | null;
+  isDefault?: boolean | null;
+  [k: string]: unknown;
+}
+
+export interface ModelListResponse {
+  data: ModelInfo[];
+  nextCursor: string | null;
 }
 
 export interface Thread {
@@ -106,7 +127,7 @@ export type ThreadResumeResponse = ThreadStartResponse;
 
 export type UserInput =
   | { type: 'text'; text: string; text_elements: unknown[] }
-  | { type: 'image'; url: string }
+  | { type: 'image'; url?: string; imageUrl?: string }
   | { type: 'localImage'; path: string }
   | { type: 'skill'; name: string; path: string }
   | { type: 'mention'; name: string; path: string };
@@ -307,6 +328,20 @@ export interface ItemCompletedNotification {
 }
 
 export interface AgentMessageDeltaNotification {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  delta: string;
+}
+
+export interface ReasoningTextDeltaNotification {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  delta: string;
+}
+
+export interface ReasoningSummaryTextDeltaNotification {
   threadId: string;
   turnId: string;
   itemId: string;

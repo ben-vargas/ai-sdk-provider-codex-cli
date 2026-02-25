@@ -21,9 +21,9 @@ try {
   // Use the Codex flagship model to exercise extra-high reasoning effort.
   // Requires codex-cli >= 0.60 for gpt-5.1-codex-max + xhigh.
   const model = appServer('gpt-5.1-codex-max', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
-    reasoningEffort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
+    effort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
   });
 
   // Example 1: Product comparison with scoring and rationale

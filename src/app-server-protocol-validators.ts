@@ -15,6 +15,9 @@ export const jsonRpcResponseSchema = z
     id: jsonRpcIdSchema,
     result: z.unknown(),
   })
+  .refine((value) => Object.prototype.hasOwnProperty.call(value, 'result'), {
+    message: 'result field is required',
+  })
   .passthrough();
 
 export const jsonRpcErrorResponseSchema = z
@@ -48,7 +51,11 @@ const userInputTextSchema = z
 const userInputImageSchema = z
   .object({
     type: z.literal('image'),
-    url: z.string(),
+    url: z.string().optional(),
+    imageUrl: z.string().optional(),
+  })
+  .refine((value) => typeof value.url === 'string' || typeof value.imageUrl === 'string', {
+    message: 'image input must provide url or imageUrl',
   })
   .passthrough();
 
@@ -284,6 +291,24 @@ export const agentMessageDeltaNotificationSchema = z
   })
   .passthrough();
 
+export const reasoningTextDeltaNotificationSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string(),
+    itemId: z.string(),
+    delta: z.string(),
+  })
+  .passthrough();
+
+export const reasoningSummaryTextDeltaNotificationSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string(),
+    itemId: z.string(),
+    delta: z.string(),
+  })
+  .passthrough();
+
 export const commandExecutionOutputDeltaNotificationSchema = z
   .object({
     threadId: z.string(),
@@ -467,6 +492,10 @@ export const incomingNotificationSchemas: Record<string, z.ZodTypeAny> = {
   'item/started': itemStartedNotificationSchema,
   'item/completed': itemCompletedNotificationSchema,
   'item/agentMessage/delta': agentMessageDeltaNotificationSchema,
+  reasoningTextDelta: reasoningTextDeltaNotificationSchema,
+  reasoningSummaryTextDelta: reasoningSummaryTextDeltaNotificationSchema,
+  'item/reasoning/textDelta': reasoningTextDeltaNotificationSchema,
+  'item/reasoning/summaryTextDelta': reasoningSummaryTextDeltaNotificationSchema,
   'item/commandExecution/outputDelta': commandExecutionOutputDeltaNotificationSchema,
   'item/fileChange/outputDelta': fileChangeOutputDeltaNotificationSchema,
   'thread/tokenUsage/updated': threadTokenUsageUpdatedNotificationSchema,

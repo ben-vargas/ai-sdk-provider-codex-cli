@@ -314,6 +314,7 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
   - [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) – all settings and how they map to CLI flags
   - [docs/ai-sdk-v5/troubleshooting.md](docs/ai-sdk-v5/troubleshooting.md) – common issues and fixes
   - [docs/ai-sdk-v5/limitations.md](docs/ai-sdk-v5/limitations.md) – known constraints and behavior differences
+  - [docs/ai-sdk-v5/migration-app-server-v2.md](docs/ai-sdk-v5/migration-app-server-v2.md) – app-server v2 migration notes
 - See [examples/](examples/) for runnable scripts covering core usage, streaming, permissions/sandboxing, and object generation.
 
 ## Authentication
@@ -344,13 +345,23 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 `createCodexAppServer({ defaultSettings })` accepts app-server specific options:
 
 - `connectionTimeoutMs`: initialize handshake timeout
+- `requestTimeoutMs`: default per-request JSON-RPC timeout
 - `idleTimeoutMs`: close idle app-server process after inactivity
 - `minCodexVersion`: minimum supported app-server version (semver)
-- `onServerRequest`: callback for server-initiated JSON-RPC requests
+- `includeRawChunks`: emit raw JSON-RPC notifications as `raw` stream parts by default
+- `serverRequests`: typed handlers for server-initiated JSON-RPC requests
 - `autoApprove`: default approval response when no custom handler is provided
 - `persistExtendedHistory`: request extended thread history persistence
+- `threadMode`: `stateless` (default) or `persistent` automatic thread reuse
+- `resume`: shorthand to resume an existing thread id
+- `onSessionCreated`: receive a session object for `injectMessage()` / `interrupt()`
 
-Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `personality`, `approvalPolicy`, `sandboxPolicy`, `configOverrides`).
+Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`).
+
+Additional app-server helpers:
+
+- `listModels()`: query available models via temporary app-server process
+- `tool()`, `createLocalMcpServer()`, `createSdkMcpServer()`: define and expose local MCP tools
 
 ## Model Parameters & Advanced Options (v0.4.0+)
 

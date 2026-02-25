@@ -3,8 +3,16 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { AppServerLanguageModel } from './app-server-language-model.js';
 import { AppServerRpcClient } from './app-server-rpc-client.js';
 import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types-app-server.js';
+import type { SdkMcpServer } from './tools/sdk-mcp-server.js';
 import { validateAppServerSettings } from './validation.js';
 import { getLogger } from './logger.js';
+import type { ModelInfo } from './app-server-protocol-types.js';
+
+export interface CodexAppServerModelListResult {
+  models: ModelInfo[];
+  defaultModel?: ModelInfo;
+  nextCursor?: string | null;
+}
 
 export interface CodexAppServerProvider extends ProviderV3 {
   (modelId: string, settings?: CodexAppServerSettings): LanguageModelV3;
@@ -13,6 +21,8 @@ export interface CodexAppServerProvider extends ProviderV3 {
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
   close(): Promise<void>;
+  dispose(): Promise<void>;
+  listModels(modelProviders?: string[]): Promise<CodexAppServerModelListResult>;
 }
 
 export function createCodexAppServer(
@@ -34,6 +44,7 @@ export function createCodexAppServer(
     settings: options.defaultSettings,
     logger: options.defaultSettings?.logger,
   });
+  const managedSdkServers = new Set<SdkMcpServer>();
 
   const createModel = (
     modelId: string,
@@ -60,6 +71,7 @@ export function createCodexAppServer(
       id: modelId,
       settings: merged,
       client: sharedClient,
+      onSdkMcpServerUsed: (server) => managedSdkServers.add(server),
     });
   };
 
@@ -80,7 +92,23 @@ export function createCodexAppServer(
     throw new NoSuchModelError({ modelId, modelType: 'imageModel' });
   }) as never;
   provider.close = async () => {
+    await Promise.allSettled(
+      Array.from(managedSdkServers).map(async (server) => {
+        await server._stop();
+      }),
+    );
+    managedSdkServers.clear();
     await sharedClient.close();
+  };
+  provider.dispose = provider.close;
+  provider.listModels = async (modelProviders?: string[]) => {
+    const response = await sharedClient.modelList({ modelProviders: modelProviders ?? null });
+    const models = response.data ?? [];
+    return {
+      models,
+      defaultModel: models.find((model) => model.isDefault === true),
+      nextCursor: response.nextCursor,
+    };
   };
 
   return provider;

@@ -1,0 +1,9 @@
+{
+  "method": "item/reasoning/textDelta",
+  "params": {
+    "threadId": "thr_123",
+    "turnId": "turn_1",
+    "itemId": "item_reason_1",
+    "delta": "Reasoning body"
+  }
+}

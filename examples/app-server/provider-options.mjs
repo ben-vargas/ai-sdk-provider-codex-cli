@@ -8,7 +8,7 @@ const appServer = createCodexAppServer({
 try {
   async function main() {
     const model = appServer('gpt-5.1-codex', {
-      reasoningEffort: 'medium',
+      effort: 'medium',
       modelVerbosity: 'medium',
     });
 
@@ -18,7 +18,7 @@ try {
       prompt: 'Summarize JSON schema validation in two sentences.',
       providerOptions: {
         'codex-app-server': {
-          reasoningEffort: 'low',
+          effort: 'low',
           textVerbosity: 'low',
         },
       },
@@ -31,8 +31,8 @@ try {
       prompt: 'Compare event-driven and batch ETL pipelines for log analytics workloads.',
       providerOptions: {
         'codex-app-server': {
-          reasoningEffort: 'high',
-          reasoningSummary: 'detailed',
+          effort: 'high',
+          summary: 'detailed',
           textVerbosity: 'high',
         },
       },

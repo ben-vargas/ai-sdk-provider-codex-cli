@@ -73,4 +73,35 @@ describe('validateSettings', () => {
     expect(res.valid).toBe(false);
     expect(res.errors.some((e) => /minCodexVersion/i.test(e))).toBe(true);
   });
+
+  it('accepts app-server serverRequests object', () => {
+    const res = validateAppServerSettings({
+      serverRequests: {
+        onDynamicToolCall: async () => ({ contentItems: [], success: true }),
+      },
+      threadMode: 'persistent',
+      requestTimeoutMs: 10_000,
+      includeRawChunks: true,
+    });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
+
+  it('rejects invalid app-server serverRequests values', () => {
+    const res = validateAppServerSettings({
+      serverRequests: {
+        onDynamicToolCall: 'not-a-function',
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /onDynamicToolCall/i.test(e))).toBe(true);
+  });
+
+  it('rejects deprecated app-server aliases', () => {
+    const res = validateAppServerSettings({
+      approvalMode: 'on-failure' as never,
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /approvalMode/i.test(e))).toBe(true);
+  });
 });

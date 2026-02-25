@@ -48,6 +48,24 @@ const mcpServerSchema = z.discriminatedUnion('transport', [
 
 export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
 
+const sdkMcpServerSchema = z
+  .object({
+    __sdkMcpServer: z.literal(true),
+    name: z.string().min(1),
+    _start: z.any().refine((val) => typeof val === 'function', {
+      message: '_start must be a function',
+    }),
+    _stop: z.any().refine((val) => typeof val === 'function', {
+      message: '_stop must be a function',
+    }),
+  })
+  .passthrough();
+
+export const appServerMcpServersSchema = z.record(
+  z.string(),
+  z.union([mcpServerSchema, sdkMcpServerSchema]),
+);
+
 const configOverridesSchema = z
   .record(
     z.string(),
@@ -103,9 +121,62 @@ const sandboxPolicySchema = z
   })
   .passthrough();
 
-export const appServerSettingsSchema = sharedSettingsSchema
-  .extend({
+const serverRequestsSchema = z
+  .object({
+    onCommandExecutionApproval: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onCommandExecutionApproval must be a function',
+      })
+      .optional(),
+    onFileChangeApproval: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onFileChangeApproval must be a function',
+      })
+      .optional(),
+    onSkillApproval: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onSkillApproval must be a function',
+      })
+      .optional(),
+    onToolRequestUserInput: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onToolRequestUserInput must be a function',
+      })
+      .optional(),
+    onDynamicToolCall: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onDynamicToolCall must be a function',
+      })
+      .optional(),
+    onAuthRefresh: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onAuthRefresh must be a function',
+      })
+      .optional(),
+    onUnhandled: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onUnhandled must be a function',
+      })
+      .optional(),
+  })
+  .strict()
+  .optional();
+
+export const appServerSettingsSchema = z
+  .object({
     codexPath: z.string().optional(),
+    cwd: z.string().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    verbose: z.boolean().optional(),
+    logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
+
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
     effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
@@ -113,19 +184,32 @@ export const appServerSettingsSchema = sharedSettingsSchema
       .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
       .optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
+    baseInstructions: z.string().optional(),
+    developerInstructions: z.string().optional(),
+
+    mcpServers: appServerMcpServersSchema.optional(),
+    rmcpClient: z.boolean().optional(),
+    configOverrides: configOverridesSchema,
+
     autoApprove: z.boolean().optional(),
     persistExtendedHistory: z.boolean().optional(),
     connectionTimeoutMs: z.number().int().positive().optional(),
+    requestTimeoutMs: z.number().int().positive().optional(),
     idleTimeoutMs: z.number().int().positive().optional(),
-    onServerRequest: z
-      .any()
-      .refine((val) => val === undefined || typeof val === 'function', {
-        message: 'onServerRequest must be a function',
-      })
-      .optional(),
     minCodexVersion: z
       .string()
       .regex(/^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/, 'minCodexVersion must be a semver string')
+      .optional(),
+    threadMode: z.enum(['stateless', 'persistent']).optional(),
+    resume: z.string().optional(),
+    includeRawChunks: z.boolean().optional(),
+
+    serverRequests: serverRequestsSchema,
+    onSessionCreated: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onSessionCreated must be a function',
+      })
       .optional(),
   })
   .strict();
@@ -204,6 +288,11 @@ export function validateAppServerSettings(settings: unknown): {
   const s = parsed.data as CodexAppServerSettings;
   if (s.autoApprove && s.approvalPolicy && s.approvalPolicy !== 'never') {
     warnings.push('autoApprove overrides approvalPolicy for server-initiated approval requests.');
+  }
+  if (s.threadMode === 'persistent' && s.resume) {
+    warnings.push(
+      'threadMode=persistent ignores resume when an explicit thread is already active.',
+    );
   }
 
   return { valid: true, warnings, errors: [] };

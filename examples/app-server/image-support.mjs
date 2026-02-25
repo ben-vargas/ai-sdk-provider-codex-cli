@@ -65,8 +65,8 @@ try {
 
   // Create model instance - gpt-5.1-codex supports vision/multimodal inputs
   const model = appServer('gpt-5.1-codex', {
-    approvalMode: 'on-failure',
-    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-failure',
+    sandboxPolicy: { type: 'workspaceWrite' },
   });
 
   async function main() {
