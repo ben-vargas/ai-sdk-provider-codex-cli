@@ -83,6 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `doGenerate` now aggregates from the same routed stream/event path as `doStream`, reducing divergence and duplicated event handling logic.
 - **`doGenerate` content completeness (app-server)**:
   - generation results now retain streamed reasoning/tool parts (`reasoning`, `tool-call`, `tool-result`, plus text) instead of returning text-only content.
+- **`doGenerate` content completeness (exec/legacy provider)**:
+  - generation results now retain streamed tool parts (`tool-call`, `tool-result`, plus text) instead of returning text-only content.
 - **Unknown-usage semantics aligned to AI SDK v3**:
   - default usage fields now use `undefined` when token counts are unknown (instead of `0`), avoiding false precision in telemetry.
 - **Unsupported-setting warnings coverage**:

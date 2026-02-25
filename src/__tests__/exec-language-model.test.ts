@@ -95,6 +95,69 @@ describe('ExecLanguageModel', () => {
     expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
+  it('doGenerate includes tool-call and tool-result parts in content', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools-generate' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: 'README.md\n',
+          exit_code: 0,
+          status: 'completed',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', item_type: 'assistant_message', text: 'done' },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 4, output_tokens: 2, cached_input_tokens: 1 },
+      }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const res = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'List files' }] as any,
+    });
+
+    expect(res.content.map((part) => part.type)).toEqual(['tool-call', 'tool-result', 'text']);
+    expect(res.content[0]).toMatchObject({
+      type: 'tool-call',
+      toolName: 'exec',
+      providerExecuted: true,
+    });
+    expect(res.content[1]).toMatchObject({
+      type: 'tool-result',
+      toolName: 'exec',
+      result: {
+        command: 'ls -la',
+        aggregatedOutput: 'README.md\n',
+        exitCode: 0,
+        status: 'completed',
+      },
+    });
+    expect(res.content[2]).toMatchObject({ type: 'text', text: 'done' });
+  });
+
   it('doStream yields response-metadata, text-delta, finish', async () => {
     const lines = [
       JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),

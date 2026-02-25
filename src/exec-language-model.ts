@@ -8,12 +8,21 @@ import type { ReadableStreamDefaultController } from 'node:stream/web';
 import { z } from 'zod';
 import type {
   LanguageModelV3,
-  SharedV3Warning,
+  LanguageModelV3File,
   LanguageModelV3FinishReason,
+  LanguageModelV3Reasoning,
+  LanguageModelV3ResponseMetadata,
+  LanguageModelV3Source,
   LanguageModelV3StreamPart,
+  LanguageModelV3Text,
+  LanguageModelV3ToolApprovalRequest,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResult,
   LanguageModelV3Usage,
   LanguageModelV3Content,
   JSONObject,
+  SharedV3ProviderMetadata,
+  SharedV3Warning,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -685,215 +694,216 @@ export class ExecLanguageModel implements LanguageModelV3 {
   ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
     this.logger.debug(`[codex-cli] Starting doGenerate request with model: ${this.modelId}`);
 
-    const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
-    const promptExcerpt = promptText.slice(0, 200);
-    const warnings = [
-      ...mapUnsupportedSettingsWarnings({
-        temperature: options.temperature,
-        topP: options.topP,
-        topK: options.topK,
-        maxOutputTokens: options.maxOutputTokens,
-        presencePenalty: options.presencePenalty,
-        frequencyPenalty: options.frequencyPenalty,
-        stopSequences: options.stopSequences,
-        seed: (options as { seed?: unknown }).seed,
-        tools: (options as { tools?: unknown }).tools,
-        toolChoice: (options as { toolChoice?: unknown }).toolChoice,
-      }),
-      ...(mappingWarnings ?? []),
-    ] as SharedV3Warning[];
-
-    this.logger.debug(
-      `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images), response format: ${options.responseFormat?.type ?? 'none'}`,
+    const { stream, request } = await this.doStream(
+      options as Parameters<LanguageModelV3['doStream']>[0],
     );
 
-    const providerOptions = await parseProviderOptions<CodexExecProviderOptions>({
-      provider: this.provider,
-      providerOptions: options.providerOptions,
-      schema: codexCliProviderOptionsSchema,
-    });
-    const effectiveSettings = this.mergeSettings(providerOptions);
-
-    const responseFormat =
-      options.responseFormat?.type === 'json'
-        ? { type: 'json' as const, schema: options.responseFormat.schema }
-        : undefined;
-    const { cmd, args, env, cwd, lastMessagePath, lastMessageIsTemp, schemaPath, tempImagePaths } =
-      this.buildArgs(images, responseFormat, effectiveSettings);
-
-    this.logger.debug(
-      `[codex-cli] Executing Codex CLI: ${cmd} with ${args.length} arguments, cwd: ${cwd ?? 'default'}`,
-    );
-
-    let text = '';
+    const content: LanguageModelV3Content[] = [];
+    const textPartsById = new Map<string, LanguageModelV3Text>();
+    const reasoningPartsById = new Map<string, LanguageModelV3Reasoning>();
+    let activeTextBlockId: string | undefined;
+    let activeReasoningBlockId: string | undefined;
+    let responseMetadata: LanguageModelV3ResponseMetadata = {
+      id: generateId(),
+      timestamp: new Date(),
+      modelId: this.modelId,
+    };
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    const finishReason: LanguageModelV3FinishReason = mapCodexCliFinishReason(undefined);
-    const startTime = Date.now();
+    let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
+    let warnings: SharedV3Warning[] = [];
+    let providerMetadata: SharedV3ProviderMetadata | undefined;
 
-    // Use stdin to pass prompt - avoids command line length limits and escaping issues on Windows
-    const child = spawn(cmd, args, { env, cwd, stdio: ['pipe', 'pipe', 'pipe'] });
-
-    // Write prompt to stdin
-    child.stdin.write(promptText);
-    child.stdin.end();
-
-    // Abort support
-    let onAbort: (() => void) | undefined;
-    if (options.abortSignal) {
-      if (options.abortSignal.aborted) {
-        child.kill('SIGTERM');
-        // Clean up temp files before throwing
-        if (schemaPath) {
-          try {
-            const schemaDir = dirname(schemaPath);
-            rmSync(schemaDir, { recursive: true, force: true });
-          } catch {}
-        }
-        if (tempImagePaths?.length) {
-          cleanupTempImages(tempImagePaths);
-        }
-        throw options.abortSignal.reason ?? new Error('Request aborted');
+    const ensureTextPart = (
+      id: string,
+      metadata?: SharedV3ProviderMetadata,
+    ): LanguageModelV3Text => {
+      const existing = textPartsById.get(id);
+      if (existing) {
+        if (metadata) existing.providerMetadata = metadata;
+        return existing;
       }
-      onAbort = () => child.kill('SIGTERM');
-      options.abortSignal.addEventListener('abort', onAbort, { once: true });
-    }
 
-    try {
-      await new Promise<void>((resolve, reject) => {
-        let stderr = '';
-        let turnFailureMessage: string | undefined;
-        child.stderr.on('data', (d) => (stderr += String(d)));
-        child.stdout.setEncoding('utf8');
-        child.stdout.on('data', (chunk: string) => {
-          const lines = chunk.split(/\r?\n/).filter(Boolean);
-          for (const line of lines) {
-            const event = this.parseExperimentalJsonEvent(line);
-            if (!event) continue;
+      const part: LanguageModelV3Text = {
+        type: 'text',
+        text: '',
+        ...(metadata ? { providerMetadata: metadata } : {}),
+      };
+      textPartsById.set(id, part);
+      content.push(part);
+      return part;
+    };
 
-            this.logger.debug(`[codex-cli] Received event type: ${event.type ?? 'unknown'}`);
+    const ensureReasoningPart = (
+      id: string,
+      metadata?: SharedV3ProviderMetadata,
+    ): LanguageModelV3Reasoning => {
+      const existing = reasoningPartsById.get(id);
+      if (existing) {
+        if (metadata) existing.providerMetadata = metadata;
+        return existing;
+      }
 
-            if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
-              this.sessionId = event.thread_id;
-              this.logger.debug(`[codex-cli] Session started: ${this.sessionId}`);
-            }
-            if (event.type === 'session.created' && typeof event.session_id === 'string') {
-              // Backwards compatibility in case older events appear
-              this.sessionId = event.session_id;
-              this.logger.debug(`[codex-cli] Session created: ${this.sessionId}`);
-            }
+      const part: LanguageModelV3Reasoning = {
+        type: 'reasoning',
+        text: '',
+        ...(metadata ? { providerMetadata: metadata } : {}),
+      };
+      reasoningPartsById.set(id, part);
+      content.push(part);
+      return part;
+    };
 
-            if (event.type === 'turn.completed') {
-              const usageEvent = this.extractUsage(event);
-              if (usageEvent) {
-                usage = usageEvent;
-              }
-            }
+    const pushContentPart = (
+      part:
+        | LanguageModelV3File
+        | LanguageModelV3Source
+        | LanguageModelV3ToolApprovalRequest
+        | LanguageModelV3ToolCall
+        | LanguageModelV3ToolResult,
+    ): void => {
+      content.push(part);
+    };
 
-            if (
-              event.type === 'item.completed' &&
-              this.getItemType(event.item) === 'assistant_message' &&
-              typeof event.item?.text === 'string'
-            ) {
-              text = event.item.text;
-            }
+    for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
+      if (part.type === 'stream-start') {
+        warnings = part.warnings;
+        continue;
+      }
 
-            if (event.type === 'turn.failed') {
-              const errorText =
-                (event.error && typeof event.error.message === 'string' && event.error.message) ||
-                (typeof event.message === 'string' ? event.message : undefined);
-              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
-              this.logger.error(`[codex-cli] Turn failed: ${turnFailureMessage}`);
-            }
+      if (part.type === 'response-metadata') {
+        responseMetadata = {
+          id: part.id,
+          timestamp: part.timestamp,
+          modelId: part.modelId,
+        };
+        continue;
+      }
 
-            if (event.type === 'error') {
-              const errorText = typeof event.message === 'string' ? event.message : undefined;
-              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex error';
-              this.logger.error(`[codex-cli] Error event: ${turnFailureMessage}`);
-            }
+      if (part.type === 'text-start') {
+        activeTextBlockId = part.id;
+        ensureTextPart(part.id, part.providerMetadata);
+        continue;
+      }
+
+      if (part.type === 'text-delta') {
+        const blockId =
+          typeof part.id === 'string' ? part.id : (activeTextBlockId ?? '__default_text_block__');
+        activeTextBlockId = blockId;
+        const textPart = ensureTextPart(blockId, part.providerMetadata);
+        textPart.text = `${textPart.text}${part.delta}`;
+        continue;
+      }
+
+      if (part.type === 'text-end') {
+        const blockId = typeof part.id === 'string' ? part.id : activeTextBlockId;
+        if (blockId) {
+          const textPart = ensureTextPart(blockId, part.providerMetadata);
+          if (part.providerMetadata) {
+            textPart.providerMetadata = part.providerMetadata;
           }
-        });
-        child.on('error', (e) => {
-          this.logger.error(`[codex-cli] Spawn error: ${String(e)}`);
-          reject(this.handleSpawnError(e, promptExcerpt));
-        });
-        child.on('close', (code) => {
-          const duration = Date.now() - startTime;
-          if (code === 0) {
-            if (turnFailureMessage) {
-              reject(
-                createAPICallError({
-                  message: turnFailureMessage,
-                  stderr,
-                  promptExcerpt,
-                }),
-              );
-              return;
-            }
-            const totalTokens = (usage.inputTokens.total ?? 0) + (usage.outputTokens.total ?? 0);
-            this.logger.info(
-              `[codex-cli] Request completed - Session: ${this.sessionId ?? 'N/A'}, Duration: ${duration}ms, Tokens: ${totalTokens}`,
-            );
-            this.logger.debug(
-              `[codex-cli] Token usage - Input: ${usage.inputTokens.total ?? 0}, Output: ${usage.outputTokens.total ?? 0}, Total: ${totalTokens}`,
-            );
-            resolve();
-          } else {
-            this.logger.error(`[codex-cli] Process exited with code ${code} after ${duration}ms`);
-            reject(
-              createAPICallError({
-                message: `Codex CLI exited with code ${code}`,
-                exitCode: code ?? undefined,
-                stderr,
-                promptExcerpt,
-              }),
-            );
-          }
-        });
-      });
-    } finally {
-      if (options.abortSignal && onAbort) options.abortSignal.removeEventListener('abort', onAbort);
-      // Clean up temp schema file
-      if (schemaPath) {
-        try {
-          const schemaDir = dirname(schemaPath);
-          rmSync(schemaDir, { recursive: true, force: true });
-        } catch {}
-      }
-      // Clean up temp image files
-      if (tempImagePaths?.length) {
-        cleanupTempImages(tempImagePaths);
-      }
-    }
-
-    // Fallback: read last message file if needed
-    if (!text && lastMessagePath) {
-      try {
-        const fileText = readFileSync(lastMessagePath, 'utf8');
-        if (fileText && typeof fileText === 'string') {
-          text = fileText.trim();
         }
-      } catch {}
-      // best-effort cleanup for temp paths only
-      if (lastMessageIsTemp) {
-        try {
-          rmSync(lastMessagePath, { force: true });
-        } catch {}
+        if (activeTextBlockId === blockId) {
+          activeTextBlockId = undefined;
+        }
+        continue;
+      }
+
+      if (part.type === 'reasoning-start') {
+        activeReasoningBlockId = part.id;
+        ensureReasoningPart(part.id, part.providerMetadata);
+        continue;
+      }
+
+      if (part.type === 'reasoning-delta') {
+        const blockId =
+          typeof part.id === 'string'
+            ? part.id
+            : (activeReasoningBlockId ?? '__default_reasoning_block__');
+        activeReasoningBlockId = blockId;
+        const reasoningPart = ensureReasoningPart(blockId, part.providerMetadata);
+        reasoningPart.text = `${reasoningPart.text}${part.delta}`;
+        continue;
+      }
+
+      if (part.type === 'reasoning-end') {
+        const blockId = typeof part.id === 'string' ? part.id : activeReasoningBlockId;
+        if (blockId) {
+          const reasoningPart = ensureReasoningPart(blockId, part.providerMetadata);
+          if (part.providerMetadata) {
+            reasoningPart.providerMetadata = part.providerMetadata;
+          }
+        }
+        if (activeReasoningBlockId === blockId) {
+          activeReasoningBlockId = undefined;
+        }
+        continue;
+      }
+
+      if (part.type === 'file') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'source') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-approval-request') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-call') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'tool-result') {
+        pushContentPart(part);
+        continue;
+      }
+
+      if (part.type === 'finish') {
+        usage = part.usage;
+        finishReason = part.finishReason;
+        providerMetadata = part.providerMetadata;
       }
     }
 
-    // No JSON extraction needed - native schema guarantees valid JSON
+    const normalizedContent = content.filter((part) => {
+      if (part.type === 'text') return part.text.trim().length > 0;
+      if (part.type === 'reasoning') return part.text.trim().length > 0;
+      return true;
+    });
 
-    const content: LanguageModelV3Content[] = [{ type: 'text', text }];
+    const codexProviderMetadata =
+      providerMetadata && typeof providerMetadata === 'object'
+        ? { ...providerMetadata }
+        : ({} as SharedV3ProviderMetadata);
+
+    if (this.sessionId) {
+      const existing = codexProviderMetadata['codex-cli'];
+      const existingObject =
+        existing && typeof existing === 'object' && !Array.isArray(existing)
+          ? (existing as Record<string, unknown>)
+          : {};
+      codexProviderMetadata['codex-cli'] = {
+        ...existingObject,
+        sessionId: this.sessionId,
+      };
+    }
+
     return {
-      content,
+      content: normalizedContent,
       usage,
       finishReason,
       warnings,
-      response: { id: generateId(), timestamp: new Date(), modelId: this.modelId },
-      request: { body: promptText },
-      providerMetadata: {
-        'codex-cli': { ...(this.sessionId ? { sessionId: this.sessionId } : {}) },
-      },
+      response: responseMetadata,
+      request,
+      ...(Object.keys(codexProviderMetadata).length > 0
+        ? { providerMetadata: codexProviderMetadata }
+        : {}),
     };
   }
 
