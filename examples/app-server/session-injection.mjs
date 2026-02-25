@@ -9,6 +9,7 @@ const provider = createCodexAppServer({
     idleTimeoutMs: 30000,
     threadMode: 'persistent',
     effort: 'medium',
+    sandboxPolicy: { type: 'readOnly' },
   },
 });
 
