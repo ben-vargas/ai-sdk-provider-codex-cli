@@ -30,7 +30,7 @@ try {
 
     const result2 = await generateText({
       model: withPersonality,
-      prompt: 'What are the latest features in Node.js 23?',
+      prompt: 'Explain the Node.js event loop in three bullet points.',
     });
     console.log(result2.text);
 
@@ -46,28 +46,16 @@ try {
 
     const result3 = await generateText({
       model: advanced,
-      prompt: 'Design a microservices architecture...',
+      prompt: 'List three tradeoffs between microservices and a monolith.',
     });
     console.log(result3.text);
 
-    // Example 4: Combined settings
-    console.log('\n=== Example 4: All Features ===');
+    // Example 4: Combined settings (safe, self-contained)
+    console.log('\n=== Example 4: Combined Settings ===');
     const fullFeatured = appServer('gpt-5.3-codex', {
-      rmcpClient: true,
-      mcpServers: {
-        repo: {
-          transport: 'stdio',
-          command: 'node',
-          args: ['tools/repo-mcp.js'],
-        },
-        docs: {
-          transport: 'http',
-          url: 'https://mcp.internal/api',
-          bearerTokenEnvVar: 'MCP_BEARER',
-        },
-      },
-
-      // Custom
+      effort: 'medium',
+      summary: 'detailed',
+      personality: 'calm',
       configOverrides: {
         sandbox_workspace_write: { network_access: true },
       },
