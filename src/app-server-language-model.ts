@@ -728,11 +728,20 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       options as Parameters<LanguageModelV3['doStream']>[0],
     );
 
-    let text = '';
+    const textBlocks = new Map<string, string>();
+    const textBlockOrder: string[] = [];
+    const completedTextBlockIds: string[] = [];
+    let activeTextBlockId: string | undefined;
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
     let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
     let warnings: SharedV3Warning[] = [];
     let providerMetadata: SharedV3ProviderMetadata | undefined;
+
+    const ensureTextBlock = (id: string): void => {
+      if (textBlocks.has(id)) return;
+      textBlocks.set(id, '');
+      textBlockOrder.push(id);
+    };
 
     for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
       if (part.type === 'stream-start') {
@@ -740,8 +749,29 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         continue;
       }
 
+      if (part.type === 'text-start') {
+        activeTextBlockId = part.id;
+        ensureTextBlock(part.id);
+        continue;
+      }
+
       if (part.type === 'text-delta') {
-        text += part.delta;
+        const blockId =
+          typeof part.id === 'string' ? part.id : (activeTextBlockId ?? '__default_text_block__');
+        activeTextBlockId = blockId;
+        ensureTextBlock(blockId);
+        textBlocks.set(blockId, `${textBlocks.get(blockId) ?? ''}${part.delta}`);
+        continue;
+      }
+
+      if (part.type === 'text-end') {
+        const blockId = typeof part.id === 'string' ? part.id : activeTextBlockId;
+        if (blockId && !completedTextBlockIds.includes(blockId)) {
+          completedTextBlockIds.push(blockId);
+        }
+        if (activeTextBlockId === blockId) {
+          activeTextBlockId = undefined;
+        }
         continue;
       }
 
@@ -751,6 +781,9 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         providerMetadata = part.providerMetadata;
       }
     }
+
+    const selectedTextBlockId = completedTextBlockIds.at(-1) ?? textBlockOrder.at(-1);
+    const text = selectedTextBlockId ? (textBlocks.get(selectedTextBlockId) ?? '') : '';
 
     const content: LanguageModelV3Content[] = [{ type: 'text', text }];
     return {
@@ -836,6 +869,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             options.includeRawChunks ??
             providerOptions?.includeRawChunks ??
             settings.includeRawChunks,
+          jsonModeLastTextBlockOnly: options.responseFormat?.type === 'json',
         });
 
         emitter.emitStreamStart(warnings);

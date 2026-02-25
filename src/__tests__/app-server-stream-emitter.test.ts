@@ -32,6 +32,40 @@ describe('AppServerStreamEmitter', () => {
     expect(parts.some((part) => part.type === 'reasoning-end')).toBe(true);
   });
 
+  it('splits text blocks when item id changes', () => {
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_1',
+    });
+
+    emitter.emitTextDelta('first', 'item_1');
+    emitter.emitTextDelta('second', 'item_2');
+    emitter.emitFinish({ unified: 'stop', raw: 'completed' }, createEmptyCodexUsage());
+
+    const textStarts = parts.filter((part) => part.type === 'text-start');
+    const textEnds = parts.filter((part) => part.type === 'text-end');
+    expect(textStarts).toHaveLength(2);
+    expect(textEnds).toHaveLength(2);
+  });
+
+  it('in json mode emits only the final completed text block', () => {
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_1',
+      jsonModeLastTextBlockOnly: true,
+    });
+
+    emitter.emitTextDelta('{"status":"progress"}', 'item_1');
+    emitter.emitTextDelta('{"result":"done"}', 'item_2');
+    emitter.emitFinish({ unified: 'stop', raw: 'completed' }, createEmptyCodexUsage());
+
+    const textDeltas = parts.filter((part) => part.type === 'text-delta');
+    expect(textDeltas).toHaveLength(1);
+    expect((textDeltas[0] as { delta?: string }).delta).toBe('{"result":"done"}');
+  });
+
   it('emits raw parts only when includeRawChunks is enabled', () => {
     const withRaw = createCapture();
     const emitterWithRaw = new AppServerStreamEmitter(withRaw.controller, {

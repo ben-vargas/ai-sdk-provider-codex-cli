@@ -12,16 +12,23 @@ export interface AppServerStreamEmitterOptions {
   modelId: string;
   threadId: string;
   includeRawChunks?: boolean;
+  jsonModeLastTextBlockOnly?: boolean;
 }
 
 export class AppServerStreamEmitter {
   private textId?: string;
   private reasoningId?: string;
+  private readonly jsonModeLastTextBlockOnly: boolean;
+  private readonly bufferedTextBlocks = new Map<string, string>();
+  private readonly bufferedTextBlockOrder: string[] = [];
+  private readonly completedBufferedTextBlockIds: string[] = [];
 
   constructor(
     private readonly controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
     private readonly options: AppServerStreamEmitterOptions,
-  ) {}
+  ) {
+    this.jsonModeLastTextBlockOnly = Boolean(options.jsonModeLastTextBlockOnly);
+  }
 
   emitStreamStart(warnings: SharedV3Warning[]): void {
     this.controller.enqueue({ type: 'stream-start', warnings });
@@ -42,10 +49,42 @@ export class AppServerStreamEmitter {
   }
 
   emitTextDelta(delta: string, itemId?: string): void {
+    if (this.jsonModeLastTextBlockOnly) {
+      const nextTextId = itemId ?? this.textId ?? generateId();
+
+      if (this.textId && this.textId !== nextTextId) {
+        this.completedBufferedTextBlockIds.push(this.textId);
+        this.textId = undefined;
+      }
+
+      if (!this.textId) {
+        this.textId = nextTextId;
+      }
+
+      if (!this.bufferedTextBlocks.has(this.textId)) {
+        this.bufferedTextBlocks.set(this.textId, '');
+        this.bufferedTextBlockOrder.push(this.textId);
+      }
+
+      this.bufferedTextBlocks.set(
+        this.textId,
+        `${this.bufferedTextBlocks.get(this.textId)}${delta}`,
+      );
+      return;
+    }
+
+    const nextTextId = itemId ?? this.textId ?? generateId();
+
+    if (this.textId && this.textId !== nextTextId) {
+      this.controller.enqueue({ type: 'text-end', id: this.textId });
+      this.textId = undefined;
+    }
+
     if (!this.textId) {
-      this.textId = itemId ?? generateId();
+      this.textId = nextTextId;
       this.controller.enqueue({ type: 'text-start', id: this.textId });
     }
+
     this.controller.enqueue({ type: 'text-delta', id: this.textId, delta });
   }
 
@@ -136,9 +175,25 @@ export class AppServerStreamEmitter {
     usage: LanguageModelV3Usage,
     providerMetadata?: SharedV3ProviderMetadata,
   ): void {
-    if (this.textId) {
+    if (this.jsonModeLastTextBlockOnly) {
+      if (this.textId) {
+        this.completedBufferedTextBlockIds.push(this.textId);
+      }
+
+      const finalBlockId =
+        this.completedBufferedTextBlockIds.at(-1) ?? this.bufferedTextBlockOrder.at(-1);
+      if (finalBlockId) {
+        const finalText = this.bufferedTextBlocks.get(finalBlockId) ?? '';
+        this.controller.enqueue({ type: 'text-start', id: finalBlockId });
+        if (finalText.length > 0) {
+          this.controller.enqueue({ type: 'text-delta', id: finalBlockId, delta: finalText });
+        }
+        this.controller.enqueue({ type: 'text-end', id: finalBlockId });
+      }
+    } else if (this.textId) {
       this.controller.enqueue({ type: 'text-end', id: this.textId });
     }
+
     if (this.reasoningId) {
       this.controller.enqueue({ type: 'reasoning-end', id: this.reasoningId });
     }

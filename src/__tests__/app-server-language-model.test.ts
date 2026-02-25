@@ -117,6 +117,51 @@ describe('AppServerLanguageModel', () => {
     expect(client.threadStartCalls).toHaveLength(1);
   });
 
+  it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_multi_text_1',
+          item: {
+            type: 'agentMessage',
+            id: 'item_progress_1',
+            text: '{"status":"progress"}',
+            phase: null,
+          },
+        });
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_multi_text_1',
+          item: {
+            type: 'agentMessage',
+            id: 'item_final_1',
+            text: '{"result":"done"}',
+            phase: null,
+          },
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_multi_text_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+
+      return { turn: { id: 'turn_multi_text_1' } };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Return JSON only' }] as never,
+    });
+
+    expect(result.content).toEqual([{ type: 'text', text: '{"result":"done"}' }]);
+  });
+
   it('maps token usage updates in doGenerate', async () => {
     const client = new FakeClient();
     client.turnStartImpl = async (params) => {
@@ -330,6 +375,55 @@ describe('AppServerLanguageModel', () => {
       | undefined;
     expect(finish?.usage?.inputTokens?.total).toBe(0);
     expect(finish?.usage?.outputTokens?.total).toBe(0);
+  });
+
+  it('doStream in json mode emits only the final text block', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_json_stream_1',
+          item: { type: 'agentMessage', id: 'item_progress', text: '{"status":"progress"}' },
+        });
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_json_stream_1',
+          item: { type: 'agentMessage', id: 'item_final', text: '{"result":"done"}' },
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_json_stream_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+
+      return { turn: { id: 'turn_json_stream_1' } };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'JSON only' }] as never,
+      responseFormat: {
+        type: 'json',
+        schema: {
+          type: 'object',
+          properties: { result: { type: 'string' } },
+        },
+      } as never,
+    });
+
+    let aggregated = '';
+    for await (const part of stream as AsyncIterable<unknown>) {
+      if ((part as { type?: string }).type === 'text-delta') {
+        aggregated += (part as { delta?: string }).delta ?? '';
+      }
+    }
+
+    expect(aggregated).toBe('{"result":"done"}');
   });
 
   it('doStream maps tool events and usage updates', async () => {
