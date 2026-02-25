@@ -140,5 +140,22 @@ describe('mapMessagesToPrompt', () => {
       expect(images).toHaveLength(1);
       expect(images[0].data).toMatch(/^data:image\/png;base64,/);
     });
+
+    it('handles AI SDK v6 file parts for image input', () => {
+      const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
+      const { images } = mapMessagesToPrompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'File part image' },
+            { type: 'file', mediaType: 'image/webp', data: buffer },
+          ],
+        },
+      ] as any);
+
+      expect(images).toHaveLength(1);
+      expect(images[0].data).toMatch(/^data:image\/webp;base64,/);
+      expect(images[0].mimeType).toBe('image/webp');
+    });
   });
 });

@@ -747,7 +747,7 @@ export class AppServerRpcClient extends EventEmitter {
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       if (this.state !== 'ready') return;
-      if (this.pending.size > 0) {
+      if (this.pending.size > 0 || this.activeRequestHandlers.size > 0) {
         this.touchActivity();
         return;
       }

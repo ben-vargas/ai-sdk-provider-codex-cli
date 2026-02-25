@@ -412,6 +412,29 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('does not idle-kill while a turn is active (active request handlers present)', async () => {
+    vi.useFakeTimers();
+
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: { idleTimeoutMs: 25 },
+    });
+
+    await client.ensureReady();
+    client.setActiveRequestHandlers('thr_1', {});
+
+    await vi.advanceTimersByTimeAsync(60);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    client.clearActiveRequestHandlers('thr_1');
+    await vi.advanceTimersByTimeAsync(30);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    await client.close();
+  });
+
   it('logs expected SIGTERM shutdowns at info level instead of warn', async () => {
     const { child } = createMockProcess();
     setSpawnMock(() => child);

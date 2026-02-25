@@ -63,6 +63,12 @@ try {
     return SUPPORTED_EXTENSIONS[ext] || 'image/png';
   }
 
+  function indicatesMissingImage(text) {
+    return /no image|can't see an image|cannot see an image|not provided in this chat|upload.*image/i.test(
+      text,
+    );
+  }
+
   // Create model instance - gpt-5.3-codex supports vision/multimodal inputs
   const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
@@ -116,6 +122,9 @@ try {
     });
 
     console.log('Response:', text);
+    if (indicatesMissingImage(text)) {
+      throw new Error('Example 1 did not receive image context (data URL path).');
+    }
 
     // ===== Example 2: Using streamText with Buffer =====
     console.log('\n' + '-'.repeat(60));
@@ -148,10 +157,16 @@ try {
       ],
     });
 
+    let streamedText = '';
     for await (const chunk of textStream) {
       process.stdout.write(chunk);
+      streamedText += chunk;
     }
     process.stdout.write('\n');
+
+    if (indicatesMissingImage(streamedText)) {
+      throw new Error('Example 2 did not receive image context (Buffer path).');
+    }
 
     // ===== Example 3: Multiple images =====
     console.log('\n' + '-'.repeat(60));

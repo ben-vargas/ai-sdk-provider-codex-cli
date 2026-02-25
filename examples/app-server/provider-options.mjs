@@ -9,7 +9,7 @@ try {
   async function main() {
     const model = appServer('gpt-5.3-codex', {
       effort: 'medium',
-      modelVerbosity: 'medium',
+      summary: 'concise',
     });
 
     console.log('=== Quick Response (Low Effort) ===');
@@ -19,7 +19,7 @@ try {
       providerOptions: {
         'codex-app-server': {
           effort: 'low',
-          textVerbosity: 'low',
+          summary: 'concise',
         },
       },
     });
@@ -33,7 +33,6 @@ try {
         'codex-app-server': {
           effort: 'high',
           summary: 'detailed',
-          textVerbosity: 'high',
         },
       },
     });

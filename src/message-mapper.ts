@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai';
-import { extractImageData, type ImageData, type ImagePart } from './image-utils.js';
+import { extractImageData, type FilePart, type ImageData, type ImagePart } from './image-utils.js';
 
 export type { ImageData };
 
@@ -23,6 +23,12 @@ function isImagePart(p: unknown): p is ImagePart {
   return (
     typeof p === 'object' && p !== null && 'type' in p && (p as { type?: unknown }).type === 'image'
   );
+}
+
+function isImageFilePart(p: unknown): p is FilePart {
+  if (typeof p !== 'object' || p === null) return false;
+  const part = p as { type?: unknown; mediaType?: unknown };
+  return part.type === 'file' && typeof part.mediaType === 'string';
 }
 
 function isToolItem(p: unknown): p is ToolItem {
@@ -63,7 +69,13 @@ export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
         if (text) parts.push(`Human: ${text}`);
 
         // Extract images instead of warning
-        for (const part of msg.content.filter(isImagePart)) {
+        for (const part of msg.content.filter((contentPart) => {
+          if (isImagePart(contentPart)) return true;
+          return (
+            isImageFilePart(contentPart) &&
+            (contentPart.mediaType as string).toLowerCase().startsWith('image/')
+          );
+        })) {
           const imageData = extractImageData(part);
           if (imageData) {
             images.push(imageData);

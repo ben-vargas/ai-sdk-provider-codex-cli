@@ -30,6 +30,16 @@ export interface ImagePart {
 }
 
 /**
+ * AI SDK v6 file part structure used for binary/image inputs.
+ */
+export interface FilePart {
+  type: 'file';
+  data?: string | URL | Buffer | ArrayBuffer | Uint8Array;
+  mediaType?: string;
+  url?: string;
+}
+
+/**
  * Extract image data from an AI SDK image part.
  * Converts various input formats to a data URL string.
  *
@@ -39,19 +49,26 @@ export interface ImagePart {
 export function extractImageData(part: unknown): ImageData | null {
   if (typeof part !== 'object' || part === null) return null;
 
-  const p = part as ImagePart;
-  const mimeType = p.mimeType || 'image/png';
+  const p = part as ImagePart | FilePart;
+  const isFilePart = p.type === 'file';
+  const mimeType = isFilePart ? p.mediaType || 'image/png' : p.mimeType || 'image/png';
 
-  // Case 1: Primary 'image' field is a string
-  if (typeof p.image === 'string') {
-    return extractFromString(p.image, mimeType);
+  if (isFilePart && !mimeType.toLowerCase().startsWith('image/')) {
+    return null;
+  }
+
+  const primaryInput = isFilePart ? p.data : p.image;
+
+  // Case 1: Primary image/file field is a string
+  if (typeof primaryInput === 'string') {
+    return extractFromString(primaryInput, mimeType);
   }
 
   // Case 2: URL object
-  if (p.image instanceof URL) {
+  if (typeof primaryInput === 'object' && primaryInput !== null && primaryInput instanceof URL) {
     // Only support data: URLs
-    if (p.image.protocol === 'data:') {
-      const dataUrlStr = p.image.toString();
+    if (primaryInput.protocol === 'data:') {
+      const dataUrlStr = primaryInput.toString();
       // Extract mime type from data URL if not explicitly provided
       const match = dataUrlStr.match(/^data:([^;,]+)/);
       const extractedMimeType = match?.[1] || mimeType;
@@ -62,25 +79,29 @@ export function extractImageData(part: unknown): ImageData | null {
   }
 
   // Case 3: Buffer
-  if (Buffer.isBuffer(p.image)) {
-    const base64 = p.image.toString('base64');
+  if (Buffer.isBuffer(primaryInput)) {
+    const base64 = primaryInput.toString('base64');
     return { data: `data:${mimeType};base64,${base64}`, mimeType };
   }
 
   // Case 4: ArrayBuffer or Uint8Array
-  if (p.image instanceof ArrayBuffer || p.image instanceof Uint8Array) {
-    const buffer = Buffer.from(p.image);
+  if (isBinaryInput(primaryInput)) {
+    const buffer = Buffer.from(primaryInput);
     const base64 = buffer.toString('base64');
     return { data: `data:${mimeType};base64,${base64}`, mimeType };
   }
 
+  if (isFilePart && typeof p.url === 'string') {
+    return extractFromString(p.url, mimeType);
+  }
+
   // Case 5: Legacy 'data' field (base64 string)
-  if (typeof p.data === 'string') {
+  if (!isFilePart && typeof p.data === 'string') {
     return extractFromString(p.data, mimeType);
   }
 
   // Case 6: Legacy 'url' field
-  if (typeof p.url === 'string') {
+  if (!isFilePart && typeof p.url === 'string') {
     return extractFromString(p.url, mimeType);
   }
 
@@ -117,6 +138,14 @@ function extractFromString(value: string, fallbackMimeType: string): ImageData |
     data: `data:${fallbackMimeType};base64,${trimmed}`,
     mimeType: fallbackMimeType,
   };
+}
+
+function isBinaryInput(value: unknown): value is ArrayBuffer | Uint8Array {
+  if (value instanceof ArrayBuffer) {
+    return true;
+  }
+
+  return value instanceof Uint8Array;
 }
 
 /**

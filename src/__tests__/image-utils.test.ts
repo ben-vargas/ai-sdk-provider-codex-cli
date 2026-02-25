@@ -66,6 +66,30 @@ describe('extractImageData', () => {
     });
   });
 
+  describe('AI SDK v6 file parts', () => {
+    it('handles image file part with Buffer data', () => {
+      const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/webp',
+        data: buffer,
+      });
+
+      expect(result?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(result?.mimeType).toBe('image/webp');
+    });
+
+    it('returns null for non-image file part', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'application/pdf',
+        data: Buffer.from([0x25, 0x50, 0x44, 0x46]),
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('Uint8Array input', () => {
     it('handles Uint8Array', () => {
       const arr = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
