@@ -58,7 +58,12 @@ const appServerProviderOptionsSchema = z
         }),
       ])
       .optional(),
-    sandboxPolicy: z.object({ type: z.string() }).passthrough().optional(),
+    sandboxPolicy: z
+      .union([
+        z.enum(['read-only', 'workspace-write', 'danger-full-access']),
+        z.object({ type: z.string() }).passthrough(),
+      ])
+      .optional(),
     baseInstructions: z.string().optional(),
     developerInstructions: z.string().optional(),
 
@@ -162,8 +167,30 @@ function mapTurnStatusToFinishReason(turn: Turn): LanguageModelV3FinishReason {
   }
 }
 
-function mapSandboxToThreadSandbox(settings: CodexAppServerSettings): unknown {
-  return settings.sandboxPolicy;
+function mapSandboxToThreadSandboxMode(settings: CodexAppServerSettings): unknown {
+  const policy = settings.sandboxPolicy;
+  if (!policy) return undefined;
+  if (typeof policy === 'string') return policy;
+
+  if (policy.type === 'readOnly') return 'read-only';
+  if (policy.type === 'workspaceWrite') return 'workspace-write';
+  if (policy.type === 'dangerFullAccess') return 'danger-full-access';
+
+  // Thread start/resume accepts SandboxMode, not full SandboxPolicy.
+  // For non-mode variants (for example externalSandbox), skip thread-level override.
+  return undefined;
+}
+
+function mapSandboxToTurnSandboxPolicy(settings: CodexAppServerSettings): unknown {
+  const policy = settings.sandboxPolicy;
+  if (!policy) return undefined;
+  if (typeof policy !== 'string') return policy;
+
+  if (policy === 'read-only') return { type: 'readOnly' };
+  if (policy === 'workspace-write') return { type: 'workspaceWrite' };
+  if (policy === 'danger-full-access') return { type: 'dangerFullAccess' };
+
+  return undefined;
 }
 
 function mapApprovalPolicy(settings: CodexAppServerSettings): unknown {
@@ -533,7 +560,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         model: this.modelId,
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
-        sandbox: mapSandboxToThreadSandbox(settings),
+        sandbox: mapSandboxToThreadSandboxMode(settings),
         config: configOverrides,
         baseInstructions: settings.baseInstructions,
         developerInstructions,
@@ -566,7 +593,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         model: this.modelId,
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
-        sandbox: mapSandboxToThreadSandbox(settings),
+        sandbox: mapSandboxToThreadSandboxMode(settings),
         config: configOverrides,
         baseInstructions: settings.baseInstructions,
         developerInstructions,
@@ -628,7 +655,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       defaultTurnParams: {
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
-        sandboxPolicy: settings.sandboxPolicy,
+        sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
@@ -905,7 +932,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             input,
             cwd: settings.cwd,
             approvalPolicy: mapApprovalPolicy(settings),
-            sandboxPolicy: settings.sandboxPolicy,
+            sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
             model: this.modelId,
             effort: settings.effort,
             summary: settings.summary,

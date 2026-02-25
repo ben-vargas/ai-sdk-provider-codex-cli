@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true,

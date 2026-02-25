@@ -2,14 +2,14 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
   async function main() {
     // Example 1: High reasoning effort
     console.log('=== Example 1: Deep Reasoning ===');
-    const deepThinking = appServer('gpt-5.1-codex', {
+    const deepThinking = appServer('gpt-5.3-codex', {
       effort: 'high',
       summary: 'detailed',
     });
@@ -23,7 +23,7 @@ try {
 
     // Example 2: Personality/summary tuning
     console.log('\n=== Example 2: Personality + Summary ===');
-    const withPersonality = appServer('gpt-5.1', {
+    const withPersonality = appServer('gpt-5.3-codex', {
       personality: 'friendly',
       summary: 'concise',
     });
@@ -36,7 +36,7 @@ try {
 
     // Example 3: Generic config overrides
     console.log('\n=== Example 3: Advanced Config ===');
-    const advanced = appServer('gpt-5.1-codex', {
+    const advanced = appServer('gpt-5.3-codex', {
       configOverrides: {
         model_context_window: 200000,
         hide_agent_reasoning: false,
@@ -52,7 +52,7 @@ try {
 
     // Example 4: Combined settings
     console.log('\n=== Example 4: All Features ===');
-    const fullFeatured = appServer('gpt-5.1-codex', {
+    const fullFeatured = appServer('gpt-5.3-codex', {
       rmcpClient: true,
       mcpServers: {
         repo: {

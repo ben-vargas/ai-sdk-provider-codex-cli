@@ -229,6 +229,50 @@ describe('AppServerLanguageModel', () => {
     });
   });
 
+  it('maps sandbox policy for both thread and turn wire formats', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: {
+        sandboxPolicy: { type: 'workspaceWrite' },
+      },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'sandbox normalize' }] as never,
+    });
+
+    const threadStart = client.threadStartCalls[0] as { sandbox?: unknown };
+    const turnStart = client.turnStartCalls[0] as TurnStartParams & {
+      sandboxPolicy?: unknown;
+    };
+    expect(threadStart.sandbox).toBe('workspace-write');
+    expect(turnStart.sandboxPolicy).toEqual({ type: 'workspaceWrite' });
+  });
+
+  it('maps sandbox policy string to turn sandbox object', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: {
+        sandboxPolicy: 'danger-full-access',
+      },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'sandbox string mapping' }] as never,
+    });
+
+    const threadStart = client.threadStartCalls[0] as { sandbox?: unknown };
+    const turnStart = client.turnStartCalls[0] as TurnStartParams & {
+      sandboxPolicy?: unknown;
+    };
+    expect(threadStart.sandbox).toBe('danger-full-access');
+    expect(turnStart.sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+  });
+
   it('uses thread resume when threadId is provided and only sends last user message', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({

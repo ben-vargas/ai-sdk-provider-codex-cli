@@ -36,7 +36,7 @@ async function main() {
   try {
     // Disable all logging
     const result = streamText({
-      model: codexExec('gpt-5.1', {
+      model: codexExec('gpt-5.3-codex', {
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-failure',

@@ -115,11 +115,14 @@ const approvalRejectSchema = z.object({
   }),
 });
 
-const sandboxPolicySchema = z
-  .object({
-    type: z.string(),
-  })
-  .passthrough();
+const sandboxPolicySchema = z.union([
+  z.enum(['read-only', 'workspace-write', 'danger-full-access']),
+  z
+    .object({
+      type: z.string(),
+    })
+    .passthrough(),
+]);
 
 const serverRequestsSchema = z
   .object({

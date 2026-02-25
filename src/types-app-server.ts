@@ -40,6 +40,9 @@ export type AppServerApprovalPolicy =
     };
 
 export type AppServerSandboxPolicy =
+  | 'read-only'
+  | 'workspace-write'
+  | 'danger-full-access'
   | { type: 'dangerFullAccess' }
   | { type: 'readOnly'; access?: unknown }
   | { type: 'externalSandbox'; networkAccess?: 'restricted' | 'enabled' }

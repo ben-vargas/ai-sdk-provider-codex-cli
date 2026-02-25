@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 console.log('🏗️  Codex CLI - Nested Object Generation\n');
 
-const model = codexExec('gpt-5.1', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',

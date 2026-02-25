@@ -102,7 +102,7 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('o3'),
+      model: codex('gpt-5.3-codex'),
       system: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });

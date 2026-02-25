@@ -5,6 +5,92 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-25
+
+### Added
+
+- **App-server v2 architecture** (`createCodexAppServer`) with persistent JSON-RPC lifecycle and dedicated internal modules:
+  - `AppServerRpcClient` for process management, handshake/version validation, request correlation, reconnect/idle-timeout behavior, and server-request dispatch
+  - `AppServerNotificationRouter` for protocol event routing
+  - `AppServerStreamEmitter` for AI SDK stream part emission
+  - `AppServerSession` for session-scoped actions
+- **Mid-execution session controls**:
+  - `onSessionCreated` callback on app-server settings/provider options
+  - `session.injectMessage(...)` and `session.interrupt()` support
+- **Thread ergonomics for app-server mode**:
+  - `threadMode` (`stateless` default, `persistent` opt-in)
+  - `resume` shorthand for continuing an existing thread
+- **Instruction settings for app-server threads**:
+  - `baseInstructions`
+  - `developerInstructions`
+- **Model discovery API**:
+  - New standalone `listModels()` helper (spawns temporary app-server client and disposes it safely)
+  - Provider method `provider.listModels(...)`
+- **Explicit provider lifecycle aliases**:
+  - `provider.close()`
+  - `provider.dispose()`
+- **Local MCP/tooling helpers**:
+  - `tool(...)`
+  - `createLocalMcpServer(...)`
+  - `createSdkMcpServer(...)`
+- **Stream UX parity improvements for app-server mode**:
+  - reasoning delta support (modern + legacy notification methods)
+  - text/reasoning lifecycle parts (`text-start/end`, `reasoning-start/end`)
+  - approval request stream parts (`tool-approval-request`)
+  - tool output delta mapping (`item/commandExecution/outputDelta`, `item/fileChange/outputDelta`)
+  - optional raw chunk emission via `includeRawChunks`
+- **Remote image URL support in app-server mode**:
+  - model advertises `supportsImageUrls = true`
+  - HTTP/HTTPS image URLs are passed directly as app-server image inputs
+- **Tool execution statistics in finish metadata**:
+  - `providerMetadata['codex-app-server'].toolExecutionStats`
+  - includes total calls, by-type counts, and duration aggregation
+- **App-server compatibility fixtures/tests expanded**:
+  - reasoning delta fixtures
+  - output delta fixtures
+  - additional router behavior/unit coverage
+- **Migration guide added**:
+  - `docs/ai-sdk-v5/migration-app-server-v2.md`
+
+### Changed
+
+- **App-server settings surface is now canonicalized**:
+  - `approvalPolicy` / `sandboxPolicy`
+  - `effort` / `summary`
+  - `serverRequests` (typed handler map)
+- **App-server provider options/settings validation is strict**:
+  - legacy app-server alias keys are rejected by app-server validation
+- **App-server defaults**:
+  - `threadMode` remains `stateless` by default
+  - explicit `threadId` still takes precedence over automatic persistent reuse
+- **Standalone model-list export naming**:
+  - canonical helper is `listModels()`
+- **Protocol item handling is case-tolerant**:
+  - item type routing normalizes casing for safer cross-version compatibility
+- **Examples reorganized and expanded**:
+  - split into `examples/exec/` and `examples/app-server/`
+  - app-server examples updated to canonical field names
+  - app-server-only examples added (`list-models`, `session-injection`, `local-mcp-tool`)
+
+### Fixed
+
+- **JSON-RPC response/error parsing ambiguity**: prevent error responses from being interpreted as successful result responses.
+- **App-server feature gating diagnostics**:
+  - `UnsupportedFeatureError` added for explicit unsupported capability paths (e.g., `model/list` not supported).
+- **Stream/generate parity**:
+  - `doGenerate` now aggregates from the same routed stream/event path as `doStream`, reducing divergence and duplicated event handling logic.
+
+### Migration Notes (App-Server Users)
+
+If you use `createCodexAppServer`, migrate to canonical keys:
+
+- `approvalMode` -> `approvalPolicy`
+- `sandboxMode` -> `sandboxPolicy`
+- `reasoningEffort` -> `effort`
+- `reasoningSummary` -> `summary`
+
+`codexExec` / `codexCli` compatibility exports remain available for existing exec-mode users.
+
 ## [1.0.5] - 2026-01-17
 
 ### Fixed

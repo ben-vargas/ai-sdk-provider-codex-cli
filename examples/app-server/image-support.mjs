@@ -24,7 +24,7 @@ import { generateText, streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -63,8 +63,8 @@ try {
     return SUPPORTED_EXTENSIONS[ext] || 'image/png';
   }
 
-  // Create model instance - gpt-5.1-codex supports vision/multimodal inputs
-  const model = appServer('gpt-5.1-codex', {
+  // Create model instance - gpt-5.3-codex supports vision/multimodal inputs
+  const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

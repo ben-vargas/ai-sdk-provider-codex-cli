@@ -61,6 +61,7 @@ describe('validateSettings', () => {
       codexPath: '/opt/homebrew/bin/codex',
       personality: 'pragmatic',
       minCodexVersion: '0.105.0',
+      sandboxPolicy: 'workspace-write',
     });
     expect(res.valid).toBe(true);
     expect(res.errors).toHaveLength(0);

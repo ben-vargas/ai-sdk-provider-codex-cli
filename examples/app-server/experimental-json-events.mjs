@@ -15,7 +15,7 @@ import { generateText, streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -23,7 +23,7 @@ try {
   console.log('This example demonstrates the new event format in v0.2.0.');
   console.log('Events are parsed from --experimental-json output.\n');
 
-  const model = appServer('gpt-5.1', {});
+  const model = appServer('gpt-5.3-codex', {});
 
   // Example 1: Basic text generation with usage tracking
   async function example1_basicWithUsage() {

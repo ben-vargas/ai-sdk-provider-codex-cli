@@ -92,8 +92,8 @@ async function main() {
 
   const codex = createCodexAppServer({
     defaultSettings: {
-      minCodexVersion: '0.105.0',
-      idleTimeoutMs: 100,
+      minCodexVersion: '0.105.0-alpha.0',
+      idleTimeoutMs: 30000,
       cwd: process.cwd(),
       approvalPolicy: 'on-failure',
       verbose: true,
@@ -104,7 +104,7 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('o3'),
+      model: codex('gpt-5.3-codex'),
       system: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });

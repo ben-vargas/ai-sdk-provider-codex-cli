@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 console.log('🎯 Codex CLI - Basic Object Generation\n');
 
-const model = codexExec('gpt-5.1-codex', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',

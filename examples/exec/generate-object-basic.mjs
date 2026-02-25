@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 console.log('🎯 Codex CLI - Basic Object Generation\n');
 
-const model = codexExec('gpt-5.1', {
+const model = codexExec('gpt-5.3-codex', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

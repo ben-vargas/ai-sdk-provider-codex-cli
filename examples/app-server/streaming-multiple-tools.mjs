@@ -2,11 +2,11 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
-  const model = appServer('gpt-5.1-codex', {});
+  const model = appServer('gpt-5.3-codex', {});
 
   console.log('🔧 Multiple Tool Calls Demo');
   console.log('Prompt: "List files, then show line count of the largest .mjs file"\n');

@@ -26,7 +26,7 @@ async function main() {
   try {
     // Default logging - only warn/error messages will appear
     const result = streamText({
-      model: codexExec('gpt-5.1', {
+      model: codexExec('gpt-5.3-codex', {
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-failure',

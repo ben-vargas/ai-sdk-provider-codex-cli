@@ -2,7 +2,9 @@
 
 import { listModels } from 'ai-sdk-provider-codex-cli';
 
-const { models, defaultModel } = await listModels();
+const { models, defaultModel } = await listModels({
+  minCodexVersion: '0.105.0-alpha.0',
+});
 
 console.log(`Found ${models.length} model(s).`);
 if (defaultModel) {

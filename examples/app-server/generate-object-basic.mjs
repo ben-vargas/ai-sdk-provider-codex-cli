@@ -13,13 +13,13 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
   console.log('🎯 Codex CLI - Basic Object Generation\n');
 
-  const model = appServer('gpt-5.1', {});
+  const model = appServer('gpt-5.3-codex', {});
 
   // Example 1: Simple object with primitives
   async function example1_simpleObject() {

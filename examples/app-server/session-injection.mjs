@@ -12,7 +12,7 @@ const provider = createCodexAppServer({
 
 try {
   const result = streamText({
-    model: provider('gpt-5.1-codex'),
+    model: provider('gpt-5.3-codex'),
     prompt: 'Write a tiny Node.js utility that parses CSV with no dependencies.',
     providerOptions: {
       'codex-app-server': {

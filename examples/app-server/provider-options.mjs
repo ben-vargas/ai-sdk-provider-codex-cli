@@ -2,12 +2,12 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0', idleTimeoutMs: 100 },
+  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
 });
 
 try {
   async function main() {
-    const model = appServer('gpt-5.1-codex', {
+    const model = appServer('gpt-5.3-codex', {
       effort: 'medium',
       modelVerbosity: 'medium',
     });
