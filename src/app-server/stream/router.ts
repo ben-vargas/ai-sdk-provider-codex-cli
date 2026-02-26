@@ -102,6 +102,7 @@ export class AppServerNotificationRouter {
 
   subscribe(): () => void {
     this.notificationListener = (method: string, params: Record<string, unknown>) => {
+      if (!this.isSameThread(params)) return;
       if (this.bufferTurnScopedEventBeforeBinding({ kind: 'notification', method, params })) {
         return;
       }
@@ -115,6 +116,7 @@ export class AppServerNotificationRouter {
       params: Record<string, unknown>,
       id: string | number,
     ) => {
+      if (!this.isSameThread(params)) return;
       if (
         this.bufferTurnScopedEventBeforeBinding({
           kind: 'server-request',
@@ -178,6 +180,9 @@ export class AppServerNotificationRouter {
     this.bufferedTurnScopedEvents = [];
 
     for (const event of buffered) {
+      if (!this.isSameThread(event.params)) {
+        continue;
+      }
       if (this.getTurnIdFromParams(event.params) !== this.turnId) {
         continue;
       }

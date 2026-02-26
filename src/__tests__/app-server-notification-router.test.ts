@@ -277,4 +277,47 @@ describe('AppServerNotificationRouter', () => {
 
     router.unsubscribe();
   });
+
+  it('does not buffer pre-bind turn-scoped events from other threads', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_target',
+      includeRawChunks: true,
+    });
+
+    let completedTurnId: string | undefined;
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_target',
+      onUsage: () => undefined,
+      onTurnCompleted: (turn) => {
+        completedTurnId = turn.id;
+      },
+      onError: () => undefined,
+    });
+
+    router.subscribe();
+
+    client.emit('notification', 'item/agentMessage/delta', {
+      threadId: 'thr_other',
+      turnId: 'turn_1',
+      itemId: 'item_other',
+      delta: 'other-thread text',
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_other',
+      turn: { id: 'turn_1', items: [], status: 'completed', error: null },
+    });
+
+    router.setTurnId('turn_1');
+
+    expect(parts.some((part) => part.type === 'text-delta')).toBe(false);
+    expect(parts.some((part) => part.type === 'raw')).toBe(false);
+    expect(completedTurnId).toBeUndefined();
+
+    router.unsubscribe();
+  });
 });
