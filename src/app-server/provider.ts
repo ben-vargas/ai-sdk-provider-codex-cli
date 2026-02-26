@@ -3,7 +3,7 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { AppServerLanguageModel } from './language-model.js';
 import { AppServerRpcClient } from './rpc/client.js';
 import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types.js';
-import type { SdkMcpServer } from '../tools/sdk-mcp-server.js';
+import { isSdkMcpServer, type SdkMcpServer } from '../tools/sdk-mcp-server.js';
 import { validateAppServerSettings } from '../validation.js';
 import { getLogger } from '../logger.js';
 import type { ModelInfo } from './protocol/types.js';
@@ -15,8 +15,6 @@ export interface CodexAppServerModelListResult {
   defaultModel?: ModelInfo;
   nextCursor?: string | null;
 }
-
-const MAX_PERSISTENT_MODEL_CACHE_SIZE = 128;
 
 type ClientScopedSettings = Pick<
   CodexAppServerSettings,
@@ -108,6 +106,8 @@ export function createCodexAppServer(
   }
 
   const managedSdkServers = new Set<SdkMcpServer>();
+  const providerScopedSdkServers = new Set<SdkMcpServer>();
+  const requestScopedSdkServerRefCounts = new Map<SdkMcpServer, number>();
 
   const getLoggerIdentity = (value: Logger | false | undefined): string => {
     if (value === false) {
@@ -181,6 +181,32 @@ export function createCodexAppServer(
         return { __objectRef: getObjectIdentity(value) };
       }
       seen.add(value);
+
+      if (isSdkMcpServer(value)) {
+        if (value.cacheKey) {
+          return {
+            __sdkMcpServerCacheKey: value.cacheKey,
+          };
+        }
+
+        const tools = value.tools
+          .map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: normalizeForModelKey(tool.inputSchema, seen),
+            // Function identity avoids conflating recreated tools whose source text is identical
+            // but runtime closure state differs.
+            execute: normalizeForModelKey(tool.execute, seen),
+          }))
+          .sort((left, right) => left.name.localeCompare(right.name));
+
+        return {
+          __sdkMcpServer: {
+            name: value.name,
+            tools,
+          },
+        };
+      }
 
       if (!isPlainObject(value)) {
         return { __objectIdentity: getObjectIdentity(value) };
@@ -271,12 +297,59 @@ export function createCodexAppServer(
       logger.warn(`Codex App Server: ${warning}`);
     }
 
+    const markSdkMcpServerUsed = (
+      server: SdkMcpServer,
+      lifecycle: 'provider' | 'request',
+    ): void => {
+      managedSdkServers.add(server);
+      if (lifecycle === 'provider') {
+        providerScopedSdkServers.add(server);
+        return;
+      }
+
+      const current = requestScopedSdkServerRefCounts.get(server) ?? 0;
+      requestScopedSdkServerRefCounts.set(server, current + 1);
+    };
+
+    const releaseRequestScopedSdkMcpServer = (server: SdkMcpServer): void => {
+      const current = requestScopedSdkServerRefCounts.get(server);
+      if (current === undefined) {
+        return;
+      }
+      if (current > 1) {
+        requestScopedSdkServerRefCounts.set(server, current - 1);
+        return;
+      }
+
+      requestScopedSdkServerRefCounts.delete(server);
+      if (providerScopedSdkServers.has(server)) {
+        return;
+      }
+
+      void server
+        ._stop()
+        .then(() => {
+          if (
+            !providerScopedSdkServers.has(server) &&
+            !requestScopedSdkServerRefCounts.has(server)
+          ) {
+            managedSdkServers.delete(server);
+          }
+        })
+        .catch((error) => {
+          logger.warn(
+            `[codex-app-server] Failed to stop request-scoped SDK MCP server: ${String(error)}`,
+          );
+        });
+    };
+
     const buildModel = () =>
       new AppServerLanguageModel({
         id: modelId,
         settings: merged,
         client: getOrCreateClient(merged),
-        onSdkMcpServerUsed: (server) => managedSdkServers.add(server),
+        onSdkMcpServerUsed: markSdkMcpServerUsed,
+        onSdkMcpServerReleased: releaseRequestScopedSdkMcpServer,
       });
 
     if ((merged.threadMode ?? 'stateless') !== 'persistent') {
@@ -286,23 +359,11 @@ export function createCodexAppServer(
     const persistentModelKey = createPersistentModelKey(modelId, merged);
     const existingPersistentModel = persistentModels.get(persistentModelKey);
     if (existingPersistentModel) {
-      // Refresh insertion order for simple LRU behavior.
-      persistentModels.delete(persistentModelKey);
-      persistentModels.set(persistentModelKey, existingPersistentModel);
       return existingPersistentModel;
     }
 
     const createdPersistentModel = buildModel();
     persistentModels.set(persistentModelKey, createdPersistentModel);
-    if (persistentModels.size > MAX_PERSISTENT_MODEL_CACHE_SIZE) {
-      const oldestKey = persistentModels.keys().next().value as string | undefined;
-      if (oldestKey !== undefined) {
-        persistentModels.delete(oldestKey);
-        logger.warn(
-          `[codex-app-server] Evicted persistent model cache entry (max=${MAX_PERSISTENT_MODEL_CACHE_SIZE}). Reuse model settings or call provider.close() to limit cache churn.`,
-        );
-      }
-    }
     return createdPersistentModel;
   };
 
@@ -332,6 +393,8 @@ export function createCodexAppServer(
       }),
     );
     managedSdkServers.clear();
+    providerScopedSdkServers.clear();
+    requestScopedSdkServerRefCounts.clear();
     await Promise.allSettled(
       Array.from(sharedClients.values()).map(async (client) => {
         await client.close();

@@ -29,13 +29,13 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'See this' },
-            { type: 'image', image: 'data:image/png;base64,abc123' },
+            { type: 'image', image: 'data:image/png;base64,YWJjMTIz' },
           ],
         },
       ] as any);
 
       expect(images).toHaveLength(1);
-      expect(images[0]?.data).toBe('data:image/png;base64,abc123');
+      expect(images[0]?.data).toBe('data:image/png;base64,YWJjMTIz');
       expect(
         warnings?.some(
           (w) =>
@@ -52,15 +52,15 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Compare these' },
-            { type: 'image', image: 'data:image/png;base64,img1' },
-            { type: 'image', image: 'data:image/jpeg;base64,img2', mimeType: 'image/jpeg' },
+            { type: 'image', image: 'data:image/png;base64,aW1nMQ==' },
+            { type: 'image', image: 'data:image/jpeg;base64,aW1nMg==', mimeType: 'image/jpeg' },
           ],
         },
       ] as any);
 
       expect(images).toHaveLength(2);
-      expect(images[0]?.data).toBe('data:image/png;base64,img1');
-      expect(images[1]?.data).toBe('data:image/jpeg;base64,img2');
+      expect(images[0]?.data).toBe('data:image/png;base64,aW1nMQ==');
+      expect(images[1]?.data).toBe('data:image/jpeg;base64,aW1nMg==');
     });
 
     it('extracts images from multiple messages', () => {
@@ -69,7 +69,7 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'First image' },
-            { type: 'image', image: 'data:image/png;base64,first' },
+            { type: 'image', image: 'data:image/png;base64,Zmlyc3Q=' },
           ],
         },
         { role: 'assistant', content: 'I see it' },
@@ -77,7 +77,7 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Second image' },
-            { type: 'image', image: 'data:image/png;base64,second' },
+            { type: 'image', image: 'data:image/png;base64,c2Vjb25k' },
           ],
         },
       ] as any);
@@ -128,9 +128,9 @@ describe('mapMessagesToPrompt', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Images' },
-            { type: 'image', image: 'data:image/png;base64,valid' },
+            { type: 'image', image: 'data:image/png;base64,dmFsaWQ=' },
             { type: 'image', url: 'https://example.com/invalid.png' },
-            { type: 'image', image: 'data:image/jpeg;base64,alsovalid' },
+            { type: 'image', image: 'data:image/jpeg;base64,YWxzb3ZhbGlk' },
           ],
         },
       ] as any);

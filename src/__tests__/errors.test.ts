@@ -29,6 +29,14 @@ describe('errors', () => {
     expect(isAuthenticationError(err)).toBe(true);
   });
 
+  it('detects APICallError authentication metadata', () => {
+    const err = createAPICallError({
+      message: 'unauthorized',
+      code: '401',
+    });
+    expect(isAuthenticationError(err)).toBe(true);
+  });
+
   it('unsupported feature helper is detected', () => {
     const err = new UnsupportedFeatureError({
       feature: 'model/list',

@@ -11,8 +11,8 @@ describe('listModels', () => {
   it('returns models and detects default model', async () => {
     const modelListSpy = vi.spyOn(AppServerRpcClient.prototype, 'modelList').mockResolvedValue({
       data: [
-        { id: 'gpt-5.1-codex', isDefault: false },
-        { id: 'gpt-5.1-codex-max', isDefault: true },
+        { id: 'gpt-5.3-codex', isDefault: false },
+        { id: 'gpt-5.2-codex-max', isDefault: true },
       ],
       nextCursor: null,
     });
@@ -22,7 +22,7 @@ describe('listModels', () => {
 
     expect(modelListSpy).toHaveBeenCalledWith({ modelProviders: ['openai'] });
     expect(disposeSpy).toHaveBeenCalledTimes(1);
-    expect(result.defaultModel?.id).toBe('gpt-5.1-codex-max');
+    expect(result.defaultModel?.id).toBe('gpt-5.2-codex-max');
     expect(result.models).toHaveLength(2);
   });
 

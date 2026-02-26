@@ -77,4 +77,26 @@ describe('app-server protocol validators', () => {
 
     expect(serverRequestSchema.safeParse(request).success).toBe(true);
   });
+
+  it('rejects invalid codexErrorInfo payloads', () => {
+    const schema = incomingNotificationSchemas['turn/completed'];
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    const invalid = schema.safeParse({
+      threadId: 'thr_1',
+      turn: {
+        id: 'turn_1',
+        items: [],
+        status: 'failed',
+        error: {
+          message: 'boom',
+          codexErrorInfo: { unsupported: true },
+          additionalDetails: null,
+        },
+      },
+    });
+
+    expect(invalid.success).toBe(false);
+  });
 });

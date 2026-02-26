@@ -105,4 +105,27 @@ describe('validateSettings', () => {
     expect(res.valid).toBe(false);
     expect(res.errors.some((e) => /approvalMode/i.test(e))).toBe(true);
   });
+
+  it('rejects invalid mcp server names', () => {
+    const res = validateSettings({
+      mcpServers: {
+        'bad.name': {
+          transport: 'stdio',
+          command: 'node',
+        },
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /mcpServers\.bad\.name/i.test(e))).toBe(true);
+  });
+
+  it('rejects invalid configOverrides keys', () => {
+    const res = validateSettings({
+      configOverrides: {
+        'bad=key': 'value',
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /configOverrides\.bad=key/i.test(e))).toBe(true);
+  });
 });

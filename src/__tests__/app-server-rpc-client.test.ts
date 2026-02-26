@@ -95,7 +95,7 @@ function createMockProcess(
             `${JSON.stringify({
               id: message.id,
               result: {
-                data: [{ id: 'gpt-5.1-codex', isDefault: true }],
+                data: [{ id: 'gpt-5.3-codex', isDefault: true }],
                 nextCursor: null,
               },
             })}\n`,
@@ -107,7 +107,7 @@ function createMockProcess(
             id: message.id,
             result: {
               thread: { id: 'thr_1' },
-              model: 'gpt-5.1-codex',
+              model: 'gpt-5.3-codex',
               modelProvider: 'openai',
               cwd: '/tmp',
               approvalPolicy: 'never',
@@ -180,7 +180,7 @@ describe('AppServerRpcClient', () => {
     const client = new AppServerRpcClient();
     const result = await client.modelList({ modelProviders: ['openai'] });
     expect(result.data.length).toBeGreaterThan(0);
-    expect(result.data[0]?.id).toBe('gpt-5.1-codex');
+    expect(result.data[0]?.id).toBe('gpt-5.3-codex');
     await client.close();
   });
 
@@ -225,6 +225,40 @@ describe('AppServerRpcClient', () => {
 
     expect(received).toHaveLength(1);
     expect(received[0]?.method).toBe('thread/started');
+    await client.close();
+  });
+
+  it('drops invalid notifications for known methods', async () => {
+    const { child, emitServerMessage } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const client = new AppServerRpcClient({ settings: { logger } });
+    await client.ensureReady();
+
+    const received: Array<{ method: string; params: Record<string, unknown> }> = [];
+    client.on('notification', (method: string, params: Record<string, unknown>) => {
+      received.push({ method, params });
+    });
+
+    emitServerMessage({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'thr_1',
+      },
+    });
+    await flush();
+
+    expect(received).toHaveLength(0);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Notification 'thread/tokenUsage/updated' failed schema validation"),
+    );
     await client.close();
   });
 
@@ -864,6 +898,82 @@ describe('AppServerRpcClient', () => {
     });
     expect(thread.thread.id).toBe('thr_1');
 
+    await client.close();
+  });
+
+  it('kills the child process on process error before entering error state', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    child.emit('error', new Error('boom'));
+    await flush();
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    await client.close();
+  });
+
+  it('waits for stdin drain when write backpressure is signaled', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const originalWrite = child.stdin.write.bind(child.stdin);
+    let backpressure = true;
+    child.stdin.write = ((...args: Parameters<typeof originalWrite>) => {
+      originalWrite(...args);
+      return backpressure ? false : true;
+    }) as typeof child.stdin.write;
+
+    const client = new AppServerRpcClient();
+
+    let ready = false;
+    const readyPromise = client.ensureReady().then(() => {
+      ready = true;
+    });
+
+    await flush();
+    expect(ready).toBe(false);
+
+    backpressure = false;
+    child.stdin.emit('drain');
+    await readyPromise;
+
+    expect(ready).toBe(true);
+    await client.close();
+  });
+
+  it('clears thread lock bookkeeping immediately after crash', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    let releaseLock: (() => void) | undefined;
+    const lockGate = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    const lockedTask = client.withThreadLock('thr_crash_lock', async () => {
+      await lockGate;
+    });
+
+    await flush();
+    expect(
+      (client as unknown as { threadLocks: Map<string, Promise<void>> }).threadLocks.size,
+    ).toBe(1);
+
+    child.emit('exit', 1, null);
+    await flush();
+
+    expect(
+      (client as unknown as { threadLocks: Map<string, Promise<void>> }).threadLocks.size,
+    ).toBe(0);
+
+    releaseLock?.();
+    await lockedTask;
     await client.close();
   });
 });

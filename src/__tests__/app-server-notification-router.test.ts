@@ -22,7 +22,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
       includeRawChunks: true,
     });
@@ -110,7 +110,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_case',
     });
 
@@ -165,7 +165,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_output',
     });
 
@@ -209,7 +209,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_bind',
     });
 
@@ -282,7 +282,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_target',
       includeRawChunks: true,
     });
@@ -321,11 +321,56 @@ describe('AppServerNotificationRouter', () => {
     router.unsubscribe();
   });
 
+  it('ignores threadless notifications to avoid cross-router fan-out', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_target',
+      includeRawChunks: true,
+    });
+
+    const onError = vi.fn();
+    const onTurnCompleted = vi.fn();
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_target',
+      onUsage: () => undefined,
+      onTurnCompleted,
+      onError,
+    });
+
+    router.setTurnId('turn_target');
+    router.subscribe();
+
+    client.emit('notification', 'item/agentMessage/delta', {
+      turnId: 'turn_target',
+      itemId: 'item_1',
+      delta: 'should-be-ignored',
+    });
+    client.emit('notification', 'turn/completed', {
+      turn: { id: 'turn_target', items: [], status: 'completed', error: null },
+    });
+    client.emit('notification', 'error', {
+      turnId: 'turn_target',
+      willRetry: false,
+      error: { message: 'should-not-fire' },
+    });
+
+    expect(parts.some((part) => part.type === 'text-delta')).toBe(false);
+    expect(parts.some((part) => part.type === 'raw')).toBe(false);
+    expect(onTurnCompleted).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+
+    router.unsubscribe();
+  });
+
   it('ignores token usage updates for other turns when turnId is bound', () => {
     const client = new FakeClient();
     const { controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_usage',
     });
 
@@ -384,7 +429,7 @@ describe('AppServerNotificationRouter', () => {
     const client = new FakeClient();
     const { controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_error',
     });
 
@@ -404,11 +449,13 @@ describe('AppServerNotificationRouter', () => {
     client.emit('notification', 'error', {
       threadId: 'thr_error',
       turnId: 'turn_other',
+      willRetry: false,
       error: { message: 'ignore this' },
     });
     client.emit('notification', 'error', {
       threadId: 'thr_error',
       turnId: 'turn_target',
+      willRetry: false,
       error: { message: 'expected failure' },
     });
 
@@ -418,11 +465,52 @@ describe('AppServerNotificationRouter', () => {
     router.unsubscribe();
   });
 
+  it('ignores retriable error notifications for the active turn', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_error_retry',
+    });
+
+    const onError = vi.fn();
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_error_retry',
+      onUsage: () => undefined,
+      onTurnCompleted: () => undefined,
+      onError,
+    });
+
+    router.setTurnId('turn_target');
+    router.subscribe();
+
+    client.emit('notification', 'error', {
+      threadId: 'thr_error_retry',
+      turnId: 'turn_target',
+      willRetry: true,
+      error: { message: 'transient failure' },
+    });
+    expect(onError).not.toHaveBeenCalled();
+
+    client.emit('notification', 'error', {
+      threadId: 'thr_error_retry',
+      turnId: 'turn_target',
+      willRetry: false,
+      error: { message: 'terminal failure' },
+    });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'terminal failure' }));
+
+    router.unsubscribe();
+  });
+
   it('reports thread turn completion for non-bound turns while keeping stream completion bound', () => {
     const client = new FakeClient();
     const { controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_injected',
     });
 

@@ -378,6 +378,8 @@ Local MCP security defaults:
 - `createLocalMcpServer()` binds to loopback hosts by default and rejects non-loopback `host` values unless you set `allowNonLoopbackHost: true`.
 - `createLocalMcpServer()` generates a per-server bearer token and expects `Authorization: Bearer <token>` on direct HTTP calls. The token is available at `server.config.bearerToken`.
 - `createSdkMcpServer()` propagates this auth config automatically, so provider-level MCP wiring works without extra manual headers.
+- Without `cacheKey`, SDK MCP server/tool function identity participates in persistent keying to avoid conflating closure-dependent tool behavior.
+- Use `createSdkMcpServer({ cacheKey })` when you intentionally recreate equivalent SDK MCP definitions per call and want stable persistent model reuse.
 
 ## Model Parameters & Advanced Options (v0.4.0+)
 

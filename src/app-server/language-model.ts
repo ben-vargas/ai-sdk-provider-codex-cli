@@ -27,6 +27,7 @@ import {
   mergeSingleMcpServer,
   sanitizeJsonSchema,
 } from '../shared-utils.js';
+import { assertValidMcpServerName } from '../config-key-utils.js';
 import type {
   AppServerMcpServerConfig,
   AppServerThreadMode,
@@ -160,11 +161,18 @@ function mergeAppServerMcpServers(
   base?: Record<string, AppServerMcpServerConfig>,
   override?: Record<string, AppServerMcpServerConfig>,
 ): Record<string, AppServerMcpServerConfig> | undefined {
-  if (!base) return override ? { ...override } : undefined;
-  if (!override) return { ...base };
+  if (!base && !override) return undefined;
 
-  const merged: Record<string, AppServerMcpServerConfig> = { ...base };
-  for (const [name, incoming] of Object.entries(override)) {
+  const merged: Record<string, AppServerMcpServerConfig> = {};
+  for (const [rawName, server] of Object.entries(base ?? {})) {
+    const name = assertValidMcpServerName(rawName);
+    merged[name] = server;
+  }
+
+  if (!override) return merged;
+
+  for (const [rawName, incoming] of Object.entries(override)) {
+    const name = assertValidMcpServerName(rawName);
     const existing = merged[name];
 
     if (!existing || isSdkMcpServer(existing) || isSdkMcpServer(incoming)) {
@@ -184,13 +192,15 @@ function mergeAppServerMcpServers(
 
 interface ResolvedConfig {
   configOverrides: Record<string, unknown> | undefined;
+  usedSdkMcpServers: SdkMcpServer[];
 }
 
 export interface AppServerLanguageModelOptions {
   id: CodexModelId;
   settings?: CodexAppServerSettings;
   client: AppServerRpcClient;
-  onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
+  onSdkMcpServerUsed?: (server: SdkMcpServer, lifecycle: 'provider' | 'request') => void;
+  onSdkMcpServerReleased?: (server: SdkMcpServer) => void;
 }
 
 export class AppServerLanguageModel implements LanguageModelV3 {
@@ -206,7 +216,11 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
   private readonly client: AppServerRpcClient;
   private readonly logger: Logger;
-  private readonly onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
+  private readonly onSdkMcpServerUsed?: (
+    server: SdkMcpServer,
+    lifecycle: 'provider' | 'request',
+  ) => void;
+  private readonly onSdkMcpServerReleased?: (server: SdkMcpServer) => void;
 
   private persistentThreadId?: string;
   private persistentThreadRawEventsEnabled?: boolean;
@@ -218,6 +232,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     this.settings = options.settings ?? {};
     this.client = options.client;
     this.onSdkMcpServerUsed = options.onSdkMcpServerUsed;
+    this.onSdkMcpServerReleased = options.onSdkMcpServerReleased;
     const baseLogger = getLogger(this.settings.logger);
     this.logger = createVerboseLogger(baseLogger, this.settings.verbose ?? false);
 
@@ -313,18 +328,32 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     );
   }
 
-  private async resolveConfig(settings: CodexAppServerSettings): Promise<ResolvedConfig> {
+  private async resolveConfig(
+    settings: CodexAppServerSettings,
+    sdkServerLifecycle: 'provider' | 'request',
+  ): Promise<ResolvedConfig> {
     const resolvedMcpServers: Record<string, McpServerConfig> = {};
+    const usedSdkMcpServers: SdkMcpServer[] = [];
 
-    for (const [name, server] of Object.entries(settings.mcpServers ?? {})) {
-      if (isSdkMcpServer(server)) {
-        const started = await server._start();
-        this.onSdkMcpServerUsed?.(server);
-        resolvedMcpServers[name] = started;
-        continue;
+    try {
+      for (const [name, server] of Object.entries(settings.mcpServers ?? {})) {
+        if (isSdkMcpServer(server)) {
+          const started = await server._start();
+          this.onSdkMcpServerUsed?.(server, sdkServerLifecycle);
+          usedSdkMcpServers.push(server);
+          resolvedMcpServers[name] = started;
+          continue;
+        }
+
+        resolvedMcpServers[name] = server;
       }
-
-      resolvedMcpServers[name] = server;
+    } catch (error) {
+      if (sdkServerLifecycle === 'request') {
+        for (const server of usedSdkMcpServers) {
+          this.onSdkMcpServerReleased?.(server);
+        }
+      }
+      throw error;
     }
 
     const mcpOverrides = mcpServersToConfigOverrides(
@@ -339,6 +368,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     return {
       configOverrides: Object.keys(configOverrides).length > 0 ? configOverrides : undefined,
+      usedSdkMcpServers,
     };
   }
 
@@ -834,6 +864,8 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     });
 
     const settings = this.mergeSettings(providerOptions);
+    const sdkServerLifecycle: 'provider' | 'request' =
+      this.resolveThreadMode(settings, providerOptions) === 'persistent' ? 'provider' : 'request';
     const includeRawChunks = this.resolveIncludeRawChunks(
       options.includeRawChunks,
       settings,
@@ -867,15 +899,31 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       developerInstructionsOverride ??
       (!threadState.threadId ? prompt.systemInstruction : undefined);
 
-    const resolvedConfig = await this.resolveConfig(settings);
+    const resolvedConfig = await this.resolveConfig(settings, sdkServerLifecycle);
+    let releasedSdkServers = false;
+    const releaseUsedSdkMcpServers = () => {
+      if (releasedSdkServers || sdkServerLifecycle !== 'request') {
+        return;
+      }
+      releasedSdkServers = true;
+      for (const server of resolvedConfig.usedSdkMcpServers) {
+        this.onSdkMcpServerReleased?.(server);
+      }
+    };
 
-    const threadResolution = await this.startOrResumeThread({
-      settings,
-      providerOptions,
-      configOverrides: resolvedConfig.configOverrides,
-      developerInstructions: effectiveDeveloperInstructions,
-      includeRawChunks,
-    });
+    let threadResolution: Awaited<ReturnType<AppServerLanguageModel['startOrResumeThread']>>;
+    try {
+      threadResolution = await this.startOrResumeThread({
+        settings,
+        providerOptions,
+        configOverrides: resolvedConfig.configOverrides,
+        developerInstructions: effectiveDeveloperInstructions,
+        includeRawChunks,
+      });
+    } catch (error) {
+      releaseUsedSdkMcpServers();
+      throw error;
+    }
 
     const threadId = threadResolution.threadId;
 
@@ -901,6 +949,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       session = await this.createOrReuseSession({ threadId, settings, providerOptions });
     } catch (error) {
       cleanupTempImages(tempImagePaths);
+      releaseUsedSdkMcpServers();
       throw error;
     }
 
@@ -957,6 +1006,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         let settled = false;
         let cleanedUp = false;
         let turnStartRequested = false;
+        let cancelBeforeTurnId = false;
         let requestContextId: string | undefined;
 
         const cleanup = () => {
@@ -970,6 +1020,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             this.client.clearRequestContext(requestContextId);
           }
           cleanupTempImages(tempImagePaths);
+          releaseUsedSdkMcpServers();
           if (options.abortSignal) {
             options.abortSignal.removeEventListener('abort', onAbort);
           }
@@ -1011,16 +1062,20 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           if (reason !== undefined) {
             cancelReason = reason;
           }
-          if (settled) return;
           if (!turnId) {
-            if (!turnStartRequested) {
-              finishSilently();
-            }
+            cancelBeforeTurnId = turnStartRequested;
+            finishSilently();
             return;
           }
+          if (settled && !cancelBeforeTurnId) return;
           if (!cancelWaitPromise) {
             cancelWaitPromise = (async () => {
-              await interruptAndAwaitCompletion();
+              if (cancelBeforeTurnId) {
+                await this.client.turnInterrupt({ threadId, turnId }).catch(() => undefined);
+                cancelBeforeTurnId = false;
+              } else {
+                await interruptAndAwaitCompletion();
+              }
               finishSilently();
             })();
           }
@@ -1100,6 +1155,13 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           turnId = turnResponse.turn.id;
           router.setTurnId(turnId);
           session?.setTurnId(turnId);
+
+          if (settled) {
+            if (cancelRequested) {
+              await requestCancel(cancelReason);
+            }
+            return;
+          }
 
           if (cancelRequested) {
             await requestCancel(cancelReason);

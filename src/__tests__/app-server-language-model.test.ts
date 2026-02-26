@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import type { TurnStartParams } from '../app-server/protocol/types.js';
 import { AppServerLanguageModel } from '../app-server/language-model.js';
 import * as imageUtils from '../image-utils.js';
+import { SDK_MCP_SERVER_MARKER } from '../tools/sdk-mcp-server.js';
 
 function flush(ms = 20): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,7 +38,7 @@ class FakeClient extends EventEmitter {
     if (this.threadStartImpl) return await this.threadStartImpl(params);
     return {
       thread: { id: 'thr_new' },
-      model: 'gpt-5.1-codex',
+      model: 'gpt-5.3-codex',
       modelProvider: 'openai',
       cwd: '/tmp',
       approvalPolicy: 'never',
@@ -52,7 +53,7 @@ class FakeClient extends EventEmitter {
     const data = params as { threadId: string };
     return {
       thread: { id: data.threadId },
-      model: 'gpt-5.1-codex',
+      model: 'gpt-5.3-codex',
       modelProvider: 'openai',
       cwd: '/tmp',
       approvalPolicy: 'never',
@@ -128,7 +129,7 @@ describe('AppServerLanguageModel', () => {
   it('doGenerate returns content and thread metadata in stateless mode', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -151,7 +152,7 @@ describe('AppServerLanguageModel', () => {
   it('passes merged autoApprove into active request context', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { autoApprove: false },
     });
@@ -206,7 +207,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -283,7 +284,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -362,7 +363,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_usage_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const result = await model.doGenerate({
       prompt: [{ role: 'user', content: 'usage please' }] as never,
     });
@@ -395,7 +396,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_failed_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const result = await model.doGenerate({
       prompt: [{ role: 'user', content: 'fail please' }] as never,
     });
@@ -408,7 +409,7 @@ describe('AppServerLanguageModel', () => {
 
   it('passes sanitized output schema to turn/start', async () => {
     const client = new FakeClient();
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
 
     await model.doGenerate({
       prompt: [{ role: 'user', content: 'schema' }] as never,
@@ -439,7 +440,7 @@ describe('AppServerLanguageModel', () => {
   it('maps sandbox policy for both thread and turn wire formats', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: {
         sandboxPolicy: { type: 'workspaceWrite' },
@@ -461,7 +462,7 @@ describe('AppServerLanguageModel', () => {
   it('maps sandbox policy string to turn sandbox object', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: {
         sandboxPolicy: 'danger-full-access',
@@ -483,7 +484,7 @@ describe('AppServerLanguageModel', () => {
   it('uses thread resume when threadId is provided and only sends last user message', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -514,7 +515,7 @@ describe('AppServerLanguageModel', () => {
   it('converts mixed stateless transcript parts into turn/start text input', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -560,7 +561,7 @@ describe('AppServerLanguageModel', () => {
   it('doStream emits text deltas and finish', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -616,7 +617,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -706,7 +707,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_tool_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'use tools' }] as never,
     });
@@ -768,7 +769,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_failed_stream_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'stream fail' }] as never,
     });
@@ -804,7 +805,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_raw_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'raw please' }] as never,
       includeRawChunks: true,
@@ -844,7 +845,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { includeRawChunks: true },
     });
@@ -884,7 +885,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_reason_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'reason please' }] as never,
     });
@@ -922,7 +923,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_approval_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'approval event' }] as never,
     });
@@ -943,7 +944,7 @@ describe('AppServerLanguageModel', () => {
   it('reuses persistent thread automatically when threadMode is persistent', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -968,7 +969,7 @@ describe('AppServerLanguageModel', () => {
       createdThreadCounter += 1;
       return {
         thread: { id: `thr_created_${createdThreadCounter}` },
-        model: 'gpt-5.1-codex',
+        model: 'gpt-5.3-codex',
         modelProvider: 'openai',
         cwd: '/tmp',
         approvalPolicy: 'never',
@@ -978,7 +979,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -1025,7 +1026,7 @@ describe('AppServerLanguageModel', () => {
   it('throws clear stale-thread error when persistent thread resume fails', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -1052,7 +1053,7 @@ describe('AppServerLanguageModel', () => {
       startedThreads += 1;
       return {
         thread: { id: `thr_new_${startedThreads}` },
-        model: 'gpt-5.1-codex',
+        model: 'gpt-5.3-codex',
         modelProvider: 'openai',
         cwd: '/tmp',
         approvalPolicy: 'never',
@@ -1062,7 +1063,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -1100,7 +1101,7 @@ describe('AppServerLanguageModel', () => {
       startedThreads += 1;
       return {
         thread: { id: `thr_new_${startedThreads}` },
-        model: 'gpt-5.1-codex',
+        model: 'gpt-5.3-codex',
         modelProvider: 'openai',
         cwd: '/tmp',
         approvalPolicy: 'never',
@@ -1110,7 +1111,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -1144,7 +1145,7 @@ describe('AppServerLanguageModel', () => {
   it('fails fast for concurrent stale persistent-thread resumes without creating replacement threads', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent' },
     });
@@ -1175,10 +1176,126 @@ describe('AppServerLanguageModel', () => {
     expect(client.threadResumeCalls).toHaveLength(2);
   });
 
+  it('releases request-scoped SDK MCP servers after a stateless turn completes', async () => {
+    const client = new FakeClient();
+    const sdkServer = {
+      [SDK_MCP_SERVER_MARKER]: true as const,
+      name: 'math-tools',
+      tools: [],
+      _start: vi.fn(async () => ({ transport: 'http', url: 'http://127.0.0.1:43210' })),
+      _stop: vi.fn(async () => undefined),
+    };
+    const onUsed = vi.fn();
+    const onReleased = vi.fn();
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: {
+        mcpServers: {
+          math: sdkServer as never,
+        },
+      },
+      onSdkMcpServerUsed: onUsed,
+      onSdkMcpServerReleased: onReleased,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Use tool if needed and say hello' }] as never,
+    });
+
+    expect(sdkServer._start).toHaveBeenCalledTimes(1);
+    expect(onUsed).toHaveBeenCalledWith(sdkServer, 'request');
+    expect(onReleased).toHaveBeenCalledWith(sdkServer);
+  });
+
+  it('releases already-started request-scoped SDK MCP servers when resolveConfig fails', async () => {
+    const client = new FakeClient();
+    const startedServer = {
+      [SDK_MCP_SERVER_MARKER]: true as const,
+      name: 'started-tools',
+      tools: [],
+      _start: vi.fn(async () => ({ transport: 'http', url: 'http://127.0.0.1:43210' })),
+      _stop: vi.fn(async () => undefined),
+    };
+    const failingServer = {
+      [SDK_MCP_SERVER_MARKER]: true as const,
+      name: 'failing-tools',
+      tools: [],
+      _start: vi.fn(async () => {
+        throw new Error('failed to start second server');
+      }),
+      _stop: vi.fn(async () => undefined),
+    };
+    const onUsed = vi.fn();
+    const onReleased = vi.fn();
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: {
+        mcpServers: {
+          first: startedServer as never,
+          second: failingServer as never,
+        },
+      },
+      onSdkMcpServerUsed: onUsed,
+      onSdkMcpServerReleased: onReleased,
+    });
+
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      }),
+    ).rejects.toThrow('failed to start second server');
+
+    expect(startedServer._start).toHaveBeenCalledTimes(1);
+    expect(failingServer._start).toHaveBeenCalledTimes(1);
+    expect(onUsed).toHaveBeenCalledTimes(1);
+    expect(onUsed).toHaveBeenCalledWith(startedServer, 'request');
+    expect(onReleased).toHaveBeenCalledTimes(1);
+    expect(onReleased).toHaveBeenCalledWith(startedServer);
+    expect(client.threadStartCalls).toHaveLength(0);
+  });
+
+  it('keeps provider-scoped SDK MCP servers running in persistent mode', async () => {
+    const client = new FakeClient();
+    const sdkServer = {
+      [SDK_MCP_SERVER_MARKER]: true as const,
+      name: 'math-tools',
+      tools: [],
+      _start: vi.fn(async () => ({ transport: 'http', url: 'http://127.0.0.1:43210' })),
+      _stop: vi.fn(async () => undefined),
+    };
+    const onUsed = vi.fn();
+    const onReleased = vi.fn();
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: {
+        threadMode: 'persistent',
+        mcpServers: {
+          math: sdkServer as never,
+        },
+      },
+      onSdkMcpServerUsed: onUsed,
+      onSdkMcpServerReleased: onReleased,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+    });
+
+    expect(sdkServer._start).toHaveBeenCalledTimes(1);
+    expect(onUsed).toHaveBeenCalledWith(sdkServer, 'provider');
+    expect(onReleased).not.toHaveBeenCalled();
+  });
+
   it('warns when includeRawChunks is requested while resuming a persistent thread without raw-event negotiation', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: { threadMode: 'persistent', includeRawChunks: false },
     });
@@ -1211,7 +1328,7 @@ describe('AppServerLanguageModel', () => {
       | undefined;
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: {
         onSessionCreated: (created) => {
@@ -1245,7 +1362,7 @@ describe('AppServerLanguageModel', () => {
     const cleanupSpy = vi.spyOn(imageUtils, 'cleanupTempImages');
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
       settings: {
         threadMode: 'persistent',
@@ -1287,7 +1404,7 @@ describe('AppServerLanguageModel', () => {
 
   it('sends remote image URLs directly as image inputs', async () => {
     const client = new FakeClient();
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
 
     await model.doGenerate({
       prompt: [
@@ -1308,7 +1425,7 @@ describe('AppServerLanguageModel', () => {
 
   it('passes sanitized output schema in doStream turn/start', async () => {
     const client = new FakeClient();
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     const { stream } = await model.doStream({
       prompt: [{ role: 'user', content: 'schema stream' }] as never,
       responseFormat: {
@@ -1348,7 +1465,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1369,7 +1486,7 @@ describe('AppServerLanguageModel', () => {
     client.turnStartImpl = async () => ({ turn: { id: 'turn_should_not_start' } });
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1406,7 +1523,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1447,7 +1564,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1482,7 +1599,7 @@ describe('AppServerLanguageModel', () => {
     };
 
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1499,6 +1616,32 @@ describe('AppServerLanguageModel', () => {
     await flush();
 
     expect(client.turnInterruptCalls).toHaveLength(1);
+  });
+
+  it('doStream cancellation before turn id cleans up request context immediately', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async () =>
+      await new Promise<{ turn: { id: string } }>(() => {
+        // Intentionally never resolves to simulate a stuck turn/start request.
+      });
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'cancel pending turn start' }] as never,
+    });
+
+    const reader = stream.getReader();
+    await reader.read();
+    await reader.read();
+    await expect(reader.cancel('cancel now')).resolves.toBeUndefined();
+    await flush();
+
+    expect(client.clearRequestContextCalls).toHaveLength(1);
+    expect(client.turnInterruptCalls).toHaveLength(0);
   });
 
   it('serializes concurrent stateful turns through withThreadLock', async () => {
@@ -1534,7 +1677,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: turnId } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     await Promise.all([
       model.doGenerate({
         prompt: [{ role: 'user', content: 'A' }] as never,
@@ -1572,7 +1715,7 @@ describe('AppServerLanguageModel', () => {
       return { turn: { id: 'turn_img_1' } };
     };
 
-    const model = new AppServerLanguageModel({ id: 'gpt-5.1-codex', client: client as never });
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
     await model.doGenerate({
       prompt: [
         {
@@ -1593,7 +1736,7 @@ describe('AppServerLanguageModel', () => {
     const client = new FakeClient();
     client.threadResumeError = new Error('thread not found');
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 
@@ -1611,7 +1754,7 @@ describe('AppServerLanguageModel', () => {
     const client = new FakeClient();
     client.turnStartError = new Error('thread not found');
     const model = new AppServerLanguageModel({
-      id: 'gpt-5.1-codex',
+      id: 'gpt-5.3-codex',
       client: client as never,
     });
 

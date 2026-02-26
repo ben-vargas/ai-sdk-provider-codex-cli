@@ -9,6 +9,7 @@ import type {
   McpServerHttp,
   McpServerStdio,
 } from './types-shared.js';
+import { assertValidConfigOverrideKey, assertValidMcpServerName } from './config-key-utils.js';
 
 export function createEmptyCodexUsage(): LanguageModelV3Usage {
   return {
@@ -175,12 +176,20 @@ export function mergeMcpServers(
   base?: Record<string, McpServerConfig>,
   override?: Record<string, McpServerConfig>,
 ): Record<string, McpServerConfig> | undefined {
-  if (!base) return override;
-  if (!override) return base;
+  if (!base && !override) return undefined;
 
-  const merged: Record<string, McpServerConfig> = { ...base };
-  for (const [name, incoming] of Object.entries(override)) {
-    const existing = base[name];
+  const normalizedBase: Record<string, McpServerConfig> = {};
+  for (const [rawName, server] of Object.entries(base ?? {})) {
+    const name = assertValidMcpServerName(rawName);
+    normalizedBase[name] = server;
+  }
+
+  if (!override) return normalizedBase;
+
+  const merged: Record<string, McpServerConfig> = { ...normalizedBase };
+  for (const [rawName, incoming] of Object.entries(override)) {
+    const name = assertValidMcpServerName(rawName);
+    const existing = merged[name];
     merged[name] = mergeSingleMcpServer(existing, incoming);
   }
   return merged;
@@ -228,9 +237,13 @@ export function mcpServersToConfigOverrides(
   rmcpClient?: boolean,
 ): Record<string, CodexConfigOverrideValue> {
   const overrides: Record<string, CodexConfigOverrideValue> = {};
+  const setOverride = (key: string, value: CodexConfigOverrideValue) => {
+    assertValidConfigOverrideKey(key);
+    overrides[key] = value;
+  };
 
   if (rmcpClient !== undefined) {
-    overrides['features.rmcp_client'] = rmcpClient;
+    setOverride('features.rmcp_client', rmcpClient);
   }
 
   if (!mcpServers) {
@@ -238,42 +251,41 @@ export function mcpServersToConfigOverrides(
   }
 
   for (const [rawName, server] of Object.entries(mcpServers)) {
-    const name = rawName.trim();
-    if (!name) continue;
+    const name = assertValidMcpServerName(rawName);
     const prefix = `mcp_servers.${name}`;
 
     if (server.enabled !== undefined) {
-      overrides[`${prefix}.enabled`] = server.enabled;
+      setOverride(`${prefix}.enabled`, server.enabled);
     }
     if (server.startupTimeoutSec !== undefined) {
-      overrides[`${prefix}.startup_timeout_sec`] = server.startupTimeoutSec;
+      setOverride(`${prefix}.startup_timeout_sec`, server.startupTimeoutSec);
     }
     if (server.toolTimeoutSec !== undefined) {
-      overrides[`${prefix}.tool_timeout_sec`] = server.toolTimeoutSec;
+      setOverride(`${prefix}.tool_timeout_sec`, server.toolTimeoutSec);
     }
     if (server.enabledTools !== undefined) {
-      overrides[`${prefix}.enabled_tools`] = server.enabledTools;
+      setOverride(`${prefix}.enabled_tools`, server.enabledTools);
     }
     if (server.disabledTools !== undefined) {
-      overrides[`${prefix}.disabled_tools`] = server.disabledTools;
+      setOverride(`${prefix}.disabled_tools`, server.disabledTools);
     }
 
     if (server.transport === 'stdio') {
-      overrides[`${prefix}.command`] = server.command;
-      if (server.args !== undefined) overrides[`${prefix}.args`] = server.args;
-      if (server.env !== undefined) overrides[`${prefix}.env`] = server.env;
-      if (server.cwd) overrides[`${prefix}.cwd`] = server.cwd;
+      setOverride(`${prefix}.command`, server.command);
+      if (server.args !== undefined) setOverride(`${prefix}.args`, server.args);
+      if (server.env !== undefined) setOverride(`${prefix}.env`, server.env);
+      if (server.cwd) setOverride(`${prefix}.cwd`, server.cwd);
     } else {
-      overrides[`${prefix}.url`] = server.url;
+      setOverride(`${prefix}.url`, server.url);
       if (server.bearerToken !== undefined)
-        overrides[`${prefix}.bearer_token`] = server.bearerToken;
+        setOverride(`${prefix}.bearer_token`, server.bearerToken);
       if (server.bearerTokenEnvVar !== undefined) {
-        overrides[`${prefix}.bearer_token_env_var`] = server.bearerTokenEnvVar;
+        setOverride(`${prefix}.bearer_token_env_var`, server.bearerTokenEnvVar);
       }
       if (server.httpHeaders !== undefined)
-        overrides[`${prefix}.http_headers`] = server.httpHeaders;
+        setOverride(`${prefix}.http_headers`, server.httpHeaders);
       if (server.envHttpHeaders !== undefined) {
-        overrides[`${prefix}.env_http_headers`] = server.envHttpHeaders;
+        setOverride(`${prefix}.env_http_headers`, server.envHttpHeaders);
       }
     }
   }

@@ -18,7 +18,7 @@ const appServer = createCodexAppServer({
 try {
   console.log('  Codex CLI - Nested Object Generation\n');
 
-  const model = appServer('gpt-5.1-codex', {
+  const model = appServer('gpt-5.3-codex', {
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
     effort: 'low',

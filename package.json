@@ -10,8 +10,8 @@
     "language-model",
     "gpt-5",
     "gpt-5.1",
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
+    "gpt-5.3-codex",
+    "gpt-5.2-codex-max",
     "provider"
   ],
   "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",

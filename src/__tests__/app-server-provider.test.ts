@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NoSuchModelError } from '@ai-sdk/provider';
+import { z } from 'zod';
 import { createCodexAppServer } from '../app-server/provider.js';
 import { AppServerRpcClient } from '../app-server/rpc/client.js';
 import { UnsupportedFeatureError } from '../errors.js';
+import { createSdkMcpServer, tool } from '../tools/index.js';
 
 describe('createCodexAppServer', () => {
   it('creates language model instances', () => {
@@ -10,9 +12,9 @@ describe('createCodexAppServer', () => {
       defaultSettings: { minCodexVersion: '0.105.0', personality: 'pragmatic' },
     });
 
-    const model: any = provider('gpt-5.1-codex');
+    const model: any = provider('gpt-5.3-codex');
     expect(model.provider).toBe('codex-app-server');
-    expect(model.modelId).toBe('gpt-5.1-codex');
+    expect(model.modelId).toBe('gpt-5.3-codex');
   });
 
   it('exposes close()', async () => {
@@ -23,14 +25,14 @@ describe('createCodexAppServer', () => {
 
   it('exposes listModels()', async () => {
     const listSpy = vi.spyOn(AppServerRpcClient.prototype, 'modelList').mockResolvedValue({
-      data: [{ id: 'gpt-5.1-codex', isDefault: true }],
+      data: [{ id: 'gpt-5.3-codex', isDefault: true }],
       nextCursor: null,
     });
 
     const provider = createCodexAppServer();
     const listed = await provider.listModels(['openai']);
     expect(listSpy).toHaveBeenCalledWith({ modelProviders: ['openai'] });
-    expect(listed.defaultModel?.id).toBe('gpt-5.1-codex');
+    expect(listed.defaultModel?.id).toBe('gpt-5.3-codex');
     listSpy.mockRestore();
     await provider.close();
   });
@@ -56,7 +58,7 @@ describe('createCodexAppServer', () => {
 
   it('throws for invalid per-model settings', () => {
     const provider = createCodexAppServer();
-    expect(() => provider('gpt-5.1-codex', { minCodexVersion: 'not-semver' } as never)).toThrow(
+    expect(() => provider('gpt-5.3-codex', { minCodexVersion: 'not-semver' } as never)).toThrow(
       /Invalid settings/,
     );
   });
@@ -74,7 +76,7 @@ describe('createCodexAppServer', () => {
       },
     });
 
-    const model = provider('gpt-5.1-codex', {
+    const model = provider('gpt-5.3-codex', {
       configOverrides: { two: '2', shared: 'model' },
     }) as unknown as { settings: { configOverrides?: Record<string, unknown> } };
 
@@ -100,10 +102,10 @@ describe('createCodexAppServer', () => {
       },
     });
 
-    const baseModel = provider('gpt-5.1-codex') as unknown as {
+    const baseModel = provider('gpt-5.3-codex') as unknown as {
       client: unknown;
     };
-    const tunedModel = provider('gpt-5.1-codex', {
+    const tunedModel = provider('gpt-5.3-codex', {
       requestTimeoutMs: 25_000,
     }) as unknown as {
       client: unknown;
@@ -126,10 +128,10 @@ describe('createCodexAppServer', () => {
       },
     });
 
-    const pragmatic = provider('gpt-5.1-codex', {
+    const pragmatic = provider('gpt-5.3-codex', {
       personality: 'pragmatic',
     }) as unknown as { client: AppServerRpcClient };
-    const friendly = provider('gpt-5.1-codex', {
+    const friendly = provider('gpt-5.3-codex', {
       personality: 'friendly',
     }) as unknown as { client: AppServerRpcClient };
 
@@ -145,9 +147,9 @@ describe('createCodexAppServer', () => {
       },
     });
 
-    const first = provider('gpt-5.1-codex', { threadMode: 'persistent' });
-    const second = provider('gpt-5.1-codex', { threadMode: 'persistent' });
-    const different = provider('gpt-5.1-codex', {
+    const first = provider('gpt-5.3-codex', { threadMode: 'persistent' });
+    const second = provider('gpt-5.3-codex', { threadMode: 'persistent' });
+    const different = provider('gpt-5.3-codex', {
       threadMode: 'persistent',
       developerInstructions: 'different',
     });
@@ -158,31 +160,209 @@ describe('createCodexAppServer', () => {
     await provider.close();
   });
 
-  it('bounds persistent model cache and evicts oldest entry when capacity is exceeded', async () => {
+  it('keeps persistent model cache key stable when sdk MCP runtime state changes', async () => {
+    const add = tool({
+      name: 'add',
+      description: 'Add two numbers',
+      parameters: z.object({ a: z.number(), b: z.number() }),
+      execute: async ({ a, b }) => ({ result: a + b }),
+    });
+
+    const sdkServer = createSdkMcpServer({
+      name: 'math-tools',
+      tools: [add],
+    });
+
+    const provider = createCodexAppServer({
+      defaultSettings: {
+        minCodexVersion: '0.105.0',
+        threadMode: 'persistent',
+        mcpServers: {
+          math: sdkServer,
+        },
+      },
+    });
+
+    try {
+      const first = provider('gpt-5.3-codex');
+      expect(sdkServer._server).toBeUndefined();
+
+      await sdkServer._start();
+      expect(sdkServer._server).toBeDefined();
+
+      const second = provider('gpt-5.3-codex');
+      expect(second).toBe(first);
+    } finally {
+      await Promise.allSettled([provider.close(), sdkServer._stop()]);
+    }
+  });
+
+  it('supports explicit sdk MCP cacheKey for stable persistent model reuse across recreated tool objects', async () => {
+    const createSettings = (cacheKey = 'math-v1') => {
+      const add = tool({
+        name: 'add',
+        description: 'Add two numbers',
+        parameters: z.object({ a: z.number(), b: z.number() }),
+        execute: async ({ a, b }) => ({ result: a + b }),
+      });
+
+      return {
+        threadMode: 'persistent' as const,
+        mcpServers: {
+          math: createSdkMcpServer({
+            name: 'math-tools',
+            cacheKey,
+            tools: [add],
+          }),
+        },
+      };
+    };
+
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.105.0' },
+    });
+
+    const first = provider('gpt-5.3-codex', createSettings());
+    const second = provider('gpt-5.3-codex', createSettings());
+    const differentCacheKey = provider('gpt-5.3-codex', createSettings('math-v2'));
+
+    expect(second).toBe(first);
+    expect(differentCacheKey).not.toBe(first);
+
+    await provider.close();
+  });
+
+  it('does not reuse persistent model across recreated sdk MCP tools without cacheKey', async () => {
+    const createSettings = () => {
+      const add = tool({
+        name: 'add',
+        description: 'Add two numbers',
+        parameters: z.object({ a: z.number(), b: z.number() }),
+        execute: async ({ a, b }) => ({ result: a + b }),
+      });
+
+      return {
+        threadMode: 'persistent' as const,
+        mcpServers: {
+          math: createSdkMcpServer({
+            name: 'math-tools',
+            tools: [add],
+          }),
+        },
+      };
+    };
+
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.105.0' },
+    });
+
+    const first = provider('gpt-5.3-codex', createSettings());
+    const second = provider('gpt-5.3-codex', createSettings());
+
+    expect(second).not.toBe(first);
+
+    await provider.close();
+  });
+
+  it('does not conflate recreated sdk MCP tools when only closure-captured state changes', async () => {
+    const createSettings = (offset: number) => {
+      const add = tool({
+        name: 'add',
+        description: 'Add two numbers',
+        parameters: z.object({ a: z.number(), b: z.number() }),
+        execute: async ({ a, b }) => ({ result: a + b + offset }),
+      });
+
+      return {
+        threadMode: 'persistent' as const,
+        mcpServers: {
+          math: createSdkMcpServer({
+            name: 'math-tools',
+            tools: [add],
+          }),
+        },
+      };
+    };
+
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.105.0' },
+    });
+
+    const first = provider('gpt-5.3-codex', createSettings(0));
+    const second = provider('gpt-5.3-codex', createSettings(100));
+
+    expect(second).not.toBe(first);
+
+    await provider.close();
+  });
+
+  it('creates a new persistent model when recreated sdk MCP tool implementation source changes', async () => {
+    const sumTool = tool({
+      name: 'calculate',
+      description: 'Combine two numbers',
+      parameters: z.object({ a: z.number(), b: z.number() }),
+      execute: async ({ a, b }) => ({ result: a + b }),
+    });
+    const multiplyTool = tool({
+      name: 'calculate',
+      description: 'Combine two numbers',
+      parameters: z.object({ a: z.number(), b: z.number() }),
+      execute: async ({ a, b }) => ({ result: a * b }),
+    });
+
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.105.0' },
+    });
+
+    const first = provider('gpt-5.3-codex', {
+      threadMode: 'persistent',
+      mcpServers: {
+        math: createSdkMcpServer({
+          name: 'math-tools',
+          tools: [sumTool],
+        }),
+      },
+    });
+    const changed = provider('gpt-5.3-codex', {
+      threadMode: 'persistent',
+      mcpServers: {
+        math: createSdkMcpServer({
+          name: 'math-tools',
+          tools: [multiplyTool],
+        }),
+      },
+    });
+
+    expect(changed).not.toBe(first);
+
+    await provider.close();
+  });
+
+  it('retains persistent model cache entries until provider.close()', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {
         minCodexVersion: '0.105.0',
       },
     });
 
-    const first = provider('gpt-5.1-codex', {
+    const first = provider('gpt-5.3-codex', {
       threadMode: 'persistent',
       developerInstructions: 'cache-0',
     });
 
-    for (let i = 1; i <= 128; i += 1) {
-      provider('gpt-5.1-codex', {
+    for (let i = 1; i <= 256; i += 1) {
+      provider('gpt-5.3-codex', {
         threadMode: 'persistent',
         developerInstructions: `cache-${i}`,
       });
     }
 
-    const firstAgain = provider('gpt-5.1-codex', {
+    const firstAgain = provider('gpt-5.3-codex', {
       threadMode: 'persistent',
       developerInstructions: 'cache-0',
     });
 
-    expect(firstAgain).not.toBe(first);
+    expect(firstAgain).toBe(first);
 
     await provider.close();
   });

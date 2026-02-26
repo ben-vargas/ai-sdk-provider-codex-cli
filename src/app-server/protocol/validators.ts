@@ -231,6 +231,30 @@ export const threadItemSchema = z.discriminatedUnion('type', [
   contextCompactionItemSchema,
 ]);
 
+const codexHttpStatusCodeSchema = z
+  .object({
+    httpStatusCode: z.number().nullable(),
+  })
+  .passthrough();
+
+const codexErrorInfoSchema = z.union([
+  z.enum([
+    'contextWindowExceeded',
+    'usageLimitExceeded',
+    'serverOverloaded',
+    'internalServerError',
+    'unauthorized',
+    'badRequest',
+    'threadRollbackFailed',
+    'sandboxError',
+    'other',
+  ]),
+  z.object({ httpConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+  z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+  z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
+  z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
+]);
+
 export const turnSchema = z
   .object({
     id: z.string(),
@@ -239,7 +263,7 @@ export const turnSchema = z
     error: z
       .object({
         message: z.string(),
-        codexErrorInfo: z.unknown().nullable(),
+        codexErrorInfo: codexErrorInfoSchema.nullable(),
         additionalDetails: z.string().nullable(),
       })
       .nullable(),
@@ -356,7 +380,7 @@ export const errorNotificationSchema = z
     error: z
       .object({
         message: z.string(),
-        codexErrorInfo: z.unknown().nullable(),
+        codexErrorInfo: codexErrorInfoSchema.nullable(),
         additionalDetails: z.string().nullable(),
       })
       .passthrough(),

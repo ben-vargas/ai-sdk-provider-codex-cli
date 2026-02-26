@@ -69,7 +69,7 @@ export function toImageReference(
     if (isFileUrlValue(part.data) || isFileUrlValue((part as { url?: unknown }).url)) {
       return {
         kind: 'unsupported',
-        warning: 'Unable to load image from file:// URL (missing or unreadable file).',
+        warning: 'file:// image URLs are not supported.',
       };
     }
 
@@ -97,7 +97,7 @@ export function toImageReference(
     ) {
       return {
         kind: 'unsupported',
-        warning: 'Unable to load image from file:// URL (missing or unreadable file).',
+        warning: 'file:// image URLs are not supported.',
       };
     }
 

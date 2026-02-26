@@ -170,4 +170,21 @@ describe('shared-utils', () => {
     expect(overrides['mcp_servers.remote.url']).toBe('https://mcp.example.com');
     expect(overrides['mcp_servers.remote.bearer_token_env_var']).toBe('TOKEN_ENV');
   });
+
+  it('rejects invalid MCP server names consistently during merge and override mapping', () => {
+    expect(() =>
+      mergeMcpServers(
+        {
+          ' local ': { transport: 'stdio', command: 'node' },
+        },
+        undefined,
+      ),
+    ).toThrow(/Invalid MCP server name/);
+
+    expect(() =>
+      mcpServersToConfigOverrides({
+        'bad.name': { transport: 'stdio', command: 'node' },
+      }),
+    ).toThrow(/Invalid MCP server name/);
+  });
 });

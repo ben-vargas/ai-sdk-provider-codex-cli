@@ -182,6 +182,55 @@ describe('app-server local tools', () => {
     }
   });
 
+  it('createSdkMcpServer waits for in-flight startup during stop and shuts down the started server', async () => {
+    const stop = vi.fn(async () => undefined);
+    let resolveStart:
+      | ((server: Awaited<ReturnType<typeof createLocalMcpServer>>) => void)
+      | undefined;
+    const createSpy = vi.spyOn(localMcpServerModule, 'createLocalMcpServer').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+
+    try {
+      const sdkServer = createSdkMcpServer({ name: 'startup-race-tools', tools: [] });
+      const startPromise = sdkServer._start();
+      expect(createSpy).toHaveBeenCalledTimes(1);
+
+      const stopPromise = sdkServer._stop();
+      let stopSettled = false;
+      void stopPromise.then(() => {
+        stopSettled = true;
+      });
+      await Promise.resolve();
+      expect(stopSettled).toBe(false);
+
+      resolveStart?.({
+        config: {
+          transport: 'http',
+          url: 'http://127.0.0.1:43210',
+          bearerToken: 'fake-token',
+        },
+        url: 'http://127.0.0.1:43210',
+        port: 43210,
+        stop,
+      });
+
+      await expect(startPromise).resolves.toEqual({
+        transport: 'http',
+        url: 'http://127.0.0.1:43210',
+        bearerToken: 'fake-token',
+      });
+      await stopPromise;
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(sdkServer._server).toBeUndefined();
+    } finally {
+      createSpy.mockRestore();
+    }
+  });
+
   it('createLocalMcpServer serializes undefined tool results as valid text', async () => {
     const maybeUndefined = tool({
       name: 'maybe_undefined',
@@ -262,5 +311,35 @@ describe('app-server local tools', () => {
     });
     serversToStop.push(allowed);
     expect(allowed.url.startsWith('http://0.0.0.0:')).toBe(true);
+  });
+
+  it('createLocalMcpServer brackets IPv6 loopback host in returned URL', async () => {
+    const echo = tool({
+      name: 'echo',
+      description: 'Echo text',
+      parameters: z.object({ text: z.string() }),
+      execute: async ({ text }) => ({ text }),
+    });
+
+    let server: Awaited<ReturnType<typeof createLocalMcpServer>>;
+    try {
+      server = await createLocalMcpServer({
+        name: 'ipv6-tools',
+        tools: [echo],
+        host: '::1',
+        port: 0,
+      });
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      // Some environments disable IPv6 loopback binding; skip this integration assertion there.
+      if (code === 'EADDRNOTAVAIL' || code === 'EAFNOSUPPORT') {
+        return;
+      }
+      throw error;
+    }
+
+    serversToStop.push(server);
+    expect(server.url).toMatch(/^http:\/\/\[::1\]:\d+$/);
+    expect(() => new URL(server.url)).not.toThrow();
   });
 });

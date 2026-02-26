@@ -54,13 +54,31 @@ export class AppServerSession implements CodexAppServerSession {
     return this.currentTurnId;
   }
 
+  private isTurnCompleted(turnId: string): boolean {
+    const hasTurnCompleted = (this.client as { hasTurnCompleted?: unknown }).hasTurnCompleted;
+    if (typeof hasTurnCompleted !== 'function') {
+      return false;
+    }
+    return Boolean((hasTurnCompleted as (value: string) => boolean).call(this.client, turnId));
+  }
+
+  private refreshActiveState(): void {
+    if (!this.active || !this.currentTurnId) {
+      return;
+    }
+    if (this.isTurnCompleted(this.currentTurnId)) {
+      this.active = false;
+    }
+  }
+
   isActive(): boolean {
+    this.refreshActiveState();
     return this.active;
   }
 
   setTurnId(turnId: string): void {
     this.currentTurnId = turnId;
-    this.active = true;
+    this.active = !this.isTurnCompleted(turnId);
   }
 
   setInactive(completedTurnId?: string): void {
@@ -101,13 +119,14 @@ export class AppServerSession implements CodexAppServerSession {
     });
 
     const nextTurnId = String(result.turn.id);
-    const alreadyCompleted = this.client.hasTurnCompleted(nextTurnId);
+    const alreadyCompleted = this.isTurnCompleted(nextTurnId);
 
     this.currentTurnId = nextTurnId;
     this.active = !alreadyCompleted;
   }
 
   async interrupt(): Promise<void> {
+    this.refreshActiveState();
     if (!this.active || !this.currentTurnId) {
       return;
     }

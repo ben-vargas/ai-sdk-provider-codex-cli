@@ -58,6 +58,11 @@ function isLoopbackHost(host: string): boolean {
   );
 }
 
+function formatHttpUrlHost(host: string): string {
+  const normalized = normalizeHost(host);
+  return normalized.includes(':') ? `[${normalized}]` : normalized;
+}
+
 function serializeToolResultToText(result: unknown): string {
   if (typeof result === 'string') {
     return result;
@@ -245,7 +250,7 @@ export async function createLocalMcpServer(
   }
 
   const actualPort = address.port;
-  const url = `http://${host}:${actualPort}`;
+  const url = `http://${formatHttpUrlHost(host)}:${actualPort}`;
 
   return {
     config: { transport: 'http', url, bearerToken },

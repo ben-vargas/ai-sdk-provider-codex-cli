@@ -15,7 +15,7 @@ describe('AppServerSession', () => {
 
     const session = new AppServerSession({
       threadId: 'thr_1',
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       client: {
         registerRequestContext,
         bindRequestContext,
@@ -44,7 +44,7 @@ describe('AppServerSession', () => {
     expect(turnStart).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thr_1',
-        model: 'gpt-5.1-codex',
+        model: 'gpt-5.3-codex',
       }),
     );
     expect(bindRequestContext).toHaveBeenCalledWith('ctx_1', 'turn_2');
@@ -69,7 +69,7 @@ describe('AppServerSession', () => {
 
     const session = new AppServerSession({
       threadId: 'thr_1',
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       client: {
         registerRequestContext,
         bindRequestContext,
@@ -88,7 +88,7 @@ describe('AppServerSession', () => {
   it('does not mark session inactive when a different turn completes', async () => {
     const session = new AppServerSession({
       threadId: 'thr_1',
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       client: {} as never,
     });
 
@@ -112,7 +112,7 @@ describe('AppServerSession', () => {
 
     const session = new AppServerSession({
       threadId: 'thr_1',
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       client: {
         turnInterrupt,
       } as never,
@@ -127,5 +127,38 @@ describe('AppServerSession', () => {
     expect(session.turnId).toBe('turn_2');
     expect(session.isActive()).toBe(true);
     expect(turnInterrupt).toHaveBeenCalledWith({ threadId: 'thr_1', turnId: 'turn_1' });
+  });
+
+  it('refreshes active state when current turn is already completed', () => {
+    const hasTurnCompleted = vi.fn().mockReturnValue(true);
+    const session = new AppServerSession({
+      threadId: 'thr_1',
+      modelId: 'gpt-5.3-codex',
+      client: {
+        hasTurnCompleted,
+      } as never,
+    });
+
+    session.setTurnId('turn_done');
+    expect(session.isActive()).toBe(false);
+  });
+
+  it('interrupt is a no-op for turns that completed before interrupt call', async () => {
+    const hasTurnCompleted = vi.fn().mockReturnValue(true);
+    const turnInterrupt = vi.fn();
+    const session = new AppServerSession({
+      threadId: 'thr_1',
+      modelId: 'gpt-5.3-codex',
+      client: {
+        hasTurnCompleted,
+        turnInterrupt,
+      } as never,
+    });
+
+    session.setTurnId('turn_done');
+    await session.interrupt();
+
+    expect(turnInterrupt).not.toHaveBeenCalled();
+    expect(session.isActive()).toBe(false);
   });
 });

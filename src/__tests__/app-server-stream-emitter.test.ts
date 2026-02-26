@@ -18,7 +18,7 @@ describe('AppServerStreamEmitter', () => {
   it('emits text/reasoning lifecycle parts', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
     });
 
@@ -35,7 +35,7 @@ describe('AppServerStreamEmitter', () => {
   it('splits text blocks when item id changes', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
     });
 
@@ -52,7 +52,7 @@ describe('AppServerStreamEmitter', () => {
   it('splits reasoning blocks when item id changes', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
     });
 
@@ -72,7 +72,7 @@ describe('AppServerStreamEmitter', () => {
   it('in json mode emits only the final completed text block', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
       jsonModeLastTextBlockOnly: true,
     });
@@ -86,10 +86,31 @@ describe('AppServerStreamEmitter', () => {
     expect((textDeltas[0] as { delta?: string }).delta).toBe('{"result":"done"}');
   });
 
+  it('clears json-mode buffered text state after finish', () => {
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_1',
+      jsonModeLastTextBlockOnly: true,
+    });
+
+    emitter.emitTextDelta('{"result":"done"}', 'item_1');
+    emitter.emitFinish({ unified: 'stop', raw: 'completed' }, createEmptyCodexUsage());
+
+    const internal = emitter as unknown as {
+      bufferedCurrentJsonText: string;
+      lastCompletedJsonText: string;
+      lastCompletedJsonTextId?: string;
+    };
+    expect(internal.bufferedCurrentJsonText).toBe('');
+    expect(internal.lastCompletedJsonText).toBe('');
+    expect(internal.lastCompletedJsonTextId).toBeUndefined();
+  });
+
   it('emits raw parts only when includeRawChunks is enabled', () => {
     const withRaw = createCapture();
     const emitterWithRaw = new AppServerStreamEmitter(withRaw.controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
       includeRawChunks: true,
     });
@@ -98,7 +119,7 @@ describe('AppServerStreamEmitter', () => {
 
     const withoutRaw = createCapture();
     const emitterWithoutRaw = new AppServerStreamEmitter(withoutRaw.controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
       includeRawChunks: false,
     });
@@ -109,7 +130,7 @@ describe('AppServerStreamEmitter', () => {
   it('maps approval request and tool output delta parts', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
     });
 
@@ -146,7 +167,7 @@ describe('AppServerStreamEmitter', () => {
     } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
 
     const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.1-codex',
+      modelId: 'gpt-5.3-codex',
       threadId: 'thr_1',
     });
 

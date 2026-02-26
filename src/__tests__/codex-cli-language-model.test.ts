@@ -767,6 +767,43 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('dotted.key=val');
     });
 
+    it('rejects invalid configOverrides keys at runtime', async () => {
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          configOverrides: {
+            'bad=key': 'value',
+          },
+        },
+      });
+
+      await expect(
+        model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      ).rejects.toThrow(/Invalid config override key/);
+    });
+
+    it('rejects invalid MCP server names at runtime', async () => {
+      const model = new CodexCliLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          color: 'never',
+          mcpServers: {
+            'bad.name': {
+              transport: 'stdio',
+              command: 'node',
+            },
+          },
+        },
+      });
+
+      await expect(
+        model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      ).rejects.toThrow(/Invalid MCP server name/);
+    });
+
     it('keeps reasoning flags when fullAuto is enabled (but omits approval/sandbox overrides)', async () => {
       let lastArgs: string[] = [];
       const lines = [

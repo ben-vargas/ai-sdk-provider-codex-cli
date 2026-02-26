@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { toImageReference } from '../converters/image-converter.js';
 
 describe('image-converter', () => {
@@ -101,24 +98,17 @@ describe('image-converter', () => {
     expect(result).toEqual({ kind: 'remote', url: 'https://example.com/url-object.png' });
   });
 
-  it('maps file part file:// URL string to local image reference', () => {
-    const path = join(tmpdir(), `codex-image-converter-${Date.now()}.png`);
-    writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  it('rejects file:// URL sources', () => {
+    const result = toImageReference({
+      type: 'file',
+      mediaType: 'image/png',
+      data: 'file:///tmp/image.png',
+    } as never);
 
-    try {
-      const result = toImageReference({
-        type: 'file',
-        mediaType: 'image/png',
-        data: `file://${path}`,
-      } as never);
-
-      expect(result?.kind).toBe('local');
-      if (result?.kind === 'local') {
-        expect(result.image.data.startsWith('data:image/png;base64,')).toBe(true);
-      }
-    } finally {
-      rmSync(path, { force: true });
-    }
+    expect(result).toEqual({
+      kind: 'unsupported',
+      warning: 'file:// image URLs are not supported.',
+    });
   });
 
   it('returns unsupported for non-image media types', () => {

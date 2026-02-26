@@ -19,9 +19,9 @@ export class AppServerStreamEmitter {
   private textId?: string;
   private reasoningId?: string;
   private readonly jsonModeLastTextBlockOnly: boolean;
-  private readonly bufferedTextBlocks = new Map<string, string>();
-  private readonly bufferedTextBlockOrder: string[] = [];
-  private readonly completedBufferedTextBlockIds: string[] = [];
+  private bufferedCurrentJsonText = '';
+  private lastCompletedJsonTextId?: string;
+  private lastCompletedJsonText = '';
   private closed = false;
 
   constructor(
@@ -63,23 +63,18 @@ export class AppServerStreamEmitter {
       const nextTextId = itemId ?? this.textId ?? generateId();
 
       if (this.textId && this.textId !== nextTextId) {
-        this.completedBufferedTextBlockIds.push(this.textId);
+        this.lastCompletedJsonTextId = this.textId;
+        this.lastCompletedJsonText = this.bufferedCurrentJsonText;
         this.textId = undefined;
+        this.bufferedCurrentJsonText = '';
       }
 
       if (!this.textId) {
         this.textId = nextTextId;
+        this.bufferedCurrentJsonText = '';
       }
 
-      if (!this.bufferedTextBlocks.has(this.textId)) {
-        this.bufferedTextBlocks.set(this.textId, '');
-        this.bufferedTextBlockOrder.push(this.textId);
-      }
-
-      this.bufferedTextBlocks.set(
-        this.textId,
-        `${this.bufferedTextBlocks.get(this.textId)}${delta}`,
-      );
+      this.bufferedCurrentJsonText = `${this.bufferedCurrentJsonText}${delta}`;
       return;
     }
 
@@ -195,19 +190,25 @@ export class AppServerStreamEmitter {
   ): void {
     if (this.jsonModeLastTextBlockOnly) {
       if (this.textId) {
-        this.completedBufferedTextBlockIds.push(this.textId);
+        this.lastCompletedJsonTextId = this.textId;
+        this.lastCompletedJsonText = this.bufferedCurrentJsonText;
+        this.textId = undefined;
+        this.bufferedCurrentJsonText = '';
       }
 
-      const finalBlockId =
-        this.completedBufferedTextBlockIds.at(-1) ?? this.bufferedTextBlockOrder.at(-1);
+      const finalBlockId = this.lastCompletedJsonTextId;
       if (finalBlockId) {
-        const finalText = this.bufferedTextBlocks.get(finalBlockId) ?? '';
+        const finalText = this.lastCompletedJsonText;
         this.safeEnqueue({ type: 'text-start', id: finalBlockId });
         if (finalText.length > 0) {
           this.safeEnqueue({ type: 'text-delta', id: finalBlockId, delta: finalText });
         }
         this.safeEnqueue({ type: 'text-end', id: finalBlockId });
       }
+
+      // Prevent retention in long-lived streaming sessions.
+      this.lastCompletedJsonTextId = undefined;
+      this.lastCompletedJsonText = '';
     } else if (this.textId) {
       this.safeEnqueue({ type: 'text-end', id: this.textId });
     }

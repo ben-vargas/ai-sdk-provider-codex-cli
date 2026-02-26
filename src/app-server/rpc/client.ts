@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
+import path from 'node:path';
 import { createAPICallError, UnsupportedFeatureError } from '../../errors.js';
 import { getLogger } from '../../logger.js';
 import type { Logger } from '../../types-shared.js';
@@ -65,8 +66,8 @@ export function resolveCodexPath(explicitPath?: string): { cmd: string; args: st
   try {
     const req = createRequire(import.meta.url);
     const pkgPath = req.resolve('@openai/codex/package.json');
-    const root = pkgPath.replace(/package\.json$/, '');
-    return { cmd: 'node', args: [root + 'bin/codex.js'] };
+    const root = path.dirname(pkgPath);
+    return { cmd: 'node', args: [path.join(root, 'bin', 'codex.js')] };
   } catch {
     return { cmd: 'codex', args: [] };
   }
@@ -187,6 +188,7 @@ export class AppServerRpcClient extends EventEmitter {
   private idleTimer?: NodeJS.Timeout;
   private serverCapabilities?: Record<string, unknown> | null;
   private expectedExitSignal?: NodeJS.Signals;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   public serverVersion?: string;
 
@@ -257,13 +259,15 @@ export class AppServerRpcClient extends EventEmitter {
         timer,
       });
 
-      try {
-        this.writeMessage(request);
-      } catch (error) {
-        clearTimeout(timer);
+      void this.writeMessage(request).catch((error) => {
+        const pending = this.pending.get(id);
+        if (!pending) {
+          return;
+        }
+        clearTimeout(pending.timer);
         this.pending.delete(id);
-        reject(error);
-      }
+        pending.reject(error);
+      });
     });
   }
 
@@ -272,8 +276,11 @@ export class AppServerRpcClient extends EventEmitter {
       throw new Error(`Cannot send notification '${method}' while client is not ready`);
     }
 
-    this.writeMessage({ method, ...(params ? { params } : {}) });
-    this.touchActivity();
+    void this.writeMessage({ method, ...(params ? { params } : {}) }).catch((error) => {
+      this.logger.warn(
+        `[codex-app-server] Failed to send notification '${method}': ${String(error)}`,
+      );
+    });
   }
 
   async threadStart(params: ThreadStartParams): Promise<ThreadStartResponse> {
@@ -425,6 +432,7 @@ export class AppServerRpcClient extends EventEmitter {
       this.child.kill('SIGTERM');
       this.child = undefined;
     }
+    this.writeQueue = Promise.resolve();
   }
 
   async dispose(): Promise<void> {
@@ -514,8 +522,7 @@ export class AppServerRpcClient extends EventEmitter {
       });
     }
 
-    this.writeMessage({ method: 'initialized' });
-    this.touchActivity();
+    await this.writeMessage({ method: 'initialized' });
     this.checkVersion(initializeResult.userAgent);
     this.serverCapabilities = initializeResult.capabilities ?? null;
   }
@@ -575,6 +582,7 @@ export class AppServerRpcClient extends EventEmitter {
       this.child.kill('SIGTERM');
       this.child = undefined;
     }
+    this.writeQueue = Promise.resolve();
   }
 
   private handleCrash(error: unknown): void {
@@ -584,7 +592,11 @@ export class AppServerRpcClient extends EventEmitter {
     this.clearIdleTimer();
     this.stdoutReader?.close();
     this.stdoutReader = undefined;
-    this.child = undefined;
+    if (this.child) {
+      this.expectedExitSignal = 'SIGTERM';
+      this.child.kill('SIGTERM');
+      this.child = undefined;
+    }
 
     for (const [id, pending] of this.pending.entries()) {
       clearTimeout(pending.timer);
@@ -593,11 +605,13 @@ export class AppServerRpcClient extends EventEmitter {
       );
     }
     this.pending.clear();
+    this.threadLocks.clear();
     this.pendingRequestContexts.clear();
     this.pendingRequestContextIdsByThread.clear();
     this.activeRequestContextsByTurn.clear();
     this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
+    this.writeQueue = Promise.resolve();
   }
 
   private handleLine(line: string): void {
@@ -644,8 +658,9 @@ export class AppServerRpcClient extends EventEmitter {
         const notificationParsed = schema.safeParse(data.params ?? {});
         if (!notificationParsed.success) {
           this.logger.warn(
-            `[codex-app-server] Notification '${data.method}' failed schema validation; continuing.`,
+            `[codex-app-server] Notification '${data.method}' failed schema validation; dropping.`,
           );
+          return;
         }
       }
       if (data.method === 'turn/completed') {
@@ -762,9 +777,9 @@ export class AppServerRpcClient extends EventEmitter {
           params: Record<string, unknown>;
         });
 
-    const sendResult = (result: unknown): void => {
+    const sendResult = async (result: unknown): Promise<void> => {
       try {
-        this.writeMessage({ id: normalized.id, result });
+        await this.writeMessage({ id: normalized.id, result });
       } catch (error) {
         this.logger.warn(
           `[codex-app-server] Failed to send server request result for '${normalized.method}': ${String(error)}`,
@@ -772,9 +787,9 @@ export class AppServerRpcClient extends EventEmitter {
       }
     };
 
-    const sendError = (code: number, message: string): void => {
+    const sendError = async (code: number, message: string): Promise<void> => {
       try {
-        this.writeMessage({ id: normalized.id, error: { code, message } });
+        await this.writeMessage({ id: normalized.id, error: { code, message } });
       } catch (error) {
         this.logger.warn(
           `[codex-app-server] Failed to send server request error for '${normalized.method}': ${String(error)}`,
@@ -811,10 +826,10 @@ export class AppServerRpcClient extends EventEmitter {
           ),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendResult({ decision: autoApprove ? 'accept' : 'decline' });
+        await sendResult({ decision: autoApprove ? 'accept' : 'decline' });
         return;
       }
       case 'item/fileChange/requestApproval': {
@@ -824,10 +839,10 @@ export class AppServerRpcClient extends EventEmitter {
           ),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendResult({ decision: autoApprove ? 'accept' : 'decline' });
+        await sendResult({ decision: autoApprove ? 'accept' : 'decline' });
         return;
       }
       case 'skill/requestApproval': {
@@ -835,10 +850,10 @@ export class AppServerRpcClient extends EventEmitter {
           handlers.onSkillApproval?.(normalized as unknown as AppServerSkillApprovalRequest),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendResult({ decision: autoApprove ? 'approve' : 'decline' });
+        await sendResult({ decision: autoApprove ? 'approve' : 'decline' });
         return;
       }
       case 'item/tool/requestUserInput': {
@@ -848,10 +863,10 @@ export class AppServerRpcClient extends EventEmitter {
           ),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendResult({ answers: {} });
+        await sendResult({ answers: {} });
         return;
       }
       case 'item/tool/call': {
@@ -859,10 +874,10 @@ export class AppServerRpcClient extends EventEmitter {
           handlers.onDynamicToolCall?.(normalized as unknown as AppServerDynamicToolCallRequest),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendResult({ contentItems: [], success: false });
+        await sendResult({ contentItems: [], success: false });
         return;
       }
       case 'account/chatgptAuthTokens/refresh': {
@@ -870,10 +885,10 @@ export class AppServerRpcClient extends EventEmitter {
           handlers.onAuthRefresh?.(normalized as unknown as AppServerAuthRefreshRequest),
         );
         if (handled !== undefined) {
-          sendResult(handled);
+          await sendResult(handled);
           return;
         }
-        sendError(-32603, 'Auth token refresh not supported by this client');
+        await sendError(-32603, 'Auth token refresh not supported by this client');
         return;
       }
       default:
@@ -882,21 +897,55 @@ export class AppServerRpcClient extends EventEmitter {
             handlers.onUnhandled?.(normalized as unknown as AppServerUnhandledRequest),
           );
           if (handled !== undefined) {
-            sendResult(handled);
+            await sendResult(handled);
             return;
           }
         }
-        sendError(-32601, 'Method not supported');
+        await sendError(-32601, 'Method not supported');
     }
   }
 
-  private writeMessage(message: unknown): void {
-    if (!this.child?.stdin.writable) {
-      throw new Error('codex app-server stdin is not writable');
-    }
+  private async writeMessage(message: unknown): Promise<void> {
+    const payload = `${JSON.stringify(message)}\n`;
+    const writeOperation = async (): Promise<void> => {
+      if (!this.child?.stdin.writable) {
+        throw new Error('codex app-server stdin is not writable');
+      }
 
-    this.child.stdin.write(`${JSON.stringify(message)}\n`);
-    this.touchActivity();
+      const stdin = this.child.stdin;
+      const wrote = stdin.write(payload);
+      if (!wrote) {
+        await new Promise<void>((resolve, reject) => {
+          const onDrain = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = (error: unknown) => {
+            cleanup();
+            reject(error);
+          };
+          const onClose = () => {
+            cleanup();
+            reject(new Error('codex app-server stdin closed before drain'));
+          };
+          const cleanup = () => {
+            stdin.off('drain', onDrain);
+            stdin.off('error', onError);
+            stdin.off('close', onClose);
+          };
+
+          stdin.once('drain', onDrain);
+          stdin.once('error', onError);
+          stdin.once('close', onClose);
+        });
+      }
+
+      this.touchActivity();
+    };
+
+    const queued = this.writeQueue.then(writeOperation, writeOperation);
+    this.writeQueue = queued.catch(() => undefined);
+    await queued;
   }
 
   private rememberCompletedTurn(turnId: string): void {
@@ -945,6 +994,13 @@ export class AppServerRpcClient extends EventEmitter {
       this.stdoutReader?.close();
       this.stdoutReader = undefined;
       this.state = 'idle';
+      this.threadLocks.clear();
+      this.pendingRequestContexts.clear();
+      this.pendingRequestContextIdsByThread.clear();
+      this.activeRequestContextsByTurn.clear();
+      this.completedTurnIds.clear();
+      this.serverCapabilities = undefined;
+      this.writeQueue = Promise.resolve();
       this.emit('idle-timeout');
     }, idleTimeoutMs);
   }

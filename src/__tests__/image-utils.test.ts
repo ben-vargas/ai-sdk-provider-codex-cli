@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -155,21 +155,14 @@ describe('extractImageData', () => {
       expect(result).toBeNull();
     });
 
-    it('loads image data from file: URL object', () => {
-      const path = join(tmpdir(), `codex-image-utils-${Date.now()}.png`);
-      writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-      try {
-        const part: ImagePart = {
-          type: 'image',
-          image: new URL(`file://${path}`),
-          mimeType: 'image/png',
-        };
-        const result = extractImageData(part);
-        expect(result?.data).toMatch(/^data:image\/png;base64,/);
-        expect(result?.mimeType).toBe('image/png');
-      } finally {
-        rmSync(path, { force: true });
-      }
+    it('rejects file: URL object', () => {
+      const part: ImagePart = {
+        type: 'image',
+        image: new URL(`file://${join(tmpdir(), 'image.png')}`),
+        mimeType: 'image/png',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
     });
   });
 
@@ -213,20 +206,14 @@ describe('extractImageData', () => {
       expect(result).toBeNull();
     });
 
-    it('loads image data from legacy file:// url string', () => {
-      const path = join(tmpdir(), `codex-image-utils-${Date.now()}-legacy.png`);
-      writeFileSync(path, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-      try {
-        const part: ImagePart = {
-          type: 'image',
-          url: `file://${path}`,
-          mimeType: 'image/png',
-        };
-        const result = extractImageData(part);
-        expect(result?.data).toMatch(/^data:image\/png;base64,/);
-      } finally {
-        rmSync(path, { force: true });
-      }
+    it('rejects legacy file:// url string', () => {
+      const part: ImagePart = {
+        type: 'image',
+        url: `file://${join(tmpdir(), `codex-image-utils-${Date.now()}-legacy.png`)}`,
+        mimeType: 'image/png',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
     });
   });
 
@@ -252,6 +239,15 @@ describe('extractImageData', () => {
     it('returns null for empty part', () => {
       const part: ImagePart = {
         type: 'image',
+      };
+      const result = extractImageData(part);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid raw base64 input', () => {
+      const part: ImagePart = {
+        type: 'image',
+        image: 'not-base64***',
       };
       const result = extractImageData(part);
       expect(result).toBeNull();
@@ -316,6 +312,15 @@ describe('writeImageToTempFile', () => {
     };
 
     expect(() => writeImageToTempFile(imageData)).toThrow('Invalid data URL format');
+  });
+
+  it('throws on invalid base64 image payload', () => {
+    const imageData = {
+      data: 'data:image/png;base64,not-base64***',
+      mimeType: 'image/png',
+    };
+
+    expect(() => writeImageToTempFile(imageData)).toThrow('Invalid base64 image payload');
   });
 });
 

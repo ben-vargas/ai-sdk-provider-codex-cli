@@ -1,7 +1,6 @@
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 /**
  * Image data extracted from AI SDK image parts.
@@ -70,15 +69,9 @@ export function extractImageData(part: unknown): ImageData | null {
     // Only support data: URLs
     if (primaryInput.protocol === 'data:') {
       const dataUrlStr = primaryInput.toString();
-      // Extract mime type from data URL if not explicitly provided
-      const match = dataUrlStr.match(/^data:([^;,]+)/);
-      const extractedMimeType = match?.[1] || mimeType;
-      return { data: dataUrlStr, mimeType: extractedMimeType };
+      return extractFromString(dataUrlStr, mimeType);
     }
-    if (primaryInput.protocol === 'file:') {
-      return extractFromFilePath(fileURLToPath(primaryInput), mimeType);
-    }
-    // HTTP/HTTPS URLs not supported
+    // file/http/https URL sources are not supported.
     return null;
   }
 
@@ -119,16 +112,9 @@ export function extractImageData(part: unknown): ImageData | null {
 function extractFromString(value: string, fallbackMimeType: string): ImageData | null {
   const trimmed = value.trim();
 
+  // Local file reads are intentionally not supported for security hardening.
   if (/^file:\/\//i.test(trimmed)) {
-    try {
-      const fileUrl = new URL(trimmed);
-      if (fileUrl.protocol === 'file:') {
-        return extractFromFilePath(fileURLToPath(fileUrl), fallbackMimeType);
-      }
-      return null;
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   // HTTP/HTTPS URLs are not supported
@@ -138,34 +124,28 @@ function extractFromString(value: string, fallbackMimeType: string): ImageData |
 
   // Already a data URL
   if (trimmed.startsWith('data:')) {
-    // Reject non-base64 data URLs (e.g., data:image/svg+xml,<svg...>)
-    // These cannot be decoded by writeImageToTempFile
-    if (!trimmed.includes(';base64,')) {
+    const match = trimmed.match(/^data:([^;,]+);base64,([^,]+)$/);
+    if (!match) {
       return null;
     }
-    // Extract mime type from data URL if present
-    const match = trimmed.match(/^data:([^;,]+)/);
-    const mimeType = match?.[1] || fallbackMimeType;
-    return { data: trimmed, mimeType };
+    const payload = normalizeBase64Payload(match[2] ?? '');
+    if (!payload) {
+      return null;
+    }
+    const mimeType = match[1] || fallbackMimeType;
+    return { data: `data:${mimeType};base64,${payload}`, mimeType };
   }
 
-  // Raw base64 string - wrap in data URL
-  return {
-    data: `data:${fallbackMimeType};base64,${trimmed}`,
-    mimeType: fallbackMimeType,
-  };
-}
-
-function extractFromFilePath(path: string, mimeType: string): ImageData | null {
-  try {
-    const binary = readFileSync(path);
-    return {
-      data: `data:${mimeType};base64,${binary.toString('base64')}`,
-      mimeType,
-    };
-  } catch {
+  const payload = normalizeBase64Payload(trimmed);
+  if (!payload) {
     return null;
   }
+
+  // Raw base64 string - wrap in data URL.
+  return {
+    data: `data:${fallbackMimeType};base64,${payload}`,
+    mimeType: fallbackMimeType,
+  };
 }
 
 function isBinaryInput(value: unknown): value is ArrayBuffer | Uint8Array {
@@ -195,7 +175,12 @@ export function writeImageToTempFile(imageData: ImageData): string {
     throw new Error('Invalid data URL format: expected data:[type];base64,[data]');
   }
 
-  const buffer = Buffer.from(base64Match[1] ?? '', 'base64');
+  const payload = normalizeBase64Payload(base64Match[1] ?? '');
+  if (!payload) {
+    throw new Error('Invalid base64 image payload');
+  }
+
+  const buffer = Buffer.from(payload, 'base64');
   writeFileSync(filePath, buffer);
 
   return filePath;
@@ -239,4 +224,20 @@ function getExtensionFromMimeType(mimeType?: string): string {
   };
 
   return mapping[mimeType.toLowerCase()] || mimeType.split('/')[1] || 'png';
+}
+
+function normalizeBase64Payload(value: string): string | null {
+  const compact = value.replace(/\s+/g, '');
+  if (!compact) return null;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) return null;
+  if (compact.length % 4 === 1) return null;
+
+  const padded = compact.padEnd(Math.ceil(compact.length / 4) * 4, '=');
+  try {
+    const normalized = Buffer.from(padded, 'base64').toString('base64');
+    if (normalized !== padded) return null;
+    return padded;
+  } catch {
+    return null;
+  }
 }

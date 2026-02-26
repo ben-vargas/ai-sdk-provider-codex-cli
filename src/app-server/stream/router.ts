@@ -155,7 +155,7 @@ export class AppServerNotificationRouter {
 
   private isSameThread(params: Record<string, unknown>): boolean {
     const notificationThreadId = typeof params.threadId === 'string' ? params.threadId : undefined;
-    return notificationThreadId === undefined || notificationThreadId === this.threadId;
+    return notificationThreadId === this.threadId;
   }
 
   private getTurnIdFromParams(params: Record<string, unknown>): string | undefined {
@@ -357,6 +357,7 @@ export class AppServerNotificationRouter {
 
     if (method === 'error') {
       if (!this.isSameTurn(params)) return;
+      if (params.willRetry === true) return;
       const nested = params.error;
       if (
         nested &&

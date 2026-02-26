@@ -70,7 +70,12 @@ export function isAuthenticationError(err: unknown): boolean {
   if (err instanceof LoadAPIKeyError) return true;
   if (err instanceof APICallError) {
     const data = err.data as CodexErrorMetadata | undefined;
-    if (data?.exitCode === 401) return true;
+    if (data?.code !== undefined) {
+      const normalized = String(data.code).trim().toLowerCase();
+      if (normalized === '401' || normalized === 'unauthorized' || normalized === 'auth') {
+        return true;
+      }
+    }
   }
   return false;
 }

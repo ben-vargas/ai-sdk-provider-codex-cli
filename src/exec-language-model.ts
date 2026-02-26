@@ -33,6 +33,11 @@ import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
 import {
+  assertValidConfigOverrideKey,
+  assertValidMcpServerName,
+  isValidConfigOverrideKey,
+} from './config-key-utils.js';
+import {
   createEmptyCodexUsage,
   isPlainObject,
   mapCodexCliFinishReason,
@@ -90,7 +95,9 @@ const codexCliProviderOptionsSchema: z.ZodType<CodexExecProviderOptions> = z
     addDirs: z.array(z.string().min(1)).optional(),
     configOverrides: z
       .record(
-        z.string(),
+        z.string().refine((key) => isValidConfigOverrideKey(key), {
+          message: 'configOverrides keys must match /^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$/.',
+        }),
         z.union([
           z.string(),
           z.number(),
@@ -369,8 +376,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     if (!settings.mcpServers) return;
 
     for (const [rawName, server] of Object.entries(settings.mcpServers)) {
-      const name = rawName.trim();
-      if (!name) continue;
+      const name = assertValidMcpServerName(rawName);
       const prefix = `mcp_servers.${name}`;
 
       if (server.enabled !== undefined) {
@@ -413,6 +419,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     key: string,
     value: string | number | boolean | object,
   ): void {
+    assertValidConfigOverrideKey(key);
     if (isPlainObject(value)) {
       const entries = Object.entries(value);
       if (entries.length === 0) {

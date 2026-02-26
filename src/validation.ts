@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CodexAppServerSettings, CodexExecSettings } from './types.js';
+import { isValidConfigOverrideKey, isValidMcpServerName } from './config-key-utils.js';
 
 const loggerFunctionSchema = z.object({
   debug: z.any().refine((val) => typeof val === 'function', {
@@ -46,11 +47,18 @@ const mcpServerSchema = z.discriminatedUnion('transport', [
   mcpServerHttpSchema,
 ]);
 
-export const mcpServersSchema = z.record(z.string(), mcpServerSchema);
+const mcpServerNameSchema = z
+  .string()
+  .min(1)
+  .refine((value) => isValidMcpServerName(value), {
+    message: 'MCP server names must match /^[A-Za-z0-9_-]+$/.',
+  });
+
+export const mcpServersSchema = z.record(mcpServerNameSchema, mcpServerSchema);
 
 const sdkMcpServerSchema = z
   .object({
-    name: z.string().min(1),
+    name: mcpServerNameSchema,
     _start: z.any().refine((val) => typeof val === 'function', {
       message: '_start must be a function',
     }),
@@ -61,13 +69,20 @@ const sdkMcpServerSchema = z
   .passthrough();
 
 export const appServerMcpServersSchema = z.record(
-  z.string(),
+  mcpServerNameSchema,
   z.union([mcpServerSchema, sdkMcpServerSchema]),
 );
 
+const configOverrideKeySchema = z
+  .string()
+  .min(1)
+  .refine((value) => isValidConfigOverrideKey(value), {
+    message: 'configOverrides keys must match /^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$/.',
+  });
+
 const configOverridesSchema = z
   .record(
-    z.string(),
+    configOverrideKeySchema,
     z.union([z.string(), z.number(), z.boolean(), z.object({}).passthrough(), z.array(z.any())]),
   )
   .optional();
@@ -321,7 +336,7 @@ export function validateAppServerSettings(settings: unknown): {
   }
 
   const s = parsed.data as CodexAppServerSettings;
-  if (s.autoApprove && s.approvalPolicy && s.approvalPolicy !== 'never') {
+  if (s.autoApprove && s.approvalPolicy !== undefined) {
     warnings.push('autoApprove overrides approvalPolicy for server-initiated approval requests.');
   }
   if (s.threadMode === 'persistent' && s.resume) {
