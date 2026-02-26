@@ -51,6 +51,7 @@ interface PendingRequest {
 type ClientState = 'idle' | 'starting' | 'ready' | 'error' | 'closed';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_COMPLETED_TURN_IDS = 1_024;
 
 export function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
   if (explicitPath) {
@@ -145,6 +146,14 @@ export interface AppServerRpcClientOptions {
 }
 
 type ActiveHandlers = Partial<CodexAppServerRequestHandlers>;
+interface ActiveRequestContext {
+  handlers: ActiveHandlers;
+  autoApprove?: boolean;
+}
+interface PendingRequestContext {
+  threadId: string;
+  context: ActiveRequestContext;
+}
 
 class JsonRpcRequestError extends Error {
   readonly code: number;
@@ -167,10 +176,13 @@ export class AppServerRpcClient extends EventEmitter {
   private state: ClientState = 'idle';
   private initPromise?: Promise<void>;
   private nextId = 1;
+  private nextRequestContextId = 1;
   private pending = new Map<JsonRpcId, PendingRequest>();
   private threadLocks = new Map<string, Promise<void>>();
-  private activeRequestHandlers = new Map<string, ActiveHandlers>();
-  private lastActiveThreadId?: string;
+  private pendingRequestContexts = new Map<string, PendingRequestContext>();
+  private pendingRequestContextIdsByThread = new Map<string, Set<string>>();
+  private activeRequestContextsByTurn = new Map<string, ActiveRequestContext>();
+  private completedTurnIds = new Set<string>();
   private lastStderr = '';
   private idleTimer?: NodeJS.Timeout;
   private serverCapabilities?: Record<string, unknown> | null;
@@ -245,7 +257,13 @@ export class AppServerRpcClient extends EventEmitter {
         timer,
       });
 
-      this.writeMessage(request);
+      try {
+        this.writeMessage(request);
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
+      }
     });
   }
 
@@ -303,16 +321,63 @@ export class AppServerRpcClient extends EventEmitter {
     }
   }
 
-  setActiveRequestHandlers(threadId: string, handlers: ActiveHandlers): void {
-    this.activeRequestHandlers.set(threadId, handlers);
-    this.lastActiveThreadId = threadId;
+  registerRequestContext(
+    threadId: string,
+    context: {
+      handlers: ActiveHandlers;
+      autoApprove?: boolean;
+    },
+  ): string {
+    const contextId = `ctx_${this.nextRequestContextId++}`;
+    this.pendingRequestContexts.set(contextId, {
+      threadId,
+      context: {
+        handlers: context.handlers,
+        autoApprove: context.autoApprove,
+      },
+    });
+
+    const ids = this.pendingRequestContextIdsByThread.get(threadId) ?? new Set<string>();
+    ids.add(contextId);
+    this.pendingRequestContextIdsByThread.set(threadId, ids);
+
+    return contextId;
   }
 
-  clearActiveRequestHandlers(threadId: string): void {
-    this.activeRequestHandlers.delete(threadId);
-    if (this.lastActiveThreadId === threadId) {
-      this.lastActiveThreadId = Array.from(this.activeRequestHandlers.keys()).at(-1);
+  bindRequestContext(contextId: string, turnId: string): void {
+    const pending = this.pendingRequestContexts.get(contextId);
+    if (!pending) return;
+    if (this.completedTurnIds.has(turnId)) {
+      this.clearRequestContext(contextId);
+      return;
     }
+
+    this.activeRequestContextsByTurn.set(turnId, {
+      handlers: pending.context.handlers,
+      autoApprove: pending.context.autoApprove,
+    });
+    this.clearRequestContext(contextId);
+  }
+
+  clearRequestContext(contextId: string): void {
+    const pending = this.pendingRequestContexts.get(contextId);
+    if (!pending) return;
+
+    this.pendingRequestContexts.delete(contextId);
+    const ids = this.pendingRequestContextIdsByThread.get(pending.threadId);
+    if (!ids) return;
+    ids.delete(contextId);
+    if (ids.size === 0) {
+      this.pendingRequestContextIdsByThread.delete(pending.threadId);
+    }
+  }
+
+  clearRequestContextForTurn(turnId: string): void {
+    this.activeRequestContextsByTurn.delete(turnId);
+  }
+
+  hasTurnCompleted(turnId: string): boolean {
+    return this.completedTurnIds.has(turnId);
   }
 
   async withThreadLock<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
@@ -349,8 +414,10 @@ export class AppServerRpcClient extends EventEmitter {
     }
     this.pending.clear();
     this.threadLocks.clear();
-    this.activeRequestHandlers.clear();
-    this.lastActiveThreadId = undefined;
+    this.pendingRequestContexts.clear();
+    this.pendingRequestContextIdsByThread.clear();
+    this.activeRequestContextsByTurn.clear();
+    this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
 
     if (this.child) {
@@ -497,8 +564,10 @@ export class AppServerRpcClient extends EventEmitter {
     }
     this.pending.clear();
     this.threadLocks.clear();
-    this.activeRequestHandlers.clear();
-    this.lastActiveThreadId = undefined;
+    this.pendingRequestContexts.clear();
+    this.pendingRequestContextIdsByThread.clear();
+    this.activeRequestContextsByTurn.clear();
+    this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
 
     if (this.child) {
@@ -524,8 +593,10 @@ export class AppServerRpcClient extends EventEmitter {
       );
     }
     this.pending.clear();
-    this.activeRequestHandlers.clear();
-    this.lastActiveThreadId = undefined;
+    this.pendingRequestContexts.clear();
+    this.pendingRequestContextIdsByThread.clear();
+    this.activeRequestContextsByTurn.clear();
+    this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
   }
 
@@ -557,7 +628,11 @@ export class AppServerRpcClient extends EventEmitter {
     const request = jsonRpcRequestSchema.safeParse(parsed);
     if (request.success) {
       const data = request.data;
-      void this.handleServerRequest(data.id, data.method, data.params ?? {});
+      void this.handleServerRequest(data.id, data.method, data.params ?? {}).catch((error) => {
+        this.logger.warn(
+          `[codex-app-server] Failed to handle server request '${data.method}': ${String(error)}`,
+        );
+      });
       return;
     }
 
@@ -571,6 +646,14 @@ export class AppServerRpcClient extends EventEmitter {
           this.logger.warn(
             `[codex-app-server] Notification '${data.method}' failed schema validation; continuing.`,
           );
+        }
+      }
+      if (data.method === 'turn/completed') {
+        const params = data.params as { turn?: { id?: unknown } } | undefined;
+        const turnId = typeof params?.turn?.id === 'string' ? params.turn.id : undefined;
+        if (turnId) {
+          this.clearRequestContextForTurn(turnId);
+          this.rememberCompletedTurn(turnId);
         }
       }
       this.emit('notification', data.method, data.params ?? {});
@@ -612,16 +695,57 @@ export class AppServerRpcClient extends EventEmitter {
     return typeof params.threadId === 'string' ? params.threadId : undefined;
   }
 
-  private getHandlersForThread(threadId?: string): ActiveHandlers {
+  private getTurnIdFromServerRequest(params: Record<string, unknown>): string | undefined {
+    return typeof params.turnId === 'string' ? params.turnId : undefined;
+  }
+
+  private getPendingContextsForThread(threadId: string): ActiveRequestContext[] {
+    const ids = this.pendingRequestContextIdsByThread.get(threadId);
+    if (!ids || ids.size === 0) return [];
+
+    const contexts: ActiveRequestContext[] = [];
+    for (const id of ids) {
+      const pending = this.pendingRequestContexts.get(id);
+      if (pending) contexts.push(pending.context);
+    }
+    return contexts;
+  }
+
+  private getContextForRequest(params: Record<string, unknown>): ActiveRequestContext | undefined {
+    const turnId = this.getTurnIdFromServerRequest(params);
+    if (turnId) {
+      const active = this.activeRequestContextsByTurn.get(turnId);
+      if (active) return active;
+    }
+
+    const threadId = this.getThreadIdFromServerRequest(params);
     if (threadId) {
-      const active = this.activeRequestHandlers.get(threadId);
-      if (active) return active;
+      const pending = this.getPendingContextsForThread(threadId);
+      if (pending.length === 1) return pending[0];
+      if (pending.length > 1) {
+        this.logger.debug(
+          `[codex-app-server] Received server request for thread '${threadId}' before turn binding with multiple pending contexts; using settings-level handlers.`,
+        );
+      }
+      return undefined;
     }
-    if (this.lastActiveThreadId) {
-      const active = this.activeRequestHandlers.get(this.lastActiveThreadId);
-      if (active) return active;
+
+    const totalActive = this.activeRequestContextsByTurn.size;
+    const totalPending = this.pendingRequestContexts.size;
+    if (totalActive + totalPending === 1) {
+      if (totalActive === 1) {
+        return this.activeRequestContextsByTurn.values().next().value;
+      }
+      return this.pendingRequestContexts.values().next().value?.context;
     }
-    return this.settings.serverRequests ?? {};
+
+    if (totalActive + totalPending > 1) {
+      this.logger.debug(
+        '[codex-app-server] Received threadless server request while multiple request contexts are active; using settings-level handlers.',
+      );
+    }
+
+    return undefined;
   }
 
   private async handleServerRequest(
@@ -639,15 +763,28 @@ export class AppServerRpcClient extends EventEmitter {
         });
 
     const sendResult = (result: unknown): void => {
-      this.writeMessage({ id: normalized.id, result });
+      try {
+        this.writeMessage({ id: normalized.id, result });
+      } catch (error) {
+        this.logger.warn(
+          `[codex-app-server] Failed to send server request result for '${normalized.method}': ${String(error)}`,
+        );
+      }
     };
 
     const sendError = (code: number, message: string): void => {
-      this.writeMessage({ id: normalized.id, error: { code, message } });
+      try {
+        this.writeMessage({ id: normalized.id, error: { code, message } });
+      } catch (error) {
+        this.logger.warn(
+          `[codex-app-server] Failed to send server request error for '${normalized.method}': ${String(error)}`,
+        );
+      }
     };
 
-    const threadId = this.getThreadIdFromServerRequest(normalized.params);
-    const handlers = this.getHandlersForThread(threadId);
+    const activeContext = this.getContextForRequest(normalized.params);
+    const handlers = activeContext?.handlers ?? this.settings.serverRequests ?? {};
+    const autoApprove = activeContext?.autoApprove ?? this.settings.autoApprove ?? false;
     this.emit('server-request', normalized.method, normalized.params, normalized.id);
 
     const runHandler = async <T>(
@@ -677,7 +814,7 @@ export class AppServerRpcClient extends EventEmitter {
           sendResult(handled);
           return;
         }
-        sendResult({ decision: this.settings.autoApprove ? 'accept' : 'decline' });
+        sendResult({ decision: autoApprove ? 'accept' : 'decline' });
         return;
       }
       case 'item/fileChange/requestApproval': {
@@ -690,7 +827,7 @@ export class AppServerRpcClient extends EventEmitter {
           sendResult(handled);
           return;
         }
-        sendResult({ decision: this.settings.autoApprove ? 'accept' : 'decline' });
+        sendResult({ decision: autoApprove ? 'accept' : 'decline' });
         return;
       }
       case 'skill/requestApproval': {
@@ -701,7 +838,7 @@ export class AppServerRpcClient extends EventEmitter {
           sendResult(handled);
           return;
         }
-        sendResult({ decision: this.settings.autoApprove ? 'approve' : 'decline' });
+        sendResult({ decision: autoApprove ? 'approve' : 'decline' });
         return;
       }
       case 'item/tool/requestUserInput': {
@@ -762,6 +899,17 @@ export class AppServerRpcClient extends EventEmitter {
     this.touchActivity();
   }
 
+  private rememberCompletedTurn(turnId: string): void {
+    this.completedTurnIds.add(turnId);
+    if (this.completedTurnIds.size <= MAX_COMPLETED_TURN_IDS) {
+      return;
+    }
+    const oldest = this.completedTurnIds.values().next().value;
+    if (typeof oldest === 'string') {
+      this.completedTurnIds.delete(oldest);
+    }
+  }
+
   private clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
@@ -778,7 +926,11 @@ export class AppServerRpcClient extends EventEmitter {
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       if (this.state !== 'ready') return;
-      if (this.pending.size > 0 || this.activeRequestHandlers.size > 0) {
+      if (
+        this.pending.size > 0 ||
+        this.activeRequestContextsByTurn.size > 0 ||
+        this.pendingRequestContexts.size > 0
+      ) {
         this.touchActivity();
         return;
       }

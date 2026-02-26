@@ -1,5 +1,9 @@
 import type { TurnStartParams, UserInput } from './protocol/types.js';
-import type { AppServerUserInput, CodexAppServerSession } from './types.js';
+import type {
+  AppServerUserInput,
+  CodexAppServerRequestHandlers,
+  CodexAppServerSession,
+} from './types.js';
 import { AppServerRpcClient } from './rpc/client.js';
 
 function toProtocolInput(input: AppServerUserInput): UserInput {
@@ -22,6 +26,8 @@ export interface AppServerSessionOptions {
   modelId: string;
   client: AppServerRpcClient;
   defaultTurnParams?: Omit<TurnStartParams, 'threadId' | 'input' | 'model'>;
+  requestHandlers?: Partial<CodexAppServerRequestHandlers>;
+  autoApprove?: boolean;
 }
 
 export class AppServerSession implements CodexAppServerSession {
@@ -29,6 +35,8 @@ export class AppServerSession implements CodexAppServerSession {
   private readonly modelId: string;
   private readonly client: AppServerRpcClient;
   private readonly defaultTurnParams: Omit<TurnStartParams, 'threadId' | 'input' | 'model'>;
+  private readonly requestHandlers: Partial<CodexAppServerRequestHandlers>;
+  private readonly autoApprove?: boolean;
 
   private currentTurnId: string | null = null;
   private active = false;
@@ -38,6 +46,8 @@ export class AppServerSession implements CodexAppServerSession {
     this.modelId = options.modelId;
     this.client = options.client;
     this.defaultTurnParams = options.defaultTurnParams ?? {};
+    this.requestHandlers = options.requestHandlers ?? {};
+    this.autoApprove = options.autoApprove;
   }
 
   get turnId(): string | null {
@@ -53,7 +63,10 @@ export class AppServerSession implements CodexAppServerSession {
     this.active = true;
   }
 
-  setInactive(): void {
+  setInactive(completedTurnId?: string): void {
+    if (completedTurnId && this.currentTurnId && completedTurnId !== this.currentTurnId) {
+      return;
+    }
     this.active = false;
   }
 
@@ -66,19 +79,32 @@ export class AppServerSession implements CodexAppServerSession {
     }
 
     const protocolInputs = inputs.map(toProtocolInput);
+    const result = await this.client.withThreadLock(this.threadId, async () => {
+      const contextId = this.client.registerRequestContext(this.threadId, {
+        handlers: this.requestHandlers,
+        autoApprove: this.autoApprove,
+      });
 
-    const result = await this.client.turnStart({
-      threadId: this.threadId,
-      input: protocolInputs,
-      model: this.modelId,
-      ...this.defaultTurnParams,
+      try {
+        const turnStartResult = await this.client.turnStart({
+          threadId: this.threadId,
+          input: protocolInputs,
+          model: this.modelId,
+          ...this.defaultTurnParams,
+        });
+        this.client.bindRequestContext(contextId, String(turnStartResult.turn.id));
+        return turnStartResult;
+      } catch (error) {
+        this.client.clearRequestContext(contextId);
+        throw error;
+      }
     });
 
     const nextTurnId = String(result.turn.id);
-    if (nextTurnId !== this.currentTurnId) {
-      this.currentTurnId = nextTurnId;
-      this.active = true;
-    }
+    const alreadyCompleted = this.client.hasTurnCompleted(nextTurnId);
+
+    this.currentTurnId = nextTurnId;
+    this.active = !alreadyCompleted;
   }
 
   async interrupt(): Promise<void> {
@@ -86,10 +112,13 @@ export class AppServerSession implements CodexAppServerSession {
       return;
     }
 
+    const interruptedTurnId = this.currentTurnId;
     await this.client.turnInterrupt({
       threadId: this.threadId,
-      turnId: this.currentTurnId,
+      turnId: interruptedTurnId,
     });
-    this.active = false;
+    if (this.currentTurnId === interruptedTurnId) {
+      this.active = false;
+    }
   }
 }

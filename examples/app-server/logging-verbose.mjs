@@ -68,7 +68,10 @@ try {
     }
   }
 
-  await main().catch(console.error);
+  await main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 } finally {
   await appServer.close();
 }

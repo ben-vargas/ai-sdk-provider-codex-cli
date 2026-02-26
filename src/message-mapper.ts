@@ -13,6 +13,7 @@ export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
   const converted = convertPromptToCodexInput({
     prompt: prompt as unknown as readonly PromptMessage[],
     mode: 'stateless',
+    includeRemoteImagesInMarkers: false,
   });
 
   const warnings: SharedV3Warning[] = converted.warnings.map((warning) =>

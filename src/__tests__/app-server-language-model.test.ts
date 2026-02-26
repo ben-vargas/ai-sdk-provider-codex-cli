@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import type { TurnStartParams } from '../app-server/protocol/types.js';
 import { AppServerLanguageModel } from '../app-server/language-model.js';
+import * as imageUtils from '../image-utils.js';
+
+function flush(ms = 20): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 class FakeClient extends EventEmitter {
   threadStartCalls: unknown[] = [];
@@ -10,17 +15,26 @@ class FakeClient extends EventEmitter {
   turnStartCalls: unknown[] = [];
   turnInterruptCalls: unknown[] = [];
 
+  threadStartImpl?: (params: unknown) => Promise<unknown>;
   threadResumeError?: Error;
   turnStartError?: Error;
   turnStartImpl?: (params: TurnStartParams) => Promise<{ turn: { id: string } }>;
   turnInterruptImpl?: (params: { threadId: string; turnId: string }) => Promise<unknown>;
   withThreadLockCalls: string[] = [];
   withThreadLockImpl?: (threadId: string, fn: () => Promise<unknown>) => Promise<unknown>;
-  setActiveRequestHandlersCalls: Array<{ threadId: string }> = [];
-  clearActiveRequestHandlersCalls: string[] = [];
+  registerRequestContextCalls: Array<{
+    threadId: string;
+    context: { handlers: Record<string, unknown>; autoApprove?: boolean };
+    contextId: string;
+  }> = [];
+  bindRequestContextCalls: Array<{ contextId: string; turnId: string }> = [];
+  clearRequestContextCalls: string[] = [];
+  clearRequestContextForTurnCalls: string[] = [];
+  private nextContextId = 1;
 
   async threadStart(params: unknown) {
     this.threadStartCalls.push(params);
+    if (this.threadStartImpl) return await this.threadStartImpl(params);
     return {
       thread: { id: 'thr_new' },
       model: 'gpt-5.1-codex',
@@ -84,12 +98,29 @@ class FakeClient extends EventEmitter {
     return await fn();
   }
 
-  setActiveRequestHandlers(threadId: string) {
-    this.setActiveRequestHandlersCalls.push({ threadId });
+  registerRequestContext(
+    threadId: string,
+    context: { handlers: Record<string, unknown>; autoApprove?: boolean },
+  ): string {
+    const contextId = `ctx_${this.nextContextId++}`;
+    this.registerRequestContextCalls.push({ threadId, context, contextId });
+    return contextId;
   }
 
-  clearActiveRequestHandlers(threadId: string) {
-    this.clearActiveRequestHandlersCalls.push(threadId);
+  bindRequestContext(contextId: string, turnId: string) {
+    this.bindRequestContextCalls.push({ contextId, turnId });
+  }
+
+  clearRequestContext(contextId: string) {
+    this.clearRequestContextCalls.push(contextId);
+  }
+
+  clearRequestContextForTurn(turnId: string) {
+    this.clearRequestContextForTurnCalls.push(turnId);
+  }
+
+  hasTurnCompleted(_turnId: string): boolean {
+    return false;
   }
 }
 
@@ -115,6 +146,30 @@ describe('AppServerLanguageModel', () => {
       }),
     );
     expect(client.threadStartCalls).toHaveLength(1);
+  });
+
+  it('passes merged autoApprove into active request context', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { autoApprove: false },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      providerOptions: { 'codex-app-server': { autoApprove: true } },
+    });
+
+    expect(client.registerRequestContextCalls[0]).toEqual({
+      threadId: 'thr_new',
+      context: { handlers: {}, autoApprove: true },
+      contextId: 'ctx_1',
+    });
+    expect(client.bindRequestContextCalls).toContainEqual({
+      contextId: 'ctx_1',
+      turnId: 'turn_1',
+    });
   });
 
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
@@ -765,6 +820,9 @@ describe('AppServerLanguageModel', () => {
     }>;
     expect(rawParts.length).toBeGreaterThan(0);
     expect(rawParts.some((part) => part.rawValue?.method === 'item/agentMessage/delta')).toBe(true);
+
+    const threadStart = client.threadStartCalls[0] as { experimentalRawEvents?: boolean };
+    expect(threadStart.experimentalRawEvents).toBe(true);
   });
 
   it('uses settings includeRawChunks as default when per-call option is absent', async () => {
@@ -902,7 +960,69 @@ describe('AppServerLanguageModel', () => {
     expect((client.threadResumeCalls[0] as { threadId: string }).threadId).toBe('thr_new');
   });
 
-  it('recreates stale persistent thread with warning instead of throwing', async () => {
+  it('serializes first persistent thread creation across concurrent calls and reapplies thread settings on resume', async () => {
+    const client = new FakeClient();
+    let createdThreadCounter = 0;
+    client.threadStartImpl = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      createdThreadCounter += 1;
+      return {
+        thread: { id: `thr_created_${createdThreadCounter}` },
+        model: 'gpt-5.1-codex',
+        modelProvider: 'openai',
+        cwd: '/tmp',
+        approvalPolicy: 'never',
+        sandbox: { type: 'workspaceWrite' },
+        reasoningEffort: null,
+      };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    const firstPromise = model.doGenerate({
+      prompt: [{ role: 'user', content: 'First concurrent' }] as never,
+    });
+    await flush(1);
+    const secondPromise = model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second concurrent' }] as never,
+      providerOptions: {
+        'codex-app-server': {
+          configOverrides: { race_token: 'second-call' },
+          baseInstructions: 'second-base',
+          developerInstructions: 'second-dev',
+        },
+      },
+    });
+
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+    expect(client.threadStartCalls).toHaveLength(1);
+    expect(client.threadResumeCalls).toHaveLength(1);
+    const resumeCall = client.threadResumeCalls[0] as {
+      threadId: string;
+      config?: Record<string, unknown>;
+      baseInstructions?: string;
+      developerInstructions?: string;
+    };
+    expect(resumeCall.threadId).toBe('thr_created_1');
+    expect(resumeCall.config?.race_token).toBe('second-call');
+    expect(resumeCall.baseInstructions).toBe('second-base');
+    expect(resumeCall.developerInstructions).toBe('second-dev');
+
+    const firstThreadId = (first.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+    const secondThreadId = (second.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+    expect(firstThreadId).toBe('thr_created_1');
+    expect(secondThreadId).toBe('thr_created_1');
+    expect(client.withThreadLockCalls).toEqual(['thr_created_1', 'thr_created_1']);
+  });
+
+  it('throws clear stale-thread error when persistent thread resume fails', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
       id: 'gpt-5.1-codex',
@@ -915,15 +1035,168 @@ describe('AppServerLanguageModel', () => {
     });
 
     client.threadResumeError = new Error('thread not found');
-    const result = await model.doGenerate({
-      prompt: [{ role: 'user', content: 'Second' }] as never,
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Second' }] as never,
+      }),
+    ).rejects.toThrow(
+      "Thread 'thr_new' not found after server restart. Create a new thread by omitting threadId.",
+    );
+    expect(client.threadStartCalls).toHaveLength(1);
+  });
+
+  it('clears cached persistent thread after stale failure so next call can start a fresh thread', async () => {
+    const client = new FakeClient();
+    let startedThreads = 0;
+    client.threadStartImpl = async () => {
+      startedThreads += 1;
+      return {
+        thread: { id: `thr_new_${startedThreads}` },
+        model: 'gpt-5.1-codex',
+        modelProvider: 'openai',
+        cwd: '/tmp',
+        approvalPolicy: 'never',
+        sandbox: { type: 'workspaceWrite' },
+        reasoningEffort: null,
+      };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    client.threadResumeError = new Error('thread not found');
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Second' }] as never,
+      }),
+    ).rejects.toThrow(
+      "Thread 'thr_new_1' not found after server restart. Create a new thread by omitting threadId.",
+    );
+
+    client.threadResumeError = undefined;
+    const recovered = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Third' }] as never,
     });
 
     expect(client.threadStartCalls).toHaveLength(2);
+    expect(client.threadResumeCalls).toHaveLength(1);
+    expect(
+      (recovered.providerMetadata?.['codex-app-server'] as { threadId?: string } | undefined)
+        ?.threadId,
+    ).toBe('thr_new_2');
+  });
+
+  it('clears cached persistent thread after stale turn-start failure so next call can start a fresh thread', async () => {
+    const client = new FakeClient();
+    let startedThreads = 0;
+    client.threadStartImpl = async () => {
+      startedThreads += 1;
+      return {
+        thread: { id: `thr_new_${startedThreads}` },
+        model: 'gpt-5.1-codex',
+        modelProvider: 'openai',
+        cwd: '/tmp',
+        approvalPolicy: 'never',
+        sandbox: { type: 'workspaceWrite' },
+        reasoningEffort: null,
+      };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    client.turnStartError = new Error('thread not found');
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Second' }] as never,
+      }),
+    ).rejects.toThrow(
+      "Thread 'thr_new_1' not found after server restart. Create a new thread by omitting threadId.",
+    );
+
+    client.turnStartError = undefined;
+    const recovered = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Third' }] as never,
+    });
+
+    expect(client.threadStartCalls).toHaveLength(2);
+    expect(client.threadResumeCalls).toHaveLength(1);
+    expect(
+      (recovered.providerMetadata?.['codex-app-server'] as { threadId?: string } | undefined)
+        ?.threadId,
+    ).toBe('thr_new_2');
+  });
+
+  it('fails fast for concurrent stale persistent-thread resumes without creating replacement threads', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    client.threadResumeError = new Error('thread not found');
+    const [first, second] = await Promise.allSettled([
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Second' }] as never,
+      }),
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'Third' }] as never,
+      }),
+    ]);
+
+    expect(first.status).toBe('rejected');
+    expect(second.status).toBe('rejected');
+    if (first.status === 'rejected') {
+      expect(String(first.reason)).toContain("Thread 'thr_new' not found");
+    }
+    if (second.status === 'rejected') {
+      expect(String(second.reason)).toContain("Thread 'thr_new' not found");
+    }
+    expect(client.threadStartCalls).toHaveLength(1);
+    expect(client.threadResumeCalls).toHaveLength(2);
+  });
+
+  it('warns when includeRawChunks is requested while resuming a persistent thread without raw-event negotiation', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent', includeRawChunks: false },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second' }] as never,
+      includeRawChunks: true,
+    });
+
     expect(
       result.warnings.some(
         (warning) =>
-          warning.type === 'other' && /Persistent thread no longer exists/i.test(warning.message),
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
       ),
     ).toBe(true);
   });
@@ -964,6 +1237,52 @@ describe('AppServerLanguageModel', () => {
       ),
     );
     expect(followUpCall).toBeDefined();
+  });
+
+  it('retries persistent session creation after callback failure and cleans temp images', async () => {
+    const client = new FakeClient();
+    let onSessionCreatedCalls = 0;
+    const cleanupSpy = vi.spyOn(imageUtils, 'cleanupTempImages');
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+      settings: {
+        threadMode: 'persistent',
+        onSessionCreated: async () => {
+          onSessionCreatedCalls += 1;
+          if (onSessionCreatedCalls === 1) {
+            throw new Error('session setup failed');
+          }
+        },
+      },
+    });
+
+    await expect(
+      model.doGenerate({
+        prompt: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe image' },
+              { type: 'image', image: 'data:image/png;base64,iVBORw0KGgo=' },
+            ],
+          },
+        ] as never,
+      }),
+    ).rejects.toThrow('session setup failed');
+
+    expect(cleanupSpy).toHaveBeenCalled();
+    const firstCleanupArg = cleanupSpy.mock.calls[0]?.[0] as unknown[] | undefined;
+    expect(Array.isArray(firstCleanupArg)).toBe(true);
+    expect(firstCleanupArg?.length ?? 0).toBeGreaterThan(0);
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'retry setup' }] as never,
+    });
+    expect(onSessionCreatedCalls).toBe(2);
+
+    cleanupSpy.mockRestore();
   });
 
   it('sends remote image URLs directly as image inputs', async () => {
@@ -1106,6 +1425,79 @@ describe('AppServerLanguageModel', () => {
     resolveTurnStart?.({ turn: { id: 'turn_late' } });
 
     await expect(reader.read()).rejects.toBe(reason);
+    expect(client.turnInterruptCalls).toHaveLength(1);
+  });
+
+  it('doStream cancellation interrupts active turn and does not throw', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_cancel_1',
+          itemId: 'item_cancel_1',
+          delta: 'in-flight',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_cancel_1', items: [], status: 'interrupted', error: null },
+        });
+      }, 10);
+      return { turn: { id: 'turn_cancel_1' } };
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'cancel me' }] as never,
+    });
+
+    const reader = stream.getReader();
+    await reader.read();
+    await reader.read();
+    await expect(reader.cancel('user canceled')).resolves.toBeUndefined();
+    await flush();
+
+    expect(client.turnInterruptCalls).toHaveLength(1);
+  });
+
+  it('doStream cancellation before turn id interrupts once turn id is available', async () => {
+    const client = new FakeClient();
+    let resolveTurnStart: ((value: { turn: { id: string } }) => void) | undefined;
+    client.turnStartImpl = async () =>
+      await new Promise<{ turn: { id: string } }>((resolve) => {
+        resolveTurnStart = resolve;
+      });
+    client.turnInterruptImpl = async ({ threadId, turnId }) => {
+      setTimeout(() => {
+        client.emit('notification', 'turn/completed', {
+          threadId,
+          turn: { id: turnId, items: [], status: 'interrupted', error: null },
+        });
+      }, 5);
+      return {};
+    };
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'cancel before turn id' }] as never,
+    });
+
+    const reader = stream.getReader();
+    await reader.read();
+    await reader.read();
+    const cancelPromise = reader.cancel('cancel now');
+    resolveTurnStart?.({ turn: { id: 'turn_cancel_late' } });
+    await cancelPromise;
+    await flush();
+
     expect(client.turnInterruptCalls).toHaveLength(1);
   });
 

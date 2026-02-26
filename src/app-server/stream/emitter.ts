@@ -22,6 +22,7 @@ export class AppServerStreamEmitter {
   private readonly bufferedTextBlocks = new Map<string, string>();
   private readonly bufferedTextBlockOrder: string[] = [];
   private readonly completedBufferedTextBlockIds: string[] = [];
+  private closed = false;
 
   constructor(
     private readonly controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
@@ -30,12 +31,21 @@ export class AppServerStreamEmitter {
     this.jsonModeLastTextBlockOnly = Boolean(options.jsonModeLastTextBlockOnly);
   }
 
+  private safeEnqueue(part: LanguageModelV3StreamPart): void {
+    if (this.closed) return;
+    try {
+      this.controller.enqueue(part);
+    } catch {
+      this.closed = true;
+    }
+  }
+
   emitStreamStart(warnings: SharedV3Warning[]): void {
-    this.controller.enqueue({ type: 'stream-start', warnings });
+    this.safeEnqueue({ type: 'stream-start', warnings });
   }
 
   emitResponseMetadata(): void {
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'response-metadata',
       id: generateId(),
       timestamp: new Date(),
@@ -45,7 +55,7 @@ export class AppServerStreamEmitter {
 
   emitRaw(method: string, params: Record<string, unknown>, id?: string | number): void {
     if (!this.options.includeRawChunks) return;
-    this.controller.enqueue({ type: 'raw', rawValue: { method, params, id } });
+    this.safeEnqueue({ type: 'raw', rawValue: { method, params, id } });
   }
 
   emitTextDelta(delta: string, itemId?: string): void {
@@ -76,25 +86,32 @@ export class AppServerStreamEmitter {
     const nextTextId = itemId ?? this.textId ?? generateId();
 
     if (this.textId && this.textId !== nextTextId) {
-      this.controller.enqueue({ type: 'text-end', id: this.textId });
+      this.safeEnqueue({ type: 'text-end', id: this.textId });
       this.textId = undefined;
     }
 
     if (!this.textId) {
       this.textId = nextTextId;
-      this.controller.enqueue({ type: 'text-start', id: this.textId });
+      this.safeEnqueue({ type: 'text-start', id: this.textId });
     }
 
-    this.controller.enqueue({ type: 'text-delta', id: this.textId, delta });
+    this.safeEnqueue({ type: 'text-delta', id: this.textId, delta });
   }
 
   emitReasoningDelta(delta: string, isSummary = false, itemId?: string): void {
-    if (!this.reasoningId) {
-      this.reasoningId = itemId ?? generateId();
-      this.controller.enqueue({ type: 'reasoning-start', id: this.reasoningId });
+    const nextReasoningId = itemId ?? this.reasoningId ?? generateId();
+
+    if (this.reasoningId && this.reasoningId !== nextReasoningId) {
+      this.safeEnqueue({ type: 'reasoning-end', id: this.reasoningId });
+      this.reasoningId = undefined;
     }
 
-    this.controller.enqueue({
+    if (!this.reasoningId) {
+      this.reasoningId = nextReasoningId;
+      this.safeEnqueue({ type: 'reasoning-start', id: this.reasoningId });
+    }
+
+    this.safeEnqueue({
       type: 'reasoning-delta',
       id: this.reasoningId,
       delta,
@@ -111,7 +128,7 @@ export class AppServerStreamEmitter {
   }
 
   emitToolCall(toolCallId: string, toolName: string, input: string, dynamic?: boolean): void {
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'tool-input-start',
       id: toolCallId,
       toolName,
@@ -119,11 +136,11 @@ export class AppServerStreamEmitter {
       ...(dynamic ? { dynamic: true } : {}),
     });
     if (input) {
-      this.controller.enqueue({ type: 'tool-input-delta', id: toolCallId, delta: input });
+      this.safeEnqueue({ type: 'tool-input-delta', id: toolCallId, delta: input });
     }
-    this.controller.enqueue({ type: 'tool-input-end', id: toolCallId });
+    this.safeEnqueue({ type: 'tool-input-end', id: toolCallId });
 
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'tool-call',
       toolCallId,
       toolName,
@@ -134,7 +151,7 @@ export class AppServerStreamEmitter {
   }
 
   emitToolOutputDelta(toolCallId: string, toolName: string, delta: string): void {
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'tool-result',
       toolCallId,
       toolName,
@@ -153,7 +170,7 @@ export class AppServerStreamEmitter {
     dynamic?: boolean,
     isError?: boolean,
   ): void {
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'tool-result',
       toolCallId,
       toolName,
@@ -164,7 +181,7 @@ export class AppServerStreamEmitter {
   }
 
   emitApprovalRequest(approvalId: string): void {
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'tool-approval-request',
       approvalId,
       toolCallId: approvalId,
@@ -185,20 +202,20 @@ export class AppServerStreamEmitter {
         this.completedBufferedTextBlockIds.at(-1) ?? this.bufferedTextBlockOrder.at(-1);
       if (finalBlockId) {
         const finalText = this.bufferedTextBlocks.get(finalBlockId) ?? '';
-        this.controller.enqueue({ type: 'text-start', id: finalBlockId });
+        this.safeEnqueue({ type: 'text-start', id: finalBlockId });
         if (finalText.length > 0) {
-          this.controller.enqueue({ type: 'text-delta', id: finalBlockId, delta: finalText });
+          this.safeEnqueue({ type: 'text-delta', id: finalBlockId, delta: finalText });
         }
-        this.controller.enqueue({ type: 'text-end', id: finalBlockId });
+        this.safeEnqueue({ type: 'text-end', id: finalBlockId });
       }
     } else if (this.textId) {
-      this.controller.enqueue({ type: 'text-end', id: this.textId });
+      this.safeEnqueue({ type: 'text-end', id: this.textId });
     }
 
     if (this.reasoningId) {
-      this.controller.enqueue({ type: 'reasoning-end', id: this.reasoningId });
+      this.safeEnqueue({ type: 'reasoning-end', id: this.reasoningId });
     }
-    this.controller.enqueue({
+    this.safeEnqueue({
       type: 'finish',
       finishReason,
       usage,
@@ -207,10 +224,22 @@ export class AppServerStreamEmitter {
   }
 
   close(): void {
-    this.controller.close();
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      this.controller.close();
+    } catch {
+      // Ignore close-after-cancel stream errors.
+    }
   }
 
   error(error: unknown): void {
-    this.controller.error(error);
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      this.controller.error(error);
+    } catch {
+      // Ignore terminal errors once stream is no longer writable.
+    }
   }
 }

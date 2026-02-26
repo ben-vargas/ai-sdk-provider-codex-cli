@@ -246,7 +246,10 @@ function formatToolRoleParts(parts: PromptContentPart[]): {
   return { lines, warnings };
 }
 
-function formatStatelessTranscript(prompt: readonly PromptMessage[]): {
+function formatStatelessTranscript(
+  prompt: readonly PromptMessage[],
+  options?: { includeRemoteImagesInMarkers?: boolean },
+): {
   text: string;
   localImages: ConvertedPrompt['localImages'];
   remoteImageUrls: string[];
@@ -256,6 +259,7 @@ function formatStatelessTranscript(prompt: readonly PromptMessage[]): {
   const lines: string[] = [];
   const localImages: ConvertedPrompt['localImages'] = [];
   const remoteImageUrls: string[] = [];
+  const includeRemoteImagesInMarkers = options?.includeRemoteImagesInMarkers ?? true;
 
   for (const message of prompt) {
     if (message.role === 'system') continue;
@@ -266,10 +270,12 @@ function formatStatelessTranscript(prompt: readonly PromptMessage[]): {
       localImages.push(...normalized.localImages);
       remoteImageUrls.push(...normalized.remoteImageUrls);
 
+      const markerImageCount =
+        normalized.localImages.length +
+        (includeRemoteImagesInMarkers ? normalized.remoteImageUrls.length : 0);
       const marker =
-        normalized.sawImages &&
-        normalized.localImages.length + normalized.remoteImageUrls.length > 0
-          ? `[${normalized.localImages.length + normalized.remoteImageUrls.length} image${normalized.localImages.length + normalized.remoteImageUrls.length === 1 ? '' : 's'} attached]`
+        normalized.sawImages && markerImageCount > 0
+          ? `[${markerImageCount} image${markerImageCount === 1 ? '' : 's'} attached]`
           : '';
 
       const text = [normalized.text, marker]
@@ -380,13 +386,16 @@ function formatPersistentInput(prompt: readonly PromptMessage[]): {
 export function convertPromptToCodexInput(args: {
   prompt: readonly PromptMessage[];
   mode: PromptConversionMode;
+  includeRemoteImagesInMarkers?: boolean;
 }): ConvertedPrompt {
   const systemInstruction = collectSystemInstruction(args.prompt);
 
   const converted =
     args.mode === 'persistent'
       ? formatPersistentInput(args.prompt)
-      : formatStatelessTranscript(args.prompt);
+      : formatStatelessTranscript(args.prompt, {
+          includeRemoteImagesInMarkers: args.includeRemoteImagesInMarkers,
+        });
 
   return {
     systemInstruction,

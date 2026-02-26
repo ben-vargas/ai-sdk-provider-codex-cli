@@ -84,7 +84,10 @@ try {
     }
   }
 
-  await main().catch(console.error);
+  await main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 
   // Example: Integration with popular logging libraries
   console.log('\n Integration Examples:\n');

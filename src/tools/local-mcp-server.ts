@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import type { McpServerHttp } from '../types-shared.js';
 import type { LocalTool } from './tool-builder.js';
 
@@ -24,21 +25,65 @@ export interface LocalMcpServerOptions {
   name: string;
   tools: LocalTool[];
   port?: number;
+  // Defaults to 127.0.0.1 and is validated as loopback unless explicitly opted out.
   host?: string;
+  // When true, allows binding to non-loopback hosts (for advanced use only).
+  allowNonLoopbackHost?: boolean;
 }
 
 export interface LocalMcpServer {
+  // MCP HTTP transport config, including the per-instance bearer token.
   config: McpServerHttp;
   url: string;
   port: number;
   stop: () => Promise<void>;
 }
 
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+
+function normalizeHost(host: string): string {
+  const trimmed = host.trim();
+  const unwrapped =
+    trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+  return unwrapped.toLowerCase();
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  return (
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '0:0:0:0:0:0:0:1' ||
+    normalized.startsWith('127.')
+  );
+}
+
+function serializeToolResultToText(result: unknown): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+
+  const json = JSON.stringify(result);
+  if (json !== undefined) {
+    return json;
+  }
+
+  return String(result);
+}
+
 export async function createLocalMcpServer(
   options: LocalMcpServerOptions,
 ): Promise<LocalMcpServer> {
-  const { name, tools, port = 0, host = '127.0.0.1' } = options;
+  const { name, tools, port = 0, host = '127.0.0.1', allowNonLoopbackHost = false } = options;
+  if (!isLoopbackHost(host) && !allowNonLoopbackHost) {
+    throw new Error(
+      `Refusing to bind local MCP server to non-loopback host '${host}'. ` +
+        'Set allowNonLoopbackHost: true to override.',
+    );
+  }
   const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
+  const bearerToken = randomBytes(32).toString('hex');
+  const expectedAuthorizationHeader = `Bearer ${bearerToken}`;
 
   const handleRpcRequest = async (request: JsonRpcRequest): Promise<JsonRpcResponse> => {
     const id = request.id;
@@ -88,9 +133,7 @@ export async function createLocalMcpServer(
           jsonrpc: '2.0',
           id,
           result: {
-            content: [
-              { type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) },
-            ],
+            content: [{ type: 'text', text: serializeToolResultToText(result) }],
           },
         };
       } catch (error) {
@@ -125,25 +168,40 @@ export async function createLocalMcpServer(
 
   const httpHandler = (req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
-      if (req.method === 'OPTIONS') {
-        res.writeHead(204, {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        });
-        res.end();
-        return;
-      }
-
       if (req.method !== 'POST') {
         res.writeHead(405, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Method not allowed' }));
         return;
       }
 
+      const contentType = req.headers['content-type'];
+      if (typeof contentType !== 'string' || !contentType.includes('application/json')) {
+        res.writeHead(415, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unsupported media type' }));
+        return;
+      }
+
+      const authorization = req.headers.authorization;
+      if (authorization !== expectedAuthorizationHeader) {
+        res.writeHead(401, {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Bearer',
+        });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
       const chunks: Buffer[] = [];
+      let bodyBytes = 0;
       for await (const chunk of req) {
-        chunks.push(chunk as Buffer);
+        const buffer = chunk as Buffer;
+        bodyBytes += buffer.length;
+        if (bodyBytes > MAX_REQUEST_BODY_BYTES) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Request body too large' }));
+          return;
+        }
+        chunks.push(buffer);
       }
 
       let payload: JsonRpcRequest;
@@ -158,7 +216,7 @@ export async function createLocalMcpServer(
       }
 
       if (payload.id === undefined) {
-        res.writeHead(202, { 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(202, { 'Content-Type': 'application/json' });
         res.end();
         return;
       }
@@ -166,7 +224,6 @@ export async function createLocalMcpServer(
       const rpcResponse = await handleRpcRequest(payload);
       res.writeHead(200, {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
       });
       res.end(JSON.stringify(rpcResponse));
     })();
@@ -191,7 +248,7 @@ export async function createLocalMcpServer(
   const url = `http://${host}:${actualPort}`;
 
   return {
-    config: { transport: 'http', url },
+    config: { transport: 'http', url, bearerToken },
     url,
     port: actualPort,
     stop: async () => {

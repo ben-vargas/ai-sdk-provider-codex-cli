@@ -209,7 +209,9 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   private readonly onSdkMcpServerUsed?: (server: SdkMcpServer) => void;
 
   private persistentThreadId?: string;
+  private persistentThreadRawEventsEnabled?: boolean;
   private persistentSession?: AppServerSession;
+  private persistentBootstrapLock = Promise.resolve();
 
   constructor(options: AppServerLanguageModelOptions) {
     this.modelId = options.id;
@@ -299,6 +301,18 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     };
   }
 
+  private resolveIncludeRawChunks(
+    optionsIncludeRawChunks: boolean | undefined,
+    settings: CodexAppServerSettings,
+    providerOptions?: CodexAppServerProviderOptions,
+  ): boolean {
+    return (
+      (optionsIncludeRawChunks ??
+        providerOptions?.includeRawChunks ??
+        settings.includeRawChunks) === true
+    );
+  }
+
   private async resolveConfig(settings: CodexAppServerSettings): Promise<ResolvedConfig> {
     const resolvedMcpServers: Record<string, McpServerConfig> = {};
 
@@ -362,13 +376,16 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     providerOptions?: CodexAppServerProviderOptions;
     configOverrides?: Record<string, unknown>;
     developerInstructions?: string;
+    includeRawChunks: boolean;
   }): Promise<{
     threadId: string;
     persistent: boolean;
     explicit: boolean;
-    recreatedFromStale: boolean;
+    resumed: boolean;
+    rawEventsNegotiated?: boolean;
   }> {
-    const { settings, providerOptions, configOverrides, developerInstructions } = args;
+    const { settings, providerOptions, configOverrides, developerInstructions, includeRawChunks } =
+      args;
     const threadState = this.resolveTargetThreadId(settings, providerOptions);
 
     const startThread = async (ephemeral: boolean) => {
@@ -382,68 +399,155 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         developerInstructions,
         personality: settings.personality,
         ephemeral,
-        experimentalRawEvents: Boolean(
-          providerOptions?.includeRawChunks ?? settings.includeRawChunks,
-        ),
+        experimentalRawEvents: includeRawChunks,
         persistExtendedHistory: settings.persistExtendedHistory ?? false,
       });
       return thread.thread.id;
     };
 
-    if (!threadState.threadId) {
-      const newThreadId = await startThread(!threadState.persistent);
-      if (threadState.persistent) {
-        this.persistentThreadId = newThreadId;
-      }
-      return {
-        threadId: newThreadId,
-        persistent: threadState.persistent,
-        explicit: false,
-        recreatedFromStale: false,
+    const resolveThread = async (): Promise<{
+      threadId: string;
+      persistent: boolean;
+      explicit: boolean;
+      resumed: boolean;
+      rawEventsNegotiated?: boolean;
+    }> => {
+      const resumeThread = async (target: {
+        threadId: string;
+        persistent: boolean;
+        explicit: boolean;
+      }): Promise<{
+        threadId: string;
+        persistent: boolean;
+        explicit: boolean;
+        resumed: boolean;
+        rawEventsNegotiated?: boolean;
+      }> => {
+        try {
+          await this.client.threadResume({
+            threadId: target.threadId,
+            model: this.modelId,
+            cwd: settings.cwd,
+            approvalPolicy: mapApprovalPolicy(settings),
+            sandbox: mapSandboxToThreadSandboxMode(settings),
+            config: configOverrides,
+            baseInstructions: settings.baseInstructions,
+            developerInstructions,
+            personality: settings.personality,
+            persistExtendedHistory: settings.persistExtendedHistory ?? false,
+          });
+
+          const knownRawEvents =
+            target.persistent && this.persistentThreadId === target.threadId
+              ? this.persistentThreadRawEventsEnabled
+              : undefined;
+          if (target.persistent) {
+            this.persistentThreadId = target.threadId;
+            if (target.explicit) {
+              this.persistentThreadRawEventsEnabled = undefined;
+            }
+          }
+
+          return {
+            threadId: target.threadId,
+            persistent: target.persistent,
+            explicit: target.explicit,
+            resumed: true,
+            rawEventsNegotiated: knownRawEvents,
+          };
+        } catch (error) {
+          if (!isThreadNotFoundError(error)) {
+            throw error;
+          }
+          if (target.persistent && !target.explicit) {
+            this.clearPersistentThreadState(target.threadId);
+          }
+          throw createStaleThreadError(target.threadId);
+        }
       };
-    }
 
-    try {
-      await this.client.threadResume({
-        threadId: threadState.threadId,
-        model: this.modelId,
-        cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings),
-        sandbox: mapSandboxToThreadSandboxMode(settings),
-        config: configOverrides,
-        baseInstructions: settings.baseInstructions,
-        developerInstructions,
-        personality: settings.personality,
-        persistExtendedHistory: settings.persistExtendedHistory ?? false,
-      });
+      if (!threadState.threadId && threadState.persistent) {
+        if (this.persistentThreadId) {
+          return await resumeThread({
+            threadId: this.persistentThreadId,
+            persistent: true,
+            explicit: false,
+          });
+        }
 
-      if (threadState.persistent) {
-        this.persistentThreadId = threadState.threadId;
+        const newThreadId = await startThread(false);
+        this.persistentThreadId = newThreadId;
+        this.persistentThreadRawEventsEnabled = includeRawChunks;
+        return {
+          threadId: newThreadId,
+          persistent: true,
+          explicit: false,
+          resumed: false,
+          rawEventsNegotiated: includeRawChunks,
+        };
       }
 
-      return {
+      if (!threadState.threadId) {
+        const newThreadId = await startThread(!threadState.persistent);
+        if (threadState.persistent) {
+          this.persistentThreadId = newThreadId;
+          this.persistentThreadRawEventsEnabled = includeRawChunks;
+        }
+        return {
+          threadId: newThreadId,
+          persistent: threadState.persistent,
+          explicit: false,
+          resumed: false,
+          rawEventsNegotiated: includeRawChunks,
+        };
+      }
+
+      return await resumeThread({
         threadId: threadState.threadId,
         persistent: threadState.persistent,
         explicit: threadState.explicit,
-        recreatedFromStale: false,
-      };
-    } catch (error) {
-      if (!isThreadNotFoundError(error)) {
-        throw error;
-      }
+      });
+    };
 
-      if (!threadState.persistent || threadState.explicit) {
-        throw createStaleThreadError(threadState.threadId);
-      }
+    if (threadState.persistent && !threadState.explicit) {
+      return await this.withPersistentBootstrapLock(resolveThread);
+    }
 
-      const recreatedThreadId = await startThread(false);
-      this.persistentThreadId = recreatedThreadId;
-      return {
-        threadId: recreatedThreadId,
-        persistent: true,
-        explicit: false,
-        recreatedFromStale: true,
-      };
+    return await resolveThread();
+  }
+
+  private async withPersistentBootstrapLock<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = this.persistentBootstrapLock;
+
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const chained = previous.then(() => gate);
+    this.persistentBootstrapLock = chained;
+    await previous;
+
+    try {
+      return await fn();
+    } finally {
+      release?.();
+      if (this.persistentBootstrapLock === chained) {
+        this.persistentBootstrapLock = Promise.resolve();
+      }
+    }
+  }
+
+  private clearPersistentThreadState(threadId?: string): void {
+    if (threadId && this.persistentThreadId && this.persistentThreadId !== threadId) {
+      return;
+    }
+
+    this.persistentThreadId = undefined;
+    this.persistentThreadRawEventsEnabled = undefined;
+
+    if (!threadId || this.persistentSession?.threadId === threadId) {
+      this.persistentSession = undefined;
     }
   }
 
@@ -476,13 +580,14 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         summary: settings.summary,
         personality: settings.personality,
       },
+      requestHandlers: settings.serverRequests ?? {},
+      autoApprove: settings.autoApprove,
     });
 
+    await onSessionCreated(session);
     if (persistent) {
       this.persistentSession = session;
     }
-
-    await onSessionCreated(session);
     return session;
   }
 
@@ -729,6 +834,11 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     });
 
     const settings = this.mergeSettings(providerOptions);
+    const includeRawChunks = this.resolveIncludeRawChunks(
+      options.includeRawChunks,
+      settings,
+      providerOptions,
+    );
 
     const warnings: SharedV3Warning[] = [
       ...mapUnsupportedSettingsWarnings({
@@ -764,32 +874,48 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       providerOptions,
       configOverrides: resolvedConfig.configOverrides,
       developerInstructions: effectiveDeveloperInstructions,
+      includeRawChunks,
     });
 
     const threadId = threadResolution.threadId;
 
-    if (threadResolution.recreatedFromStale) {
+    if (
+      includeRawChunks &&
+      threadResolution.resumed &&
+      threadResolution.rawEventsNegotiated !== true
+    ) {
       warnings.push({
         type: 'other',
         message:
-          'Persistent thread no longer exists after app-server restart; created a new thread automatically.',
+          'includeRawChunks was requested while resuming an existing thread that may not emit raw events. Start a new thread to guarantee raw chunk events.',
       });
     }
 
-    const { input, tempImagePaths } = await this.buildUserInput(prompt.promptText, prompt.images);
-    const session = await this.createOrReuseSession({ threadId, settings, providerOptions });
+    let input: UserInput[] = [];
+    let tempImagePaths: string[] = [];
+    let session: AppServerSession | undefined;
+    try {
+      const builtInput = await this.buildUserInput(prompt.promptText, prompt.images);
+      input = builtInput.input;
+      tempImagePaths = builtInput.tempImagePaths;
+      session = await this.createOrReuseSession({ threadId, settings, providerOptions });
+    } catch (error) {
+      cleanupTempImages(tempImagePaths);
+      throw error;
+    }
 
     let usage: LanguageModelV3Usage = createEmptyCodexUsage();
+
+    let cancelRequested = false;
+    let cancelReason: unknown = new Error('Stream canceled');
+    let handleExternalCancel: ((reason?: unknown) => Promise<void> | void) | undefined;
 
     const stream = new ReadableStream<LanguageModelV3StreamPart>({
       start: async (controller) => {
         const emitter = new AppServerStreamEmitter(controller, {
           modelId: this.modelId,
           threadId,
-          includeRawChunks:
-            options.includeRawChunks ??
-            providerOptions?.includeRawChunks ??
-            settings.includeRawChunks,
+          includeRawChunks,
           jsonModeLastTextBlockOnly: options.responseFormat?.type === 'json',
         });
 
@@ -814,8 +940,10 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           onUsage: (nextUsage) => {
             usage = nextUsage;
           },
+          onThreadTurnCompleted: (turn) => {
+            session?.setInactive(turn.id);
+          },
           onTurnCompleted: (turn) => {
-            session?.setInactive();
             settleTurn?.resolve(turn);
           },
           onError: (error) => {
@@ -825,14 +953,22 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         const unsubscribeRouter = router.subscribe();
 
         let aborted = false;
+        let abortReason: unknown = new Error('Request aborted');
         let settled = false;
         let cleanedUp = false;
+        let turnStartRequested = false;
+        let requestContextId: string | undefined;
 
         const cleanup = () => {
           if (cleanedUp) return;
           cleanedUp = true;
           unsubscribeRouter();
-          this.client.clearActiveRequestHandlers(threadId);
+          if (turnId) {
+            this.client.clearRequestContextForTurn(turnId);
+          }
+          if (requestContextId) {
+            this.client.clearRequestContext(requestContextId);
+          }
           cleanupTempImages(tempImagePaths);
           if (options.abortSignal) {
             options.abortSignal.removeEventListener('abort', onAbort);
@@ -840,6 +976,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         };
 
         let interruptWaitPromise: Promise<void> | undefined;
+        let cancelWaitPromise: Promise<void> | undefined;
         const interruptAndAwaitCompletion = async (): Promise<void> => {
           if (!turnId) return;
           if (!interruptWaitPromise) {
@@ -863,29 +1000,62 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           cleanup();
         };
 
+        const finishSilently = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+        };
+
+        const requestCancel = async (reason?: unknown) => {
+          cancelRequested = true;
+          if (reason !== undefined) {
+            cancelReason = reason;
+          }
+          if (settled) return;
+          if (!turnId) {
+            if (!turnStartRequested) {
+              finishSilently();
+            }
+            return;
+          }
+          if (!cancelWaitPromise) {
+            cancelWaitPromise = (async () => {
+              await interruptAndAwaitCompletion();
+              finishSilently();
+            })();
+          }
+          await cancelWaitPromise;
+        };
+
+        handleExternalCancel = requestCancel;
+        if (cancelRequested) {
+          await requestCancel(cancelReason);
+          if (settled) return;
+        }
+
         const onAbort = () => {
           aborted = true;
+          abortReason = abortError();
           if (!turnId) return;
           void (async () => {
             await interruptAndAwaitCompletion();
-            await failWithError(abortError());
+            await failWithError(abortReason);
           })();
         };
 
         if (options.abortSignal) {
           if (options.abortSignal.aborted) {
             aborted = true;
+            abortReason = abortError();
           } else {
             options.abortSignal.addEventListener('abort', onAbort, { once: true });
           }
         }
 
         if (aborted) {
-          await failWithError(abortError());
+          await failWithError(abortReason);
           return;
         }
-
-        this.client.setActiveRequestHandlers(threadId, settings.serverRequests ?? {});
 
         try {
           const turnParams: TurnStartParams = {
@@ -903,8 +1073,27 @@ export class AppServerLanguageModel implements LanguageModelV3 {
               : {}),
           };
 
-          const startTurn = async () => await this.client.turnStart(turnParams);
-          const turnResponse = threadState.threadId
+          const startTurn = async () => {
+            turnStartRequested = true;
+            requestContextId = this.client.registerRequestContext(threadId, {
+              handlers: settings.serverRequests ?? {},
+              autoApprove: settings.autoApprove,
+            });
+
+            try {
+              const turnResponse = await this.client.turnStart(turnParams);
+              this.client.bindRequestContext(requestContextId, turnResponse.turn.id);
+              return turnResponse;
+            } catch (error) {
+              if (requestContextId) {
+                this.client.clearRequestContext(requestContextId);
+                requestContextId = undefined;
+              }
+              throw error;
+            }
+          };
+          const shouldSerializeTurnStart = threadResolution.persistent || threadResolution.explicit;
+          const turnResponse = shouldSerializeTurnStart
             ? await this.client.withThreadLock(threadId, startTurn)
             : await startTurn();
 
@@ -912,14 +1101,23 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           router.setTurnId(turnId);
           session?.setTurnId(turnId);
 
+          if (cancelRequested) {
+            await requestCancel(cancelReason);
+            return;
+          }
+
           if (aborted) {
             await interruptAndAwaitCompletion();
-            throw abortError();
+            throw abortReason;
           }
 
           const turn = await turnCompletionPromise;
+          if (cancelRequested) {
+            finishSilently();
+            return;
+          }
           if (aborted) {
-            throw abortError();
+            throw abortReason;
           }
 
           if (settled) return;
@@ -937,7 +1135,18 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           emitter.close();
           cleanup();
         } catch (error) {
+          if (cancelRequested) {
+            if (turnId) {
+              await requestCancel(cancelReason);
+            } else {
+              finishSilently();
+            }
+            return;
+          }
           if (threadState.threadId && isThreadNotFoundError(error)) {
+            if (threadResolution.persistent && !threadResolution.explicit) {
+              this.clearPersistentThreadState(threadId);
+            }
             await failWithError(createStaleThreadError(threadId));
             return;
           }
@@ -946,7 +1155,14 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             await interruptAndAwaitCompletion();
           }
           await failWithError(error);
+        } finally {
+          handleExternalCancel = undefined;
         }
+      },
+      cancel: async (reason) => {
+        cancelRequested = true;
+        cancelReason = reason ?? cancelReason;
+        await handleExternalCancel?.(reason);
       },
     });
 

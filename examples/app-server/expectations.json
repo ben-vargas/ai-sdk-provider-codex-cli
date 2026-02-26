@@ -12,7 +12,11 @@
   },
   "files": {
     "advanced-settings.mjs": {
-      "mustInclude": ["=== Example 1: Deep Reasoning ===", "=== Example 4: Combined Settings ==="]
+      "mustInclude": [
+        "=== Example 1: Deep Reasoning ===",
+        "=== Example 4: Combined Settings ===",
+        "Advanced settings example complete."
+      ]
     },
     "abort.mjs": { "mustInclude": ["Abort example complete."] },
     "basic-usage.mjs": { "mustInclude": ["Result:"] },
@@ -31,7 +35,7 @@
     "long-prompt-test.mjs": { "mustInclude": ["Long Prompt Test"], "timeoutMs": 120000 },
     "raw-chunks.mjs": { "mustInclude": ["Raw chunks example complete."] },
     "provider-options.mjs": {
-      "mustInclude": ["Quick Response", "Deep Analysis"],
+      "mustInclude": ["Quick Response", "Deep Analysis", "Provider options example complete."],
       "timeoutMs": 120000
     },
     "session-injection.mjs": { "mustInclude": ["```"] },

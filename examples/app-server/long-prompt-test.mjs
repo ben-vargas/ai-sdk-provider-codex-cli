@@ -111,10 +111,19 @@ async function main() {
       console.log('This may indicate prompt truncation or corruption.');
     }
 
+    const normalizedResponse = result.text.trim().toLowerCase();
+    const genericResponses = new Set([
+      'ready',
+      'i am ready',
+      "i'm ready",
+      'ready to help',
+      'ready when you are',
+      'ok',
+      'okay',
+    ]);
     const isGenericResponse =
-      result.text.toLowerCase().includes('ready') ||
-      result.text.toLowerCase().includes('i am ready') ||
-      result.text.toLowerCase().includes("i'm ready");
+      genericResponses.has(normalizedResponse) ||
+      (normalizedResponse.length < 120 && /^((i am|i'm)\s+)?ready\b/.test(normalizedResponse));
 
     if (isGenericResponse || result.text.length < 200) {
       console.log('\nFAILURE: Got generic/short response instead of actual work.');

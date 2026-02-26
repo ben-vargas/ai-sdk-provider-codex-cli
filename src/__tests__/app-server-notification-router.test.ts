@@ -379,4 +379,89 @@ describe('AppServerNotificationRouter', () => {
 
     router.unsubscribe();
   });
+
+  it('routes error notifications for the active turn only', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_error',
+    });
+
+    const onError = vi.fn();
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_error',
+      onUsage: () => undefined,
+      onTurnCompleted: () => undefined,
+      onError,
+    });
+
+    router.setTurnId('turn_target');
+    router.subscribe();
+
+    client.emit('notification', 'error', {
+      threadId: 'thr_error',
+      turnId: 'turn_other',
+      error: { message: 'ignore this' },
+    });
+    client.emit('notification', 'error', {
+      threadId: 'thr_error',
+      turnId: 'turn_target',
+      error: { message: 'expected failure' },
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'expected failure' }));
+
+    router.unsubscribe();
+  });
+
+  it('reports thread turn completion for non-bound turns while keeping stream completion bound', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_injected',
+    });
+
+    const onThreadTurnCompleted = vi.fn();
+    const onTurnCompleted = vi.fn();
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_injected',
+      onUsage: () => undefined,
+      onThreadTurnCompleted,
+      onTurnCompleted,
+      onError: () => undefined,
+    });
+
+    router.setTurnId('turn_stream');
+    router.subscribe();
+
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_injected',
+      turn: { id: 'turn_injected', items: [], status: 'completed', error: null },
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_injected',
+      turn: { id: 'turn_stream', items: [], status: 'completed', error: null },
+    });
+
+    expect(onThreadTurnCompleted).toHaveBeenCalledTimes(2);
+    expect(onThreadTurnCompleted).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'turn_injected' }),
+    );
+    expect(onThreadTurnCompleted).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: 'turn_stream' }),
+    );
+    expect(onTurnCompleted).toHaveBeenCalledTimes(1);
+    expect(onTurnCompleted).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn_stream' }));
+
+    router.unsubscribe();
+  });
 });

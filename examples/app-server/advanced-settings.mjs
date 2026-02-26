@@ -55,7 +55,7 @@ try {
     const fullFeatured = appServer('gpt-5.3-codex', {
       effort: 'medium',
       summary: 'detailed',
-      personality: 'calm',
+      personality: 'pragmatic',
       configOverrides: {
         sandbox_workspace_write: { network_access: true },
       },
@@ -66,9 +66,14 @@ try {
       prompt: 'Outline a two-step plan for verifying deployment readiness, then summarize it.',
     });
     console.log(result4.text);
+
+    console.log('\nAdvanced settings example complete.');
   }
 
-  await main().catch(console.error);
+  await main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 } finally {
   await appServer.close();
 }

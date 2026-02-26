@@ -370,8 +370,14 @@ Per-call app-server overrides use `providerOptions['codex-app-server']` (for exa
 
 Additional app-server helpers:
 
-- `listModels()`: query available models via temporary app-server process
+- `listModels()`: query available models via a temporary app-server process (or use `provider.listModels()` to query through an existing provider/client)
 - `tool()`, `createLocalMcpServer()`, `createSdkMcpServer()`: define and expose local MCP tools
+
+Local MCP security defaults:
+
+- `createLocalMcpServer()` binds to loopback hosts by default and rejects non-loopback `host` values unless you set `allowNonLoopbackHost: true`.
+- `createLocalMcpServer()` generates a per-server bearer token and expects `Authorization: Bearer <token>` on direct HTTP calls. The token is available at `server.config.bearerToken`.
+- `createSdkMcpServer()` propagates this auth config automatically, so provider-level MCP wiring works without extra manual headers.
 
 ## Model Parameters & Advanced Options (v0.4.0+)
 

@@ -47,7 +47,7 @@ For the repository's app-server smoke test (`src/__tests__/app-server-integratio
 - `CODEX_APP_SERVER_INTEGRATION_CODEX_PATH`
   - Optional path to a specific Codex CLI binary/script to use for the test.
 - `CODEX_APP_SERVER_INTEGRATION_MODEL`
-  - Optional model override (defaults to `gpt-5.3-codex`).
+  - Optional model override (defaults to `gpt-5.1-codex`).
 
 Example:
 

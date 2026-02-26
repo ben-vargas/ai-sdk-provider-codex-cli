@@ -24,6 +24,23 @@ async function callServerRequest(
   ).handleServerRequest(id, method, params);
 }
 
+function registerBoundContext(
+  client: AppServerRpcClient,
+  args: {
+    threadId: string;
+    turnId: string;
+    handlers?: Record<string, unknown>;
+    autoApprove?: boolean;
+  },
+): string {
+  const contextId = client.registerRequestContext(args.threadId, {
+    handlers: (args.handlers ?? {}) as never,
+    autoApprove: args.autoApprove,
+  });
+  client.bindRequestContext(contextId, args.turnId);
+  return contextId;
+}
+
 interface MockProcess {
   child: EventEmitter & {
     stdout: PassThrough;
@@ -269,6 +286,239 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('honors per-thread autoApprove override over client-level setting', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: false } });
+    await client.ensureReady();
+
+    registerBoundContext(client, {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      autoApprove: true,
+    });
+
+    await callServerRequest(client, 24, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      itemId: 'item_1',
+      command: 'npm test',
+    });
+
+    expect(writes).toContainEqual({ id: 24, result: { decision: 'accept' } });
+    await client.close();
+  });
+
+  it('uses single active thread context for threadless approval requests', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: false } });
+    await client.ensureReady();
+
+    registerBoundContext(client, {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      autoApprove: true,
+    });
+
+    await callServerRequest(client, 25, 'skill/requestApproval', {
+      itemId: 'item_3',
+      skillName: 'agent-browser',
+    });
+
+    expect(writes).toContainEqual({ id: 25, result: { decision: 'approve' } });
+    await client.close();
+  });
+
+  it('does not route requests to unrelated thread handlers', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: {
+        serverRequests: {
+          onDynamicToolCall: async () => ({
+            contentItems: [{ type: 'outputText', text: 'settings-handler' }],
+            success: true,
+          }),
+        },
+      },
+    });
+    await client.ensureReady();
+
+    registerBoundContext(client, {
+      threadId: 'thr_b',
+      turnId: 'turn_b',
+      handlers: {
+        onDynamicToolCall: async () => ({
+          contentItems: [{ type: 'outputText', text: 'thread-b-handler' }],
+          success: true,
+        }),
+      },
+    });
+
+    await callServerRequest(client, 26, 'item/tool/call', {
+      threadId: 'thr_a',
+      turnId: 'turn_1',
+      callId: 'call_1',
+      tool: 'search',
+      arguments: { q: 'hello' },
+    });
+
+    expect(writes).toContainEqual({
+      id: 26,
+      result: { contentItems: [{ type: 'outputText', text: 'settings-handler' }], success: true },
+    });
+    expect(writes).not.toContainEqual({
+      id: 26,
+      result: { contentItems: [{ type: 'outputText', text: 'thread-b-handler' }], success: true },
+    });
+
+    await client.close();
+  });
+
+  it('keeps request context isolated per turn for concurrent same-thread turns', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: true } });
+    await client.ensureReady();
+
+    registerBoundContext(client, {
+      threadId: 'thr_same',
+      turnId: 'turn_1',
+      autoApprove: false,
+    });
+    registerBoundContext(client, {
+      threadId: 'thr_same',
+      turnId: 'turn_2',
+      autoApprove: true,
+    });
+
+    await callServerRequest(client, 80, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_same',
+      turnId: 'turn_1',
+      itemId: 'item_1',
+      command: 'npm test',
+    });
+    await callServerRequest(client, 81, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_same',
+      turnId: 'turn_2',
+      itemId: 'item_2',
+      command: 'npm test',
+    });
+
+    expect(writes).toContainEqual({ id: 80, result: { decision: 'decline' } });
+    expect(writes).toContainEqual({ id: 81, result: { decision: 'accept' } });
+
+    client.clearRequestContextForTurn('turn_1');
+    await callServerRequest(client, 82, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_same',
+      turnId: 'turn_1',
+      itemId: 'item_3',
+      command: 'npm test',
+    });
+    expect(writes).toContainEqual({ id: 82, result: { decision: 'accept' } });
+
+    await client.close();
+  });
+
+  it('releases bound turn context when turn/completed notification arrives', async () => {
+    const { child, writes, emitServerMessage } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: true } });
+    await client.ensureReady();
+
+    registerBoundContext(client, {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      autoApprove: false,
+    });
+
+    await callServerRequest(client, 83, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      itemId: 'item_1',
+      command: 'npm test',
+    });
+    expect(writes).toContainEqual({ id: 83, result: { decision: 'decline' } });
+
+    emitServerMessage({
+      method: 'turn/completed',
+      params: {
+        threadId: 'thr_1',
+        turn: { id: 'turn_1', items: [], status: 'completed', error: null },
+      },
+    });
+    await flush();
+
+    await callServerRequest(client, 84, 'item/commandExecution/requestApproval', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      itemId: 'item_2',
+      command: 'npm test',
+    });
+    expect(writes).toContainEqual({ id: 84, result: { decision: 'accept' } });
+
+    await client.close();
+  });
+
+  it('skips binding request context when turn already completed before bind', async () => {
+    const { child, emitServerMessage } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    emitServerMessage({
+      method: 'turn/completed',
+      params: {
+        threadId: 'thr_1',
+        turn: { id: 'turn_done', items: [], status: 'completed', error: null },
+      },
+    });
+    await flush();
+
+    const contextId = client.registerRequestContext('thr_1', {
+      handlers: {},
+      autoApprove: true,
+    });
+    client.bindRequestContext(contextId, 'turn_done');
+
+    expect(
+      (client as unknown as { activeRequestContextsByTurn: Map<string, unknown> })
+        .activeRequestContextsByTurn.size,
+    ).toBe(0);
+    expect(
+      (client as unknown as { pendingRequestContexts: Map<string, unknown> }).pendingRequestContexts
+        .size,
+    ).toBe(0);
+
+    await client.close();
+  });
+
+  it('uses settings-level fallback for threadless requests when multiple threads are active', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: false } });
+    await client.ensureReady();
+
+    registerBoundContext(client, { threadId: 'thr_a', turnId: 'turn_a', autoApprove: true });
+    registerBoundContext(client, { threadId: 'thr_b', turnId: 'turn_b', autoApprove: true });
+
+    await callServerRequest(client, 27, 'skill/requestApproval', {
+      itemId: 'item_4',
+      skillName: 'agent-browser',
+    });
+
+    expect(writes).toContainEqual({ id: 27, result: { decision: 'decline' } });
+    await client.close();
+  });
+
   it('responds to non-approval server requests and unknown methods', async () => {
     const { child, writes } = createMockProcess();
     setSpawnMock(() => child);
@@ -305,6 +555,39 @@ describe('AppServerRpcClient', () => {
       id: 34,
       error: { code: -32601, message: 'Method not supported' },
     });
+    await client.close();
+  });
+
+  it('does not throw when server-request reply cannot be written', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const client = new AppServerRpcClient({ settings: { logger } });
+    await client.ensureReady();
+    child.stdin.destroy();
+
+    await expect(
+      callServerRequest(client, 99, 'item/tool/requestUserInput', {
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        itemId: 'item_1',
+        questions: [],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Failed to send server request result for 'item/tool/requestUserInput'",
+      ),
+    );
+
     await client.close();
   });
 
@@ -357,11 +640,15 @@ describe('AppServerRpcClient', () => {
     });
     await client.ensureReady();
 
-    client.setActiveRequestHandlers('thr_1', {
-      onDynamicToolCall: async () => ({
-        contentItems: [{ type: 'outputText', text: 'active-handler' }],
-        success: true,
-      }),
+    registerBoundContext(client, {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      handlers: {
+        onDynamicToolCall: async () => ({
+          contentItems: [{ type: 'outputText', text: 'active-handler' }],
+          success: true,
+        }),
+      },
     });
 
     await callServerRequest(client, 71, 'item/tool/call', {
@@ -481,12 +768,12 @@ describe('AppServerRpcClient', () => {
     });
 
     await client.ensureReady();
-    client.setActiveRequestHandlers('thr_1', {});
+    const contextId = client.registerRequestContext('thr_1', { handlers: {} });
 
     await vi.advanceTimersByTimeAsync(60);
     expect(child.kill).not.toHaveBeenCalled();
 
-    client.clearActiveRequestHandlers('thr_1');
+    client.clearRequestContext(contextId);
     await vi.advanceTimersByTimeAsync(30);
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
 
@@ -534,6 +821,20 @@ describe('AppServerRpcClient', () => {
     await vi.advanceTimersByTimeAsync(20);
     await assertion;
 
+    await client.close();
+  });
+
+  it('cleans pending request bookkeeping when write fails synchronously', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+    child.stdin.destroy();
+
+    await expect(client.request('never/sent', {})).rejects.toThrow('stdin is not writable');
+
+    expect((client as unknown as { pending: Map<number, unknown> }).pending.size).toBe(0);
     await client.close();
   });
 

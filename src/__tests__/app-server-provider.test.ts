@@ -91,4 +91,99 @@ describe('createCodexAppServer', () => {
       'The Codex app-server provider function cannot be called with new.',
     );
   });
+
+  it('uses a distinct RPC client when per-model transport settings differ', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: {
+        minCodexVersion: '0.105.0',
+        requestTimeoutMs: 10_000,
+      },
+    });
+
+    const baseModel = provider('gpt-5.1-codex') as unknown as {
+      client: unknown;
+    };
+    const tunedModel = provider('gpt-5.1-codex', {
+      requestTimeoutMs: 25_000,
+    }) as unknown as {
+      client: unknown;
+    };
+
+    const baseClient = baseModel.client as { settings: { requestTimeoutMs?: number } };
+    const tunedClient = tunedModel.client as { settings: { requestTimeoutMs?: number } };
+
+    expect(baseClient).not.toBe(tunedClient);
+    expect(baseClient.settings.requestTimeoutMs).toBe(10_000);
+    expect(tunedClient.settings.requestTimeoutMs).toBe(25_000);
+
+    await provider.close();
+  });
+
+  it('reuses RPC client when only non-transport model settings differ', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: {
+        minCodexVersion: '0.105.0',
+      },
+    });
+
+    const pragmatic = provider('gpt-5.1-codex', {
+      personality: 'pragmatic',
+    }) as unknown as { client: AppServerRpcClient };
+    const friendly = provider('gpt-5.1-codex', {
+      personality: 'friendly',
+    }) as unknown as { client: AppServerRpcClient };
+
+    expect(pragmatic.client).toBe(friendly.client);
+
+    await provider.close();
+  });
+
+  it('reuses persistent model instances for identical model + settings', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: {
+        minCodexVersion: '0.105.0',
+      },
+    });
+
+    const first = provider('gpt-5.1-codex', { threadMode: 'persistent' });
+    const second = provider('gpt-5.1-codex', { threadMode: 'persistent' });
+    const different = provider('gpt-5.1-codex', {
+      threadMode: 'persistent',
+      developerInstructions: 'different',
+    });
+
+    expect(first).toBe(second);
+    expect(different).not.toBe(first);
+
+    await provider.close();
+  });
+
+  it('bounds persistent model cache and evicts oldest entry when capacity is exceeded', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: {
+        minCodexVersion: '0.105.0',
+      },
+    });
+
+    const first = provider('gpt-5.1-codex', {
+      threadMode: 'persistent',
+      developerInstructions: 'cache-0',
+    });
+
+    for (let i = 1; i <= 128; i += 1) {
+      provider('gpt-5.1-codex', {
+        threadMode: 'persistent',
+        developerInstructions: `cache-${i}`,
+      });
+    }
+
+    const firstAgain = provider('gpt-5.1-codex', {
+      threadMode: 'persistent',
+      developerInstructions: 'cache-0',
+    });
+
+    expect(firstAgain).not.toBe(first);
+
+    await provider.close();
+  });
 });

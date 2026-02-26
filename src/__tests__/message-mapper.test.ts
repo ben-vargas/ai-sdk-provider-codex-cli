@@ -107,6 +107,21 @@ describe('mapMessagesToPrompt', () => {
       ).toBe(true);
     });
 
+    it('does not claim image attachments when only remote URLs are dropped in exec mode', () => {
+      const { promptText } = mapMessagesToPrompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image' },
+            { type: 'image', url: 'https://example.com/image.png' },
+          ],
+        },
+      ] as any);
+
+      expect(promptText).not.toContain('[1 image attached]');
+      expect(promptText).not.toContain('[1 images attached]');
+    });
+
     it('handles mixed valid and invalid images', () => {
       const { images, warnings } = mapMessagesToPrompt([
         {

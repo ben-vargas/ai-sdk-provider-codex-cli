@@ -18,9 +18,11 @@ const appServer = createCodexAppServer({
 try {
   console.log('  Codex CLI - Nested Object Generation\n');
 
-  const model = appServer('gpt-5.3-codex', {
+  const model = appServer('gpt-5.1-codex', {
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
+    effort: 'low',
+    summary: 'none',
   });
 
   // Example 1: Company organization structure
@@ -56,7 +58,8 @@ try {
     const { object } = await generateObject({
       model,
       schema: orgSchema,
-      prompt: 'Generate a realistic but fictional org chart for a 120-person AI startup.',
+      prompt:
+        'Generate a compact fictional org chart for a small AI startup with 2 departments, each with 1 team and 2 members.',
     });
 
     console.log(JSON.stringify(object, null, 2));
@@ -95,7 +98,7 @@ try {
     const { object } = await generateObject({
       model,
       schema: productSchema,
-      prompt: 'Generate a product with 2-3 variants for a backpack designed for laptops.',
+      prompt: 'Generate a laptop-backpack product with exactly 2 variants.',
     });
 
     console.log(JSON.stringify(object, null, 2));

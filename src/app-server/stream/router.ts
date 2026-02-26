@@ -48,6 +48,7 @@ export interface AppServerNotificationRouterOptions {
   emitter: AppServerStreamEmitter;
   threadId: string;
   onUsage: (usage: LanguageModelV3Usage) => void;
+  onThreadTurnCompleted?: (turn: Turn) => void;
   onTurnCompleted: (turn: Turn) => void;
   onError: (error: Error) => void;
 }
@@ -66,6 +67,7 @@ export class AppServerNotificationRouter {
   private readonly emitter: AppServerStreamEmitter;
   private readonly threadId: string;
   private readonly onUsage: (usage: LanguageModelV3Usage) => void;
+  private readonly onThreadTurnCompleted?: (turn: Turn) => void;
   private readonly onTurnCompleted: (turn: Turn) => void;
   private readonly onError: (error: Error) => void;
 
@@ -87,6 +89,7 @@ export class AppServerNotificationRouter {
     this.emitter = options.emitter;
     this.threadId = options.threadId;
     this.onUsage = options.onUsage;
+    this.onThreadTurnCompleted = options.onThreadTurnCompleted;
     this.onTurnCompleted = options.onTurnCompleted;
     this.onError = options.onError;
   }
@@ -103,6 +106,9 @@ export class AppServerNotificationRouter {
   subscribe(): () => void {
     this.notificationListener = (method: string, params: Record<string, unknown>) => {
       if (!this.isSameThread(params)) return;
+      if (method === 'turn/completed' && params.turn && typeof params.turn === 'object') {
+        this.onThreadTurnCompleted?.(params.turn as Turn);
+      }
       if (this.bufferTurnScopedEventBeforeBinding({ kind: 'notification', method, params })) {
         return;
       }

@@ -8,7 +8,7 @@ export interface SdkMcpServer {
   readonly name: string;
   readonly tools: LocalTool[];
   _server?: LocalMcpServer;
-  _start(): Promise<{ transport: 'http'; url: string }>;
+  _start(): Promise<LocalMcpServer['config']>;
   _stop(): Promise<void>;
 }
 
@@ -21,7 +21,7 @@ export function createSdkMcpServer(options: SdkMcpServerOptions): SdkMcpServer {
   const { name, tools } = options;
 
   let server: LocalMcpServer | undefined;
-  let startPromise: Promise<{ transport: 'http'; url: string }> | undefined;
+  let startPromise: Promise<LocalMcpServer['config']> | undefined;
 
   return {
     [SDK_MCP_SERVER_MARKER]: true,
@@ -44,10 +44,15 @@ export function createSdkMcpServer(options: SdkMcpServerOptions): SdkMcpServer {
         }
 
         server = await createLocalMcpServer({ name, tools });
-        return { transport: 'http' as const, url: server.url };
+        return server.config;
       })();
 
-      return await startPromise;
+      try {
+        return await startPromise;
+      } catch (error) {
+        startPromise = undefined;
+        throw error;
+      }
     },
     async _stop() {
       if (server) {

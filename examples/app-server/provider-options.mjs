@@ -8,18 +8,16 @@ const appServer = createCodexAppServer({
 try {
   async function main() {
     const model = appServer('gpt-5.3-codex', {
-      effort: 'medium',
-      summary: 'concise',
+      effort: 'low',
     });
 
     console.log('=== Quick Response (Low Effort) ===');
     const quick = await generateText({
       model,
-      prompt: 'Summarize JSON schema validation in two sentences.',
+      prompt: 'Summarize JSON schema validation in one short sentence.',
       providerOptions: {
         'codex-app-server': {
           effort: 'low',
-          summary: 'concise',
         },
       },
     });
@@ -28,11 +26,10 @@ try {
     console.log('\n=== Deep Analysis (High Effort) ===');
     const deep = await generateText({
       model,
-      prompt: 'Compare event-driven and batch ETL pipelines for log analytics workloads.',
+      prompt: 'Compare event-driven and batch ETL in exactly 2 concise bullets.',
       providerOptions: {
         'codex-app-server': {
-          effort: 'high',
-          summary: 'detailed',
+          effort: 'medium',
         },
       },
     });
@@ -41,7 +38,7 @@ try {
     console.log('\n=== Custom Config Overrides per Call ===');
     const tuned = await generateText({
       model,
-      prompt: 'List the Codex CLI features enabled for this request.',
+      prompt: 'Reply with exactly: Config overrides applied.',
       providerOptions: {
         'codex-app-server': {
           configOverrides: {
@@ -56,7 +53,7 @@ try {
     console.log('\n=== Per-call MCP override ===');
     const withMcp = await generateText({
       model,
-      prompt: 'Ping the docs MCP for /status.',
+      prompt: 'Reply with exactly: MCP override configured.',
       providerOptions: {
         'codex-app-server': {
           rmcpClient: true,
@@ -71,9 +68,14 @@ try {
       },
     });
     console.log(withMcp.text);
+
+    console.log('\nProvider options example complete.');
   }
 
-  await main().catch(console.error);
+  await main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 } finally {
   await appServer.close();
 }

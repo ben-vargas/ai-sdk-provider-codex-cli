@@ -49,6 +49,26 @@ describe('AppServerStreamEmitter', () => {
     expect(textEnds).toHaveLength(2);
   });
 
+  it('splits reasoning blocks when item id changes', () => {
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_1',
+    });
+
+    emitter.emitReasoningDelta('summary', true, 'reason_1');
+    emitter.emitReasoningDelta('details', false, 'reason_2');
+    emitter.emitFinish({ unified: 'stop', raw: 'completed' }, createEmptyCodexUsage());
+
+    const reasoningStarts = parts.filter((part) => part.type === 'reasoning-start');
+    const reasoningEnds = parts.filter((part) => part.type === 'reasoning-end');
+
+    expect(reasoningStarts).toHaveLength(2);
+    expect(reasoningEnds).toHaveLength(2);
+    expect((reasoningStarts[0] as { id?: string }).id).toBe('reason_1');
+    expect((reasoningStarts[1] as { id?: string }).id).toBe('reason_2');
+  });
+
   it('in json mode emits only the final completed text block', () => {
     const { parts, controller } = createCapture();
     const emitter = new AppServerStreamEmitter(controller, {
@@ -110,5 +130,29 @@ describe('AppServerStreamEmitter', () => {
         );
       }),
     ).toBe(true);
+  });
+
+  it('ignores enqueue and terminal errors after stream is no longer writable', () => {
+    const controller = {
+      enqueue: vi.fn(() => {
+        throw new Error('stream closed');
+      }),
+      close: vi.fn(() => {
+        throw new Error('already closed');
+      }),
+      error: vi.fn(() => {
+        throw new Error('already errored');
+      }),
+    } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_1',
+    });
+
+    expect(() => emitter.emitTextDelta('hello', 'text_1')).not.toThrow();
+    expect(() => emitter.emitTextDelta('world', 'text_1')).not.toThrow();
+    expect(() => emitter.close()).not.toThrow();
+    expect(() => emitter.error(new Error('boom'))).not.toThrow();
   });
 });

@@ -13,7 +13,7 @@ try {
 
   const { textStream } = await streamText({
     model,
-    prompt: 'Write a 1,000 word essay on the history of the internet.',
+    prompt: 'In exactly 3 short sentences, summarize the history of the internet.',
   });
 
   for await (const chunk of textStream) {
