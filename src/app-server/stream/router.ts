@@ -320,6 +320,7 @@ export class AppServerNotificationRouter {
     }
 
     if (method === 'thread/tokenUsage/updated') {
+      if (!this.isSameTurn(params)) return;
       const event = params as unknown as ThreadTokenUsageUpdatedNotification;
       const last = event.tokenUsage?.last;
       if (!last) return;

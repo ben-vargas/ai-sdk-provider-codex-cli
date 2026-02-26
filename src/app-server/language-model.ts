@@ -872,14 +872,20 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           })();
         };
 
-        this.client.setActiveRequestHandlers(threadId, settings.serverRequests ?? {});
-
         if (options.abortSignal) {
           if (options.abortSignal.aborted) {
             aborted = true;
+          } else {
+            options.abortSignal.addEventListener('abort', onAbort, { once: true });
           }
-          options.abortSignal.addEventListener('abort', onAbort, { once: true });
         }
+
+        if (aborted) {
+          await failWithError(abortError());
+          return;
+        }
+
+        this.client.setActiveRequestHandlers(threadId, settings.serverRequests ?? {});
 
         try {
           const turnParams: TurnStartParams = {

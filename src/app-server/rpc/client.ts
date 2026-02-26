@@ -203,6 +203,10 @@ export class AppServerRpcClient extends EventEmitter {
         this.state = 'ready';
         if (shouldEmitReconnected) this.emit('reconnected');
       })
+      .catch((error) => {
+        this.cleanupAfterInitializationFailure(error);
+        throw error;
+      })
       .finally(() => {
         this.initPromise = undefined;
       });
@@ -472,6 +476,35 @@ export class AppServerRpcClient extends EventEmitter {
       throw new Error(
         `codex app-server version '${detected}' is below required minimum '${minVersion}'.`,
       );
+    }
+  }
+
+  private cleanupAfterInitializationFailure(error: unknown): void {
+    if (this.state === 'closed') return;
+
+    this.state = 'error';
+    this.clearIdleTimer();
+    this.stdoutReader?.close();
+    this.stdoutReader = undefined;
+
+    for (const [id, pending] of this.pending.entries()) {
+      clearTimeout(pending.timer);
+      pending.reject(
+        new Error(
+          `Request ${String(id)} failed during app-server initialization: ${String(error)}`,
+        ),
+      );
+    }
+    this.pending.clear();
+    this.threadLocks.clear();
+    this.activeRequestHandlers.clear();
+    this.lastActiveThreadId = undefined;
+    this.serverCapabilities = undefined;
+
+    if (this.child) {
+      this.expectedExitSignal = 'SIGTERM';
+      this.child.kill('SIGTERM');
+      this.child = undefined;
     }
   }
 

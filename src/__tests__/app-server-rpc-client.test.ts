@@ -425,6 +425,30 @@ describe('AppServerRpcClient', () => {
     );
   });
 
+  it('kills spawned process and recovers cleanly after initialization failure', async () => {
+    const first = createMockProcess({ userAgent: 'codex-cli 0.104.9' });
+    const second = createMockProcess({ userAgent: 'codex-cli 0.105.0' });
+    let spawns = 0;
+    setSpawnMock(() => {
+      spawns += 1;
+      return spawns === 1 ? first.child : second.child;
+    });
+
+    const client = new AppServerRpcClient({
+      settings: { minCodexVersion: '0.105.0' },
+    });
+
+    await expect(client.ensureReady()).rejects.toThrow(
+      "codex app-server version '0.104.9' is below required minimum '0.105.0'.",
+    );
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    await expect(client.ensureReady()).resolves.toBeUndefined();
+    expect(spawns).toBe(2);
+
+    await client.close();
+  });
+
   it('kills the child process after idle timeout with no in-flight requests', async () => {
     vi.useFakeTimers();
 

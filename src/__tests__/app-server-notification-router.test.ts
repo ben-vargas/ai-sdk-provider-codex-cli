@@ -320,4 +320,63 @@ describe('AppServerNotificationRouter', () => {
 
     router.unsubscribe();
   });
+
+  it('ignores token usage updates for other turns when turnId is bound', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_usage',
+    });
+
+    let usage: LanguageModelV3Usage | undefined;
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_usage',
+      onUsage: (nextUsage) => {
+        usage = nextUsage;
+      },
+      onTurnCompleted: () => undefined,
+      onError: () => undefined,
+    });
+
+    router.setTurnId('turn_target');
+    router.subscribe();
+
+    client.emit('notification', 'thread/tokenUsage/updated', {
+      threadId: 'thr_usage',
+      turnId: 'turn_other',
+      tokenUsage: {
+        last: {
+          totalTokens: 10,
+          inputTokens: 6,
+          cachedInputTokens: 1,
+          outputTokens: 4,
+          reasoningOutputTokens: 2,
+        },
+      },
+    });
+    expect(usage).toBeUndefined();
+
+    client.emit('notification', 'thread/tokenUsage/updated', {
+      threadId: 'thr_usage',
+      turnId: 'turn_target',
+      tokenUsage: {
+        last: {
+          totalTokens: 20,
+          inputTokens: 12,
+          cachedInputTokens: 3,
+          outputTokens: 8,
+          reasoningOutputTokens: 5,
+        },
+      },
+    });
+
+    expect(usage?.inputTokens.total).toBe(12);
+    expect(usage?.outputTokens.total).toBe(8);
+    expect(usage?.outputTokens.reasoning).toBe(5);
+
+    router.unsubscribe();
+  });
 });

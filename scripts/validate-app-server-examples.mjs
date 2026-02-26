@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-/* global URL, console, process */
+/* global console, process */
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = resolve(new URL('..', import.meta.url).pathname);
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(scriptDir, '..');
 const examplesDir = join(repoRoot, 'examples', 'app-server');
 const expectationsPath = join(examplesDir, 'expectations.json');
 

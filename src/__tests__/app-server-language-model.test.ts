@@ -1045,6 +1045,30 @@ describe('AppServerLanguageModel', () => {
     expect(client.turnInterruptCalls).toHaveLength(1);
   });
 
+  it('doGenerate with pre-aborted signal rejects before turn/start', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async () => ({ turn: { id: 'turn_should_not_start' } });
+
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.1-codex',
+      client: client as never,
+    });
+
+    const ac = new AbortController();
+    const reason = new Error('already aborted');
+    ac.abort(reason);
+
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: 'abort immediately' }] as never,
+        abortSignal: ac.signal,
+      }),
+    ).rejects.toBe(reason);
+
+    expect(client.turnStartCalls).toHaveLength(0);
+    expect(client.turnInterruptCalls).toHaveLength(0);
+  });
+
   it('doStream abort before turn id interrupts once turn id is available', async () => {
     const client = new FakeClient();
     let resolveTurnStart: ((value: { turn: { id: string } }) => void) | undefined;
