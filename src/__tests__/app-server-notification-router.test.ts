@@ -204,4 +204,77 @@ describe('AppServerNotificationRouter', () => {
     expect(outputDeltaResults).toHaveLength(1);
     expect((outputDeltaResults[0] as { result?: { delta?: string } }).result?.delta).toBe('hello');
   });
+
+  it('buffers turn-scoped events until turnId is bound and drops other-turn buffered events', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.1-codex',
+      threadId: 'thr_bind',
+    });
+
+    let completedTurnId: string | undefined;
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_bind',
+      onUsage: () => undefined,
+      onTurnCompleted: (turn) => {
+        completedTurnId = turn.id;
+      },
+      onError: () => undefined,
+    });
+
+    router.subscribe();
+
+    client.emit('notification', 'item/agentMessage/delta', {
+      threadId: 'thr_bind',
+      turnId: 'turn_other',
+      itemId: 'item_other',
+      delta: 'other turn text',
+    });
+    client.emit('notification', 'item/agentMessage/delta', {
+      threadId: 'thr_bind',
+      turnId: 'turn_target',
+      itemId: 'item_target_early',
+      delta: 'early text',
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_bind',
+      turn: { id: 'turn_other', items: [], status: 'completed', error: null },
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_bind',
+      turn: { id: 'turn_target', items: [], status: 'completed', error: null },
+    });
+
+    expect(parts.some((part) => part.type === 'text-delta')).toBe(false);
+    expect(completedTurnId).toBeUndefined();
+
+    router.setTurnId('turn_target');
+
+    const textDeltasAfterBind = parts
+      .filter((part) => part.type === 'text-delta')
+      .map((part) => (part as { delta?: string }).delta);
+    expect(textDeltasAfterBind).toEqual(['early text']);
+    expect(completedTurnId).toBe('turn_target');
+
+    client.emit('notification', 'item/agentMessage/delta', {
+      threadId: 'thr_bind',
+      turnId: 'turn_target',
+      itemId: 'item_target_late',
+      delta: 'late text',
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_bind',
+      turn: { id: 'turn_target', items: [], status: 'completed', error: null },
+    });
+
+    const finalTextDeltas = parts
+      .filter((part) => part.type === 'text-delta')
+      .map((part) => (part as { delta?: string }).delta);
+    expect(finalTextDeltas).toEqual(['early text', 'late text']);
+
+    router.unsubscribe();
+  });
 });

@@ -319,17 +319,15 @@ export class AppServerRpcClient extends EventEmitter {
       release = resolve;
     });
 
-    this.threadLocks.set(
-      threadId,
-      previous.then(() => current),
-    );
+    const chained = previous.then(() => current);
+    this.threadLocks.set(threadId, chained);
     await previous;
 
     try {
       return await fn();
     } finally {
       release?.();
-      if (this.threadLocks.get(threadId) === current) {
+      if (this.threadLocks.get(threadId) === chained) {
         this.threadLocks.delete(threadId);
       }
     }

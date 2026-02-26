@@ -379,6 +379,39 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('removes thread lock entries after queued work completes', async () => {
+    const client = new AppServerRpcClient();
+
+    let releaseFirst: (() => void) | undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const executionOrder: string[] = [];
+    const first = client.withThreadLock('thr_lock', async () => {
+      executionOrder.push('first-start');
+      await firstGate;
+      executionOrder.push('first-end');
+    });
+
+    const second = client.withThreadLock('thr_lock', async () => {
+      executionOrder.push('second');
+    });
+
+    await flush();
+    expect(
+      (client as unknown as { threadLocks: Map<string, Promise<void>> }).threadLocks.size,
+    ).toBe(1);
+
+    releaseFirst?.();
+    await Promise.all([first, second]);
+
+    expect(executionOrder).toEqual(['first-start', 'first-end', 'second']);
+    expect(
+      (client as unknown as { threadLocks: Map<string, Promise<void>> }).threadLocks.size,
+    ).toBe(0);
+  });
+
   it('enforces min version against prerelease builds', async () => {
     const { child } = createMockProcess({ userAgent: 'codex-cli 0.105.0-alpha.17' });
     setSpawnMock(() => child);
