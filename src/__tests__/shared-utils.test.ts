@@ -187,4 +187,38 @@ describe('shared-utils', () => {
       }),
     ).toThrow(/Invalid MCP server name/);
   });
+
+  it('rejects MCP server names containing equals in both merge and override mapping', () => {
+    expect(() =>
+      mergeMcpServers(
+        {
+          'a=b': { transport: 'stdio', command: 'node' },
+        },
+        undefined,
+      ),
+    ).toThrow(/Invalid MCP server name/);
+
+    expect(() =>
+      mcpServersToConfigOverrides({
+        'a=b': { transport: 'stdio', command: 'node' },
+      }),
+    ).toThrow(/Invalid MCP server name/);
+  });
+
+  it('rejects whitespace-wrapped MCP names in both merge and override mapping', () => {
+    expect(() =>
+      mergeMcpServers(
+        {
+          ' local ': { transport: 'stdio', command: 'node' },
+        },
+        undefined,
+      ),
+    ).toThrow(/Invalid MCP server name/);
+
+    expect(() =>
+      mcpServersToConfigOverrides({
+        ' local ': { transport: 'stdio', command: 'node' },
+      }),
+    ).toThrow(/Invalid MCP server name/);
+  });
 });

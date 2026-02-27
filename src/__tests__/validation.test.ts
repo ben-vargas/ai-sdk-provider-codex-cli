@@ -119,6 +119,32 @@ describe('validateSettings', () => {
     expect(res.errors.some((e) => /mcpServers\.bad\.name/i.test(e))).toBe(true);
   });
 
+  it('rejects mcp server names containing equals', () => {
+    const res = validateSettings({
+      mcpServers: {
+        'a=b': {
+          transport: 'stdio',
+          command: 'node',
+        },
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /mcpServers\.a=b/i.test(e))).toBe(true);
+  });
+
+  it('rejects mcp server names with surrounding whitespace', () => {
+    const res = validateSettings({
+      mcpServers: {
+        ' local ': {
+          transport: 'stdio',
+          command: 'node',
+        },
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /mcpServers\..*local/i.test(e))).toBe(true);
+  });
+
   it('rejects invalid configOverrides keys', () => {
     const res = validateSettings({
       configOverrides: {
@@ -127,5 +153,25 @@ describe('validateSettings', () => {
     });
     expect(res.valid).toBe(false);
     expect(res.errors.some((e) => /configOverrides\.bad=key/i.test(e))).toBe(true);
+  });
+
+  it('rejects configOverrides keys with empty path segments', () => {
+    const res = validateSettings({
+      configOverrides: {
+        'x..y': 'value',
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /configOverrides\.x\.\.y/i.test(e))).toBe(true);
+  });
+
+  it('rejects configOverrides keys containing newlines', () => {
+    const res = validateSettings({
+      configOverrides: {
+        'key\ninjection': 'value',
+      },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /configOverrides[\s\S]*injection/i.test(e))).toBe(true);
   });
 });

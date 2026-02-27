@@ -107,6 +107,34 @@ describe('AppServerStreamEmitter', () => {
     expect(internal.lastCompletedJsonTextId).toBeUndefined();
   });
 
+  it('json mode retains only current and last completed block across many item transitions', () => {
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_1',
+      jsonModeLastTextBlockOnly: true,
+    });
+
+    for (let i = 0; i < 300; i += 1) {
+      emitter.emitTextDelta(`${i}`, `item_${i}`);
+    }
+
+    const internal = emitter as unknown as {
+      bufferedCurrentJsonText: string;
+      lastCompletedJsonText: string;
+      lastCompletedJsonTextId?: string;
+    };
+    expect(internal.bufferedCurrentJsonText).toBe('299');
+    expect(internal.lastCompletedJsonText).toBe('298');
+    expect(internal.lastCompletedJsonTextId).toBe('item_298');
+
+    emitter.emitFinish({ unified: 'stop', raw: 'completed' }, createEmptyCodexUsage());
+
+    const textDeltas = parts.filter((part) => part.type === 'text-delta');
+    expect(textDeltas).toHaveLength(1);
+    expect((textDeltas[0] as { delta?: string }).delta).toBe('299');
+  });
+
   it('emits raw parts only when includeRawChunks is enabled', () => {
     const withRaw = createCapture();
     const emitterWithRaw = new AppServerStreamEmitter(withRaw.controller, {

@@ -915,6 +915,20 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('kills the child process when it exits unexpectedly with non-zero code', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    child.emit('exit', 1, null);
+    await flush();
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    await client.close();
+  });
+
   it('waits for stdin drain when write backpressure is signaled', async () => {
     const { child } = createMockProcess();
     setSpawnMock(() => child);
