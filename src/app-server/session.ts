@@ -4,7 +4,22 @@ import type {
   CodexAppServerRequestHandlers,
   CodexAppServerSession,
 } from './types.js';
-import { AppServerRpcClient } from './rpc/client.js';
+
+interface AppServerSessionClient {
+  withThreadLock<T>(threadId: string, fn: () => Promise<T>): Promise<T>;
+  registerRequestContext(
+    threadId: string,
+    context: {
+      handlers: Partial<CodexAppServerRequestHandlers>;
+      autoApprove?: boolean;
+    },
+  ): string;
+  bindRequestContext(contextId: string, turnId: string): void;
+  clearRequestContext(contextId: string): void;
+  turnStart(params: TurnStartParams): Promise<{ turn: { id: string } }>;
+  turnInterrupt(params: { threadId: string; turnId: string }): Promise<unknown>;
+  hasTurnCompleted?(turnId: string): boolean;
+}
 
 function toProtocolInput(input: AppServerUserInput): UserInput {
   switch (input.type) {
@@ -24,7 +39,7 @@ function toProtocolInput(input: AppServerUserInput): UserInput {
 export interface AppServerSessionOptions {
   threadId: string;
   modelId: string;
-  client: AppServerRpcClient;
+  client: AppServerSessionClient;
   defaultTurnParams?: Omit<TurnStartParams, 'threadId' | 'input' | 'model'>;
   requestHandlers?: Partial<CodexAppServerRequestHandlers>;
   autoApprove?: boolean;
@@ -33,7 +48,7 @@ export interface AppServerSessionOptions {
 export class AppServerSession implements CodexAppServerSession {
   readonly threadId: string;
   private readonly modelId: string;
-  private readonly client: AppServerRpcClient;
+  private readonly client: AppServerSessionClient;
   private readonly defaultTurnParams: Omit<TurnStartParams, 'threadId' | 'input' | 'model'>;
   private readonly requestHandlers: Partial<CodexAppServerRequestHandlers>;
   private readonly autoApprove?: boolean;
@@ -55,11 +70,7 @@ export class AppServerSession implements CodexAppServerSession {
   }
 
   private isTurnCompleted(turnId: string): boolean {
-    const hasTurnCompleted = (this.client as { hasTurnCompleted?: unknown }).hasTurnCompleted;
-    if (typeof hasTurnCompleted !== 'function') {
-      return false;
-    }
-    return Boolean((hasTurnCompleted as (value: string) => boolean).call(this.client, turnId));
+    return this.client.hasTurnCompleted?.(turnId) ?? false;
   }
 
   private refreshActiveState(): void {

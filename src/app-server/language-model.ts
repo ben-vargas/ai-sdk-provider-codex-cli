@@ -25,7 +25,6 @@ import {
   mapUnsupportedSettingsWarnings,
   mcpServersToConfigOverrides,
   mergeSingleMcpServer,
-  sanitizeJsonSchema,
 } from '../shared-utils.js';
 import { assertValidMcpServerName } from '../config-key-utils.js';
 import type {
@@ -36,15 +35,12 @@ import type {
   CodexAppServerSettings,
 } from './types.js';
 import type { CodexModelId, Logger, McpServerConfig } from '../types-shared.js';
-import type { Turn, TurnStartParams, UserInput } from './protocol/types.js';
+import type { UserInput } from './protocol/types.js';
 import { AppServerRpcClient } from './rpc/client.js';
 import { AppServerSession } from './session.js';
-import { AppServerNotificationRouter } from './stream/router.js';
-import { AppServerStreamEmitter } from './stream/emitter.js';
+import { buildTurnStartParams, TurnStreamController } from './stream/turn-stream-controller.js';
 import { isSdkMcpServer, type SdkMcpServer } from '../tools/sdk-mcp-server.js';
 import { appServerProviderOptionsSchema } from '../validation.js';
-
-const INTERRUPT_COMPLETION_TIMEOUT_MS = 5_000;
 
 type PromptImage =
   | {
@@ -56,34 +52,6 @@ type PromptImage =
       url: string;
     };
 
-function waitForPromiseOrTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-): Promise<T | undefined> {
-  return new Promise<T | undefined>((resolve) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve(undefined);
-    }, timeoutMs);
-
-    promise
-      .then((value) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch(() => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(undefined);
-      });
-  });
-}
-
 function isThreadNotFoundError(error: unknown): boolean {
   const message = String((error as Error)?.message ?? error);
   return /thread.*not found/i.test(message);
@@ -93,27 +61,6 @@ function createStaleThreadError(threadId: string): Error {
   return new Error(
     `Thread '${threadId}' not found after server restart. Create a new thread by omitting threadId.`,
   );
-}
-
-function mapTurnStatusToFinishReason(turn: Turn): LanguageModelV3FinishReason {
-  switch (turn.status) {
-    case 'completed':
-      return { unified: 'stop', raw: 'completed' };
-    case 'interrupted':
-      return { unified: 'stop', raw: 'interrupted' };
-    case 'failed': {
-      const errorInfo = turn.error?.codexErrorInfo;
-      if (errorInfo === 'contextWindowExceeded') {
-        return { unified: 'length', raw: 'context_window_exceeded' };
-      }
-      if (errorInfo === 'usageLimitExceeded') {
-        return { unified: 'length', raw: 'usage_limit_exceeded' };
-      }
-      return { unified: 'error', raw: turn.error?.message ?? 'failed' };
-    }
-    default:
-      return { unified: 'other', raw: turn.status };
-  }
 }
 
 function mapSandboxToThreadSandboxMode(settings: CodexAppServerSettings): unknown {
@@ -953,278 +900,54 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       throw error;
     }
 
-    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
+    const turnStartParams = buildTurnStartParams({
+      threadId,
+      modelId: this.modelId,
+      input,
+      settings: {
+        cwd: settings.cwd,
+        approvalPolicy: mapApprovalPolicy(settings),
+        sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
+        effort: settings.effort,
+        summary: settings.summary,
+        personality: settings.personality,
+      },
+      responseFormat: options.responseFormat as { type?: string; schema?: unknown } | undefined,
+    });
 
-    let cancelRequested = false;
-    let cancelReason: unknown = new Error('Stream canceled');
-    let handleExternalCancel: ((reason?: unknown) => Promise<void> | void) | undefined;
+    const turnStreamController = new TurnStreamController({
+      client: this.client,
+      modelId: this.modelId,
+      threadId,
+      warnings,
+      includeRawChunks,
+      jsonModeLastTextBlockOnly: options.responseFormat?.type === 'json',
+      turnStartParams,
+      requestHandlers: settings.serverRequests,
+      autoApprove: settings.autoApprove,
+      session,
+      abortSignal: options.abortSignal,
+      shouldSerializeTurnStart: threadResolution.persistent || threadResolution.explicit,
+      hadInitialThreadId: Boolean(threadState.threadId),
+      threadResolution: {
+        persistent: threadResolution.persistent,
+        explicit: threadResolution.explicit,
+      },
+      releaseResources: () => {
+        cleanupTempImages(tempImagePaths);
+        releaseUsedSdkMcpServers();
+      },
+      clearPersistentThreadState: (staleThreadId) => {
+        this.clearPersistentThreadState(staleThreadId);
+      },
+    });
 
     const stream = new ReadableStream<LanguageModelV3StreamPart>({
       start: async (controller) => {
-        const emitter = new AppServerStreamEmitter(controller, {
-          modelId: this.modelId,
-          threadId,
-          includeRawChunks,
-          jsonModeLastTextBlockOnly: options.responseFormat?.type === 'json',
-        });
-
-        emitter.emitStreamStart(warnings);
-        emitter.emitResponseMetadata();
-
-        let turnId: string | undefined;
-        let settleTurn:
-          | {
-              resolve: (turn: Turn) => void;
-              reject: (error: unknown) => void;
-            }
-          | undefined;
-        const turnCompletionPromise = new Promise<Turn>((resolve, reject) => {
-          settleTurn = { resolve, reject };
-        });
-
-        const router = new AppServerNotificationRouter({
-          client: this.client,
-          emitter,
-          threadId,
-          onUsage: (nextUsage) => {
-            usage = nextUsage;
-          },
-          onThreadTurnCompleted: (turn) => {
-            session?.setInactive(turn.id);
-          },
-          onTurnCompleted: (turn) => {
-            settleTurn?.resolve(turn);
-          },
-          onError: (error) => {
-            settleTurn?.reject(error);
-          },
-        });
-        const unsubscribeRouter = router.subscribe();
-
-        let aborted = false;
-        let abortReason: unknown = new Error('Request aborted');
-        let settled = false;
-        let cleanedUp = false;
-        let turnStartRequested = false;
-        let cancelBeforeTurnId = false;
-        let requestContextId: string | undefined;
-
-        const cleanup = () => {
-          if (cleanedUp) return;
-          cleanedUp = true;
-          unsubscribeRouter();
-          if (turnId) {
-            this.client.clearRequestContextForTurn(turnId);
-          }
-          if (requestContextId) {
-            this.client.clearRequestContext(requestContextId);
-          }
-          cleanupTempImages(tempImagePaths);
-          releaseUsedSdkMcpServers();
-          if (options.abortSignal) {
-            options.abortSignal.removeEventListener('abort', onAbort);
-          }
-        };
-
-        let interruptWaitPromise: Promise<void> | undefined;
-        let cancelWaitPromise: Promise<void> | undefined;
-        const interruptAndAwaitCompletion = async (): Promise<void> => {
-          if (!turnId) return;
-          if (!interruptWaitPromise) {
-            interruptWaitPromise = (async () => {
-              await this.client.turnInterrupt({ threadId, turnId }).catch(() => undefined);
-              await waitForPromiseOrTimeout(
-                turnCompletionPromise.then(() => undefined),
-                INTERRUPT_COMPLETION_TIMEOUT_MS,
-              );
-            })();
-          }
-          await interruptWaitPromise;
-        };
-
-        const abortError = () => options.abortSignal?.reason ?? new Error('Request aborted');
-
-        const failWithError = async (error: unknown) => {
-          if (settled) return;
-          settled = true;
-          emitter.error(error);
-          cleanup();
-        };
-
-        const finishSilently = () => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-        };
-
-        const requestCancel = async (reason?: unknown) => {
-          cancelRequested = true;
-          if (reason !== undefined) {
-            cancelReason = reason;
-          }
-          if (!turnId) {
-            cancelBeforeTurnId = turnStartRequested;
-            finishSilently();
-            return;
-          }
-          if (settled && !cancelBeforeTurnId) return;
-          if (!cancelWaitPromise) {
-            cancelWaitPromise = (async () => {
-              if (cancelBeforeTurnId) {
-                await this.client.turnInterrupt({ threadId, turnId }).catch(() => undefined);
-                cancelBeforeTurnId = false;
-              } else {
-                await interruptAndAwaitCompletion();
-              }
-              finishSilently();
-            })();
-          }
-          await cancelWaitPromise;
-        };
-
-        handleExternalCancel = requestCancel;
-        if (cancelRequested) {
-          await requestCancel(cancelReason);
-          if (settled) return;
-        }
-
-        const onAbort = () => {
-          aborted = true;
-          abortReason = abortError();
-          if (!turnId) return;
-          void (async () => {
-            await interruptAndAwaitCompletion();
-            await failWithError(abortReason);
-          })();
-        };
-
-        if (options.abortSignal) {
-          if (options.abortSignal.aborted) {
-            aborted = true;
-            abortReason = abortError();
-          } else {
-            options.abortSignal.addEventListener('abort', onAbort, { once: true });
-          }
-        }
-
-        if (aborted) {
-          await failWithError(abortReason);
-          return;
-        }
-
-        try {
-          const turnParams: TurnStartParams = {
-            threadId,
-            input,
-            cwd: settings.cwd,
-            approvalPolicy: mapApprovalPolicy(settings),
-            sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
-            model: this.modelId,
-            effort: settings.effort,
-            summary: settings.summary,
-            personality: settings.personality,
-            ...(options.responseFormat?.type === 'json' && options.responseFormat.schema
-              ? { outputSchema: sanitizeJsonSchema(options.responseFormat.schema) }
-              : {}),
-          };
-
-          const startTurn = async () => {
-            turnStartRequested = true;
-            requestContextId = this.client.registerRequestContext(threadId, {
-              handlers: settings.serverRequests ?? {},
-              autoApprove: settings.autoApprove,
-            });
-
-            try {
-              const turnResponse = await this.client.turnStart(turnParams);
-              this.client.bindRequestContext(requestContextId, turnResponse.turn.id);
-              return turnResponse;
-            } catch (error) {
-              if (requestContextId) {
-                this.client.clearRequestContext(requestContextId);
-                requestContextId = undefined;
-              }
-              throw error;
-            }
-          };
-          const shouldSerializeTurnStart = threadResolution.persistent || threadResolution.explicit;
-          const turnResponse = shouldSerializeTurnStart
-            ? await this.client.withThreadLock(threadId, startTurn)
-            : await startTurn();
-
-          turnId = turnResponse.turn.id;
-          router.setTurnId(turnId);
-          session?.setTurnId(turnId);
-
-          if (settled) {
-            if (cancelRequested) {
-              await requestCancel(cancelReason);
-            }
-            return;
-          }
-
-          if (cancelRequested) {
-            await requestCancel(cancelReason);
-            return;
-          }
-
-          if (aborted) {
-            await interruptAndAwaitCompletion();
-            throw abortReason;
-          }
-
-          const turn = await turnCompletionPromise;
-          if (cancelRequested) {
-            finishSilently();
-            return;
-          }
-          if (aborted) {
-            throw abortReason;
-          }
-
-          if (settled) return;
-          settled = true;
-          const toolExecutionStats =
-            router.getToolExecutionStats() as unknown as import('@ai-sdk/provider').JSONObject;
-
-          emitter.emitFinish(mapTurnStatusToFinishReason(turn), usage, {
-            'codex-app-server': {
-              threadId,
-              ...(turnId ? { turnId } : {}),
-              toolExecutionStats,
-            },
-          });
-          emitter.close();
-          cleanup();
-        } catch (error) {
-          if (cancelRequested) {
-            if (turnId) {
-              await requestCancel(cancelReason);
-            } else {
-              finishSilently();
-            }
-            return;
-          }
-          if (threadState.threadId && isThreadNotFoundError(error)) {
-            if (threadResolution.persistent && !threadResolution.explicit) {
-              this.clearPersistentThreadState(threadId);
-            }
-            await failWithError(createStaleThreadError(threadId));
-            return;
-          }
-
-          if (aborted && turnId) {
-            await interruptAndAwaitCompletion();
-          }
-          await failWithError(error);
-        } finally {
-          handleExternalCancel = undefined;
-        }
+        await turnStreamController.start(controller);
       },
       cancel: async (reason) => {
-        cancelRequested = true;
-        cancelReason = reason ?? cancelReason;
-        await handleExternalCancel?.(reason);
+        await turnStreamController.cancel(reason);
       },
     });
 

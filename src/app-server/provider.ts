@@ -1,49 +1,21 @@
 import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { AppServerLanguageModel } from './language-model.js';
-import { AppServerRpcClient } from './rpc/client.js';
 import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types.js';
-import { isSdkMcpServer, type SdkMcpServer } from '../tools/sdk-mcp-server.js';
 import { validateAppServerSettings } from '../validation.js';
 import { getLogger } from '../logger.js';
 import type { ModelInfo } from './protocol/types.js';
 import type { CodexModelId } from '../types-shared.js';
-import type { Logger } from '../types-shared.js';
+import { createAppServerClientPool } from './provider/client-pool.js';
+import { createModelKeyFactory } from './provider/model-key-factory.js';
+import { createPersistentModelCache } from './provider/persistent-model-cache.js';
+import { createSdkMcpLifecycleManager } from './provider/sdk-mcp-lifecycle-manager.js';
+import { createValueIdentityRegistry } from './provider/value-identity-registry.js';
 
 export interface CodexAppServerModelListResult {
   models: ModelInfo[];
   defaultModel?: ModelInfo;
   nextCursor?: string | null;
-}
-
-type ClientScopedSettings = Pick<
-  CodexAppServerSettings,
-  | 'codexPath'
-  | 'cwd'
-  | 'env'
-  | 'logger'
-  | 'connectionTimeoutMs'
-  | 'requestTimeoutMs'
-  | 'idleTimeoutMs'
-  | 'minCodexVersion'
->;
-
-function pickClientScopedSettings(settings: CodexAppServerSettings): ClientScopedSettings {
-  return {
-    codexPath: settings.codexPath,
-    cwd: settings.cwd,
-    env: settings.env,
-    logger: settings.logger,
-    connectionTimeoutMs: settings.connectionTimeoutMs,
-    requestTimeoutMs: settings.requestTimeoutMs,
-    idleTimeoutMs: settings.idleTimeoutMs,
-    minCodexVersion: settings.minCodexVersion,
-  };
-}
-
-function isPlainObject(value: object): value is Record<string, unknown> {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -87,13 +59,6 @@ export function createCodexAppServer(
   options: CodexAppServerProviderSettings = {},
 ): CodexAppServerProvider {
   const logger = getLogger(options.defaultSettings?.logger);
-  const sharedClients = new Map<string, AppServerRpcClient>();
-  const persistentModels = new Map<string, AppServerLanguageModel>();
-  const loggerIdentityIds = new WeakMap<Logger, number>();
-  const functionIdentityIds = new WeakMap<(...args: unknown[]) => unknown, number>();
-  const objectIdentityIds = new WeakMap<object, number>();
-  let nextLoggerIdentityId = 1;
-  let nextValueIdentityId = 1;
 
   if (options.defaultSettings) {
     const validated = validateAppServerSettings(options.defaultSettings);
@@ -105,176 +70,11 @@ export function createCodexAppServer(
     }
   }
 
-  const managedSdkServers = new Set<SdkMcpServer>();
-  const providerScopedSdkServers = new Set<SdkMcpServer>();
-  const requestScopedSdkServerRefCounts = new Map<SdkMcpServer, number>();
-
-  const getLoggerIdentity = (value: Logger | false | undefined): string => {
-    if (value === false) {
-      return 'logger:false';
-    }
-    if (!value) {
-      return 'logger:default';
-    }
-
-    const existing = loggerIdentityIds.get(value);
-    if (existing !== undefined) {
-      return `logger:${existing}`;
-    }
-
-    const id = nextLoggerIdentityId++;
-    loggerIdentityIds.set(value, id);
-    return `logger:${id}`;
-  };
-
-  const getFunctionIdentity = (value: (...args: unknown[]) => unknown): string => {
-    const existing = functionIdentityIds.get(value);
-    if (existing !== undefined) {
-      return `fn:${existing}`;
-    }
-
-    const id = nextValueIdentityId++;
-    functionIdentityIds.set(value, id);
-    return `fn:${id}`;
-  };
-
-  const getObjectIdentity = (value: object): string => {
-    const existing = objectIdentityIds.get(value);
-    if (existing !== undefined) {
-      return `obj:${existing}`;
-    }
-
-    const id = nextValueIdentityId++;
-    objectIdentityIds.set(value, id);
-    return `obj:${id}`;
-  };
-
-  const normalizeForModelKey = (value: unknown, seen = new WeakSet<object>()): unknown => {
-    if (
-      value === null ||
-      value === undefined ||
-      typeof value === 'string' ||
-      typeof value === 'number' ||
-      typeof value === 'boolean'
-    ) {
-      return value;
-    }
-
-    if (typeof value === 'bigint') {
-      return { __bigint: value.toString() };
-    }
-
-    if (typeof value === 'symbol') {
-      return { __symbol: String(value) };
-    }
-
-    if (typeof value === 'function') {
-      return { __functionIdentity: getFunctionIdentity(value as (...args: unknown[]) => unknown) };
-    }
-
-    if (Array.isArray(value)) {
-      return value.map((item) => normalizeForModelKey(item, seen));
-    }
-
-    if (typeof value === 'object') {
-      if (seen.has(value)) {
-        return { __objectRef: getObjectIdentity(value) };
-      }
-      seen.add(value);
-
-      if (isSdkMcpServer(value)) {
-        if (value.cacheKey) {
-          return {
-            __sdkMcpServerCacheKey: value.cacheKey,
-          };
-        }
-
-        const tools = value.tools
-          .map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: normalizeForModelKey(tool.inputSchema, seen),
-            // Function identity avoids conflating recreated tools whose source text is identical
-            // but runtime closure state differs.
-            execute: normalizeForModelKey(tool.execute, seen),
-          }))
-          .sort((left, right) => left.name.localeCompare(right.name));
-
-        return {
-          __sdkMcpServer: {
-            name: value.name,
-            tools,
-          },
-        };
-      }
-
-      if (!isPlainObject(value)) {
-        return { __objectIdentity: getObjectIdentity(value) };
-      }
-
-      const normalized: Record<string, unknown> = {};
-      for (const key of Object.keys(value).sort((a, b) => a.localeCompare(b))) {
-        normalized[key] = normalizeForModelKey(value[key], seen);
-      }
-      return normalized;
-    }
-
-    return String(value);
-  };
-
-  const createClientKey = (settings: ClientScopedSettings): string => {
-    const envEntries =
-      settings.env && Object.keys(settings.env).length > 0
-        ? Object.entries(settings.env).sort(([a], [b]) => a.localeCompare(b))
-        : undefined;
-
-    return JSON.stringify({
-      codexPath: settings.codexPath ?? null,
-      cwd: settings.cwd ?? null,
-      connectionTimeoutMs: settings.connectionTimeoutMs ?? null,
-      requestTimeoutMs: settings.requestTimeoutMs ?? null,
-      idleTimeoutMs: settings.idleTimeoutMs ?? null,
-      minCodexVersion: settings.minCodexVersion ?? null,
-      env: envEntries ?? null,
-      logger: getLoggerIdentity(settings.logger),
-    });
-  };
-
-  const getOrCreateClient = (settings: CodexAppServerSettings): AppServerRpcClient => {
-    const clientSettings = pickClientScopedSettings(settings);
-    const key = createClientKey(clientSettings);
-    const existing = sharedClients.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const created = new AppServerRpcClient({
-      settings: clientSettings,
-      logger: clientSettings.logger,
-    });
-    sharedClients.set(key, created);
-    return created;
-  };
-
-  const createPersistentModelKey = (
-    modelId: CodexModelId,
-    settings: CodexAppServerSettings,
-  ): string => {
-    const settingsForKey: Record<string, unknown> = {
-      ...settings,
-      logger:
-        settings.logger === false
-          ? false
-          : settings.logger
-            ? { __loggerIdentity: getLoggerIdentity(settings.logger) }
-            : undefined,
-    };
-
-    return JSON.stringify({
-      modelId,
-      settings: normalizeForModelKey(settingsForKey),
-    });
-  };
+  const identityRegistry = createValueIdentityRegistry();
+  const modelKeyFactory = createModelKeyFactory(identityRegistry);
+  const clientPool = createAppServerClientPool(identityRegistry);
+  const persistentModelCache = createPersistentModelCache();
+  const sdkMcpLifecycle = createSdkMcpLifecycleManager(logger);
 
   const createModel = (
     modelId: CodexModelId,
@@ -297,73 +97,31 @@ export function createCodexAppServer(
       logger.warn(`Codex App Server: ${warning}`);
     }
 
-    const markSdkMcpServerUsed = (
-      server: SdkMcpServer,
-      lifecycle: 'provider' | 'request',
-    ): void => {
-      managedSdkServers.add(server);
-      if (lifecycle === 'provider') {
-        providerScopedSdkServers.add(server);
-        return;
-      }
-
-      const current = requestScopedSdkServerRefCounts.get(server) ?? 0;
-      requestScopedSdkServerRefCounts.set(server, current + 1);
-    };
-
-    const releaseRequestScopedSdkMcpServer = (server: SdkMcpServer): void => {
-      const current = requestScopedSdkServerRefCounts.get(server);
-      if (current === undefined) {
-        return;
-      }
-      if (current > 1) {
-        requestScopedSdkServerRefCounts.set(server, current - 1);
-        return;
-      }
-
-      requestScopedSdkServerRefCounts.delete(server);
-      if (providerScopedSdkServers.has(server)) {
-        return;
-      }
-
-      void server
-        ._stop()
-        .then(() => {
-          if (
-            !providerScopedSdkServers.has(server) &&
-            !requestScopedSdkServerRefCounts.has(server)
-          ) {
-            managedSdkServers.delete(server);
-          }
-        })
-        .catch((error) => {
-          logger.warn(
-            `[codex-app-server] Failed to stop request-scoped SDK MCP server: ${String(error)}`,
-          );
-        });
-    };
-
     const buildModel = () =>
       new AppServerLanguageModel({
         id: modelId,
         settings: merged,
-        client: getOrCreateClient(merged),
-        onSdkMcpServerUsed: markSdkMcpServerUsed,
-        onSdkMcpServerReleased: releaseRequestScopedSdkMcpServer,
+        client: clientPool.getOrCreate(merged),
+        onSdkMcpServerUsed: (server, lifecycle) => {
+          sdkMcpLifecycle.markUsed(server, lifecycle);
+        },
+        onSdkMcpServerReleased: (server) => {
+          sdkMcpLifecycle.releaseRequestScoped(server);
+        },
       });
 
     if ((merged.threadMode ?? 'stateless') !== 'persistent') {
       return buildModel();
     }
 
-    const persistentModelKey = createPersistentModelKey(modelId, merged);
-    const existingPersistentModel = persistentModels.get(persistentModelKey);
+    const persistentModelKey = modelKeyFactory.createPersistentModelKey(modelId, merged);
+    const existingPersistentModel = persistentModelCache.get(persistentModelKey);
     if (existingPersistentModel) {
       return existingPersistentModel;
     }
 
     const createdPersistentModel = buildModel();
-    persistentModels.set(persistentModelKey, createdPersistentModel);
+    persistentModelCache.set(persistentModelKey, createdPersistentModel);
     return createdPersistentModel;
   };
 
@@ -387,25 +145,13 @@ export function createCodexAppServer(
     throw new NoSuchModelError({ modelId, modelType: 'imageModel' });
   }) as never;
   provider.close = async () => {
-    await Promise.allSettled(
-      Array.from(managedSdkServers).map(async (server) => {
-        await server._stop();
-      }),
-    );
-    managedSdkServers.clear();
-    providerScopedSdkServers.clear();
-    requestScopedSdkServerRefCounts.clear();
-    await Promise.allSettled(
-      Array.from(sharedClients.values()).map(async (client) => {
-        await client.close();
-      }),
-    );
-    sharedClients.clear();
-    persistentModels.clear();
+    await sdkMcpLifecycle.closeAll();
+    await clientPool.closeAll();
+    persistentModelCache.clear();
   };
   provider.dispose = provider.close;
   provider.listModels = async (modelProviders?: string[]) => {
-    const client = getOrCreateClient(options.defaultSettings ?? {});
+    const client = clientPool.getOrCreate(options.defaultSettings ?? {});
     const response = await client.modelList({ modelProviders: modelProviders ?? null });
     const models = response.data ?? [];
     return {

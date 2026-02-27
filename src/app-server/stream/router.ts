@@ -1,47 +1,16 @@
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
-import { generateId } from '@ai-sdk/provider-utils';
-import type { ThreadItem, ThreadTokenUsageUpdatedNotification, Turn } from '../protocol/types.js';
+import type { Turn } from '../protocol/types.js';
 import { AppServerRpcClient } from '../rpc/client.js';
-import { safeStringify } from '../../shared-utils.js';
 import { AppServerStreamEmitter } from './emitter.js';
 import { ToolTracker, type ToolExecutionStats } from './tool-tracker.js';
-
-function normalizeItemType(type: string): string {
-  return type.toLowerCase();
-}
-
-function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | undefined {
-  const type = normalizeItemType(item.type);
-
-  if (type === 'commandexecution') {
-    return { toolName: 'exec' };
-  }
-
-  if (type === 'filechange') {
-    return { toolName: 'patch' };
-  }
-
-  if (type === 'mcptoolcall') {
-    const server =
-      typeof (item as { server?: unknown }).server === 'string'
-        ? (item as { server: string }).server || 'server'
-        : 'server';
-    const tool =
-      typeof (item as { tool?: unknown }).tool === 'string'
-        ? (item as { tool: string }).tool || 'tool'
-        : 'tool';
-    return {
-      toolName: `mcp__${server}__${tool}`,
-      dynamic: true,
-    };
-  }
-
-  if (type === 'websearch') {
-    return { toolName: 'web_search' };
-  }
-
-  return undefined;
-}
+import {
+  createNotificationHandlers,
+  type NotificationHandler,
+} from './router-notification-handlers.js';
+import {
+  createServerRequestHandlers,
+  type ServerRequestHandler,
+} from './router-server-request-handlers.js';
 
 export interface AppServerNotificationRouterOptions {
   client: AppServerRpcClient;
@@ -77,6 +46,9 @@ export class AppServerNotificationRouter {
   private textItemIdsWithDelta = new Set<string>();
   private reasoningItemIdsWithDelta = new Set<string>();
 
+  private readonly notificationHandlers: Record<string, NotificationHandler>;
+  private readonly serverRequestHandlers: Record<string, ServerRequestHandler>;
+
   private notificationListener?: (method: string, params: Record<string, unknown>) => void;
   private serverRequestListener?: (
     method: string,
@@ -92,6 +64,23 @@ export class AppServerNotificationRouter {
     this.onThreadTurnCompleted = options.onThreadTurnCompleted;
     this.onTurnCompleted = options.onTurnCompleted;
     this.onError = options.onError;
+
+    this.notificationHandlers = createNotificationHandlers({
+      emitter: this.emitter,
+      toolTracker: this.toolTracker,
+      textItemIdsWithDelta: this.textItemIdsWithDelta,
+      reasoningItemIdsWithDelta: this.reasoningItemIdsWithDelta,
+      onUsage: this.onUsage,
+      onTurnCompleted: this.onTurnCompleted,
+      onError: this.onError,
+      isSameTurn: (params) => this.isSameTurn(params),
+      getBoundTurnId: () => this.turnId,
+    });
+
+    this.serverRequestHandlers = createServerRequestHandlers({
+      emitter: this.emitter,
+      isSameTurn: (params) => this.isSameTurn(params),
+    });
   }
 
   setTurnId(turnId: string): void {
@@ -214,169 +203,15 @@ export class AppServerNotificationRouter {
 
   private handleNotification(method: string, params: Record<string, unknown>): void {
     if (!this.isSameThread(params)) return;
-
-    if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
-      if (!this.isSameTurn(params)) return;
-      const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      this.textItemIdsWithDelta.add(itemId);
-      this.emitter.emitTextDelta(params.delta, itemId);
-      return;
-    }
-
-    if (
-      (method === 'reasoningTextDelta' || method === 'item/reasoning/textDelta') &&
-      typeof params.delta === 'string'
-    ) {
-      if (!this.isSameTurn(params)) return;
-      const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      this.reasoningItemIdsWithDelta.add(itemId);
-      this.emitter.emitReasoningDelta(params.delta, false, itemId);
-      return;
-    }
-
-    if (
-      (method === 'reasoningSummaryTextDelta' || method === 'item/reasoning/summaryTextDelta') &&
-      typeof params.delta === 'string'
-    ) {
-      if (!this.isSameTurn(params)) return;
-      const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      this.reasoningItemIdsWithDelta.add(itemId);
-      this.emitter.emitReasoningDelta(params.delta, true, itemId);
-      return;
-    }
-
-    if (method === 'item/started' && params.item && typeof params.item === 'object') {
-      if (!this.isSameTurn(params)) return;
-      const item = params.item as ThreadItem;
-      const tool = mapTool(item);
-      if (!tool) return;
-      const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-      this.toolTracker.start(toolCallId, tool);
-      this.emitter.emitToolCall(toolCallId, tool.toolName, safeStringify(item), tool.dynamic);
-      return;
-    }
-
-    if (method === 'item/completed' && params.item && typeof params.item === 'object') {
-      if (!this.isSameTurn(params)) return;
-      const item = params.item as ThreadItem;
-      const type = normalizeItemType(item.type);
-
-      if (type === 'agentmessage') {
-        const itemId = typeof item.id === 'string' ? item.id : generateId();
-        const text = (item as { text?: unknown }).text;
-        if (!this.textItemIdsWithDelta.has(itemId) && typeof text === 'string' && text.length > 0) {
-          this.emitter.emitTextDelta(text, itemId);
-        }
-        return;
-      }
-
-      if (type === 'reasoning') {
-        const itemId = typeof item.id === 'string' ? item.id : generateId();
-        if (!this.reasoningItemIdsWithDelta.has(itemId)) {
-          const summary = (item as { summary?: unknown }).summary;
-          const content = (item as { content?: unknown }).content;
-          if (Array.isArray(summary) && summary.length > 0) {
-            this.emitter.emitReasoningDelta(summary.join('\n'), true, itemId);
-          }
-          if (typeof summary === 'string' && summary.length > 0) {
-            this.emitter.emitReasoningDelta(summary, true, itemId);
-          }
-          if (Array.isArray(content) && content.length > 0) {
-            this.emitter.emitReasoningDelta(content.join('\n'), false, itemId);
-          }
-          if (typeof content === 'string' && content.length > 0) {
-            this.emitter.emitReasoningDelta(content, false, itemId);
-          }
-        }
-        return;
-      }
-
-      const tool = mapTool(item);
-      if (!tool) return;
-
-      const toolCallId = typeof item.id === 'string' ? item.id : generateId();
-      const resolved = this.toolTracker.complete(
-        toolCallId,
-        tool,
-        typeof (item as { durationMs?: unknown }).durationMs === 'number'
-          ? (item as { durationMs: number }).durationMs
-          : undefined,
-      );
-      this.emitter.emitToolResult(
-        toolCallId,
-        resolved.toolName,
-        item,
-        resolved.dynamic,
-        (item as { status?: unknown }).status === 'failed',
-      );
-      return;
-    }
-
-    if (
-      (method === 'item/commandExecution/outputDelta' ||
-        method === 'item/fileChange/outputDelta') &&
-      typeof params.delta === 'string'
-    ) {
-      if (!this.isSameTurn(params)) return;
-      const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      const tracked = this.toolTracker.get(itemId);
-      const defaultToolName = method === 'item/commandExecution/outputDelta' ? 'exec' : 'patch';
-      this.emitter.emitToolOutputDelta(itemId, tracked?.toolName ?? defaultToolName, params.delta);
-      return;
-    }
-
-    if (method === 'thread/tokenUsage/updated') {
-      if (!this.isSameTurn(params)) return;
-      const event = params as unknown as ThreadTokenUsageUpdatedNotification;
-      const last = event.tokenUsage?.last;
-      if (!last) return;
-
-      this.onUsage({
-        inputTokens: {
-          total: last.inputTokens,
-          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens),
-          cacheRead: last.cachedInputTokens,
-          cacheWrite: 0,
-        },
-        outputTokens: {
-          total: last.outputTokens,
-          text: undefined,
-          reasoning: last.reasoningOutputTokens,
-        },
-        raw: (last as unknown as import('@ai-sdk/provider').JSONObject) ?? undefined,
-      });
-      return;
-    }
-
-    if (method === 'turn/completed' && params.turn && typeof params.turn === 'object') {
-      const turn = params.turn as Turn;
-      if (this.turnId && turn.id !== this.turnId) return;
-      this.onTurnCompleted(turn);
-      return;
-    }
-
-    if (method === 'error') {
-      if (!this.isSameTurn(params)) return;
-      if (params.willRetry === true) return;
-      const nested = params.error;
-      if (
-        nested &&
-        typeof nested === 'object' &&
-        typeof (nested as { message?: unknown }).message === 'string'
-      ) {
-        this.onError(new Error((nested as { message: string }).message));
-      }
-    }
+    const handler = this.notificationHandlers[method];
+    if (!handler) return;
+    handler(params);
   }
 
   private handleServerRequest(method: string, params: Record<string, unknown>): void {
-    if (!this.isSameThread(params) || !this.isSameTurn(params)) return;
-    if (
-      method === 'item/commandExecution/requestApproval' ||
-      method === 'item/fileChange/requestApproval'
-    ) {
-      const itemId = typeof params.itemId === 'string' ? params.itemId : generateId();
-      this.emitter.emitApprovalRequest(itemId);
-    }
+    if (!this.isSameThread(params)) return;
+    const handler = this.serverRequestHandlers[method];
+    if (!handler) return;
+    handler(params);
   }
 }

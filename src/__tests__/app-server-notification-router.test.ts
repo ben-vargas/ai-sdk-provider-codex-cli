@@ -552,4 +552,47 @@ describe('AppServerNotificationRouter', () => {
 
     router.unsubscribe();
   });
+
+  it('registers expected notification and server-request handlers', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_registry',
+    });
+
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_registry',
+      onUsage: () => undefined,
+      onTurnCompleted: () => undefined,
+      onError: () => undefined,
+    });
+
+    const internals = router as unknown as {
+      notificationHandlers: Record<string, unknown>;
+      serverRequestHandlers: Record<string, unknown>;
+    };
+
+    expect(Object.keys(internals.notificationHandlers).sort()).toEqual(
+      [
+        'error',
+        'item/agentMessage/delta',
+        'item/commandExecution/outputDelta',
+        'item/completed',
+        'item/fileChange/outputDelta',
+        'item/reasoning/summaryTextDelta',
+        'item/reasoning/textDelta',
+        'item/started',
+        'reasoningSummaryTextDelta',
+        'reasoningTextDelta',
+        'thread/tokenUsage/updated',
+        'turn/completed',
+      ].sort(),
+    );
+    expect(Object.keys(internals.serverRequestHandlers).sort()).toEqual(
+      ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].sort(),
+    );
+  });
 });
