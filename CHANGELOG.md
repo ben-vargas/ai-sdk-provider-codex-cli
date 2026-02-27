@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-02-25
+## [1.1.0] - 2026-02-27
 
 ### Added
 
@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - removed redundant `*-gpt-5-codex.mjs` duplicate scripts (canonical examples now cover each flow once)
   - app-server examples updated to canonical field names
   - app-server-only examples added (`list-models`, `session-injection`, `local-mcp-tool`, `abort`, `raw-chunks`, `usage-metadata`)
+- **Security: `file://` image URL rejection**: `file://` URLs passed as image inputs are rejected to prevent arbitrary file reads. Local-image path input via the dedicated flow is unaffected. Applies to both exec and app-server providers.
+- **Security: strict base64 validation for image inputs**: Raw base64 strings are validated (charset, length, round-trip decode) before constructing `data:` URLs, preventing silently malformed image payloads.
+- **Security: MCP server name validation**: MCP server names must match `^[A-Za-z0-9_-]+$`. Names containing dots, equals signs, whitespace, or other special characters are rejected at both schema validation and runtime. Applies to both exec and app-server providers.
+- **Security: config override key validation**: Config override keys must match `^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`. Keys containing equals signs, empty path segments, newlines, or other special characters are rejected. Applies to both exec and app-server providers.
+- **App-server notification schema enforcement**: Notifications that fail schema validation for known methods are dropped with a warning instead of being forwarded to downstream handlers.
+- **App-server thread-scoped notification routing**: Notifications without an explicit `threadId` are not routed to per-thread routers, preventing duplicate event processing in multi-thread scenarios.
+- **App-server `codexErrorInfo` typed validation**: `codexErrorInfo` fields are validated with a full typed Zod union schema (string literals + object variants).
+- **App-server JSON-mode emitter bounded buffering**: The stream emitter in `jsonModeLastTextBlockOnly` mode uses O(1) bounded buffering (current + last-completed block) instead of accumulating all text blocks.
 
 ### Fixed
 
@@ -89,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - default usage fields now use `undefined` when token counts are unknown (instead of `0`), avoiding false precision in telemetry.
 - **Unsupported-setting warnings coverage**:
   - added explicit unsupported warning for `maxOutputTokens` (ignored by Codex providers).
+- **Authentication error detection**: `isAuthenticationError` now checks `data.code` for `'401'`/`'unauthorized'`/`'auth'` instead of the unreachable `exitCode === 401` comparison.
+- **App-server crash handler child cleanup**: `handleCrash` now sends `SIGTERM` to the child process before clearing the reference, preventing orphaned processes.
+- **App-server idle-timeout state cleanup**: Idle-timeout shutdown now clears all bookkeeping (thread locks, request contexts, completed turn IDs) so restart state is clean.
+- **App-server cancel-before-turn-id race**: Cancelling a stream after `turn/start` is requested but before `turnId` is assigned now closes the stream immediately and issues a late interrupt when the turn ID arrives, instead of leaving the stream open indefinitely.
 
 ### Migration Notes (App-Server Users)
 
@@ -100,6 +112,14 @@ If you use `createCodexAppServer`, migrate to canonical keys:
 - `reasoningSummary` -> `summary`
 
 `codexExec` / `codexCli` compatibility exports remain available for existing exec-mode users.
+
+### Migration Notes (All Users from 1.0.x)
+
+The following hardening changes apply to both exec and app-server providers:
+
+- `file://` image URL strings are no longer accepted. Use `data:` URLs, raw base64 strings, or binary inputs instead.
+- MCP server names must match `^[A-Za-z0-9_-]+$`. Rename any servers using dots, spaces, or special characters.
+- Config override keys must match `^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`. Keys with empty segments or special characters must be corrected.
 
 ## [1.0.5] - 2026-01-17
 
