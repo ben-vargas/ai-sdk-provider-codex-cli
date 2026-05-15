@@ -4,6 +4,7 @@ import {
   isPlainObject,
   mapCodexCliFinishReason,
   mapUnsupportedSettingsWarnings,
+  mcpHttpHeadersWithBearerToken,
   mcpServersToConfigOverrides,
   mergeSingleMcpServer,
   mergeStringRecord,
@@ -106,6 +107,62 @@ describe('shared-utils', () => {
       enabledTools: undefined,
       disabledTools: undefined,
     });
+  });
+
+  it('lets incoming HTTP MCP bearerToken replace inherited Authorization header', () => {
+    const merged = mergeSingleMcpServer(
+      {
+        transport: 'http',
+        url: 'https://old',
+        httpHeaders: {
+          authorization: 'Bearer old-token',
+          A: '1',
+        },
+      },
+      {
+        transport: 'http',
+        url: 'https://new',
+        bearerToken: 'new-token',
+        httpHeaders: { B: '2' },
+      },
+    );
+
+    expect(merged.transport).toBe('http');
+    if (merged.transport !== 'http') throw new Error('Expected HTTP MCP server');
+
+    expect(merged.httpHeaders).toEqual({ A: '1', B: '2' });
+    expect(mcpHttpHeadersWithBearerToken(merged)).toEqual({
+      A: '1',
+      B: '2',
+      Authorization: 'Bearer new-token',
+    });
+  });
+
+  it('removes inherited HTTP MCP Authorization header when bearerTokenEnvVar replaces auth', () => {
+    const merged = mergeSingleMcpServer(
+      {
+        transport: 'http',
+        url: 'https://old',
+        bearerToken: 'old-token',
+        httpHeaders: {
+          AUTHORIZATION: 'Bearer stale-token',
+          A: '1',
+        },
+      },
+      {
+        transport: 'http',
+        url: 'https://new',
+        bearerTokenEnvVar: 'NEW_TOKEN_ENV',
+        httpHeaders: { B: '2' },
+      },
+    );
+
+    expect(merged.transport).toBe('http');
+    if (merged.transport !== 'http') throw new Error('Expected HTTP MCP server');
+
+    expect(merged.bearerToken).toBeUndefined();
+    expect(merged.bearerTokenEnvVar).toBe('NEW_TOKEN_ENV');
+    expect(mcpHttpHeadersWithBearerToken(merged)).toEqual({ A: '1', B: '2' });
   });
 
   it('mergeStringRecord handles empty override as clear', () => {

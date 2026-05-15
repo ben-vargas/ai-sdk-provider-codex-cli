@@ -122,6 +122,15 @@ export function mergeStringRecord(
   return undefined;
 }
 
+function omitAuthorizationHeader(
+  headers?: Record<string, string>,
+): Record<string, string> | undefined {
+  if (headers === undefined) return undefined;
+  return Object.fromEntries(
+    Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'authorization'),
+  );
+}
+
 export function mcpHttpHeadersWithBearerToken(
   server: McpServerHttp,
 ): Record<string, string> | undefined {
@@ -172,13 +181,16 @@ export function mergeSingleMcpServer(
   const bearerTokenEnvVar = hasIncomingAuth
     ? incoming.bearerTokenEnvVar
     : baseHttp.bearerTokenEnvVar;
+  const baseHttpHeaders = hasIncomingAuth
+    ? omitAuthorizationHeader(baseHttp.httpHeaders)
+    : baseHttp.httpHeaders;
 
   const result: McpServerConfig = {
     transport: 'http',
     url: incoming.url,
     bearerToken,
     bearerTokenEnvVar,
-    httpHeaders: mergeStringRecord(baseHttp.httpHeaders, incoming.httpHeaders),
+    httpHeaders: mergeStringRecord(baseHttpHeaders, incoming.httpHeaders),
     envHttpHeaders: mergeStringRecord(baseHttp.envHttpHeaders, incoming.envHttpHeaders),
     enabled: incoming.enabled ?? existing.enabled,
     startupTimeoutSec: incoming.startupTimeoutSec ?? existing.startupTimeoutSec,
