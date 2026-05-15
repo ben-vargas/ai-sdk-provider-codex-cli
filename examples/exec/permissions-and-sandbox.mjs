@@ -11,7 +11,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 async function run(label, settings) {
-  const model = codexExec('gpt-5.3-codex', {
+  const model = codexExec('gpt-5.5', {
     allowNpx: true,
     skipGitRepoCheck: true,
     color: 'never',

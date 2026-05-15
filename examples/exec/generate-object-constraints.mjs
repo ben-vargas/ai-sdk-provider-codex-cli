@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 console.log(' Codex CLI - Object Generation with Constraints\n');
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',

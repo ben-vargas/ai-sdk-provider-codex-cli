@@ -1,21 +1,40 @@
 import { streamText } from 'ai';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: {
+    minCodexVersion: '0.130.0',
+    idleTimeoutMs: 30000,
+    cwd: __dirname,
+  },
 });
 
 try {
-  const model = appServer('gpt-5.3-codex', {});
+  const model = appServer('gpt-5.5', {
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'readOnly' },
+    configOverrides: {
+      web_search: 'disabled',
+      'tools.web_search': false,
+      'features.web_search_cached': false,
+      'features.web_search_request': false,
+    },
+    developerInstructions:
+      'This example validates shell tool streaming. You must use only the shell exec tool, and you must call it exactly twice before answering. Do not use web search. A final answer without two exec tool calls is invalid.',
+  });
 
   console.log(' Multiple Tool Calls Demo');
-  console.log('Prompt: "List files, then show line count of the largest .mjs file"\n');
+  console.log('Prompt: "Use separate tool calls to list .mjs files, then count the largest one"\n');
 
   try {
     const result = await streamText({
       model,
       prompt:
-        'List all .mjs files in the current directory with their sizes, identify the largest one, then count how many lines it has.',
+        'Use exactly two separate shell exec tool calls and do not use web search. First execute: find . -maxdepth 1 -name "*.mjs" -type f -print. After that result, execute: wc -l ./*.mjs. Do not combine these into one shell command. Finish with a concise summary.',
     });
 
     const toolCalls = [];
@@ -49,7 +68,10 @@ try {
         }
 
         case 'tool-result': {
-          const output = part.result;
+          const output =
+            part.result && typeof part.result === 'object' && part.result.type === 'tool-result'
+              ? part.result.output
+              : part.result;
           const tool = toolCalls.find((t) => t.id === part.toolCallId);
 
           if (tool) {
@@ -118,6 +140,11 @@ try {
     toolCalls.forEach((tool, i) => {
       console.log(`   ${i + 1}. ${tool.name} (${tool.id})`);
     });
+
+    if (toolCalls.length < 2) {
+      console.error(` Expected at least 2 shell exec tool calls, got ${toolCalls.length}.`);
+      process.exitCode = 1;
+    }
   } catch (error) {
     console.error(' Demo failed:', error.message);
     process.exitCode = 1;

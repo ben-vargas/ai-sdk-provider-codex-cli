@@ -38,7 +38,7 @@ async function main() {
     console.log('Calling Codex CLI with long prompt...\n');
 
     const result = await generateText({
-      model: codex('gpt-5.3-codex'),
+      model: codex('gpt-5.5'),
       prompt: longPrompt,
     });
 

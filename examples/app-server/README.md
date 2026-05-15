@@ -5,18 +5,21 @@ These examples use `createCodexAppServer` and a persistent `codex app-server` JS
 ## Notes
 
 - Best for higher-throughput or stateful workflows.
-- Stateful continuation uses `providerOptions['codex-app-server'].threadId`.
+- Stateful continuation starts from a persistent thread and then uses `providerOptions['codex-app-server'].threadId`.
 - Server-initiated JSON-RPC requests can be handled with `serverRequests`.
-- Requires Codex CLI `>= 0.105.0`.
+- Requires Codex CLI `>= 0.130.0`.
 
 ## Thread Lifecycle
 
-- No `threadId` provided:
+- No `threadId` provided in stateless mode:
   - The provider starts an ephemeral thread for the call.
   - It returns the generated `threadId` in `providerMetadata['codex-app-server'].threadId`.
+- `threadMode: 'persistent'` provided:
+  - The provider starts or reuses a persisted thread.
+  - Use the returned `threadId` for explicit multi-turn continuation across separate model instances.
 - `threadId` provided:
   - The provider resumes that thread and appends the new user turn.
-  - Use this for multi-turn memory across separate `generateText`/`streamText` calls.
+  - Use this for multi-turn memory after the original thread was created persistently.
 - Server restart / stale thread:
   - A previously returned `threadId` can become invalid after app-server restarts.
   - In that case, start a new conversation by omitting `threadId`.
@@ -47,13 +50,13 @@ For the repository's app-server smoke test (`src/__tests__/app-server-integratio
 - `CODEX_APP_SERVER_INTEGRATION_CODEX_PATH`
   - Optional path to a specific Codex CLI binary/script to use for the test.
 - `CODEX_APP_SERVER_INTEGRATION_MODEL`
-  - Optional model override (defaults to `gpt-5.3-codex`).
+  - Optional model override (defaults to `gpt-5.5`).
 
 Example:
 
 ```bash
 CODEX_APP_SERVER_INTEGRATION=1 \
-CODEX_APP_SERVER_INTEGRATION_MODEL=gpt-5.3-codex \
+CODEX_APP_SERVER_INTEGRATION_MODEL=gpt-5.5 \
 npx vitest run src/__tests__/app-server-integration.smoke.test.ts
 ```
 

@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 async function main() {
-  const model = codexExec('gpt-5.3-codex', {
+  const model = codexExec('gpt-5.5', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'medium',
@@ -51,24 +51,20 @@ async function main() {
   });
   console.log(tuned.text);
 
-  console.log('\n=== Per-call MCP override ===');
-  const withMcp = await generateText({
+  console.log('\n=== Per-call Add Directory Override ===');
+  const withAddDir = await generateText({
     model,
-    prompt: 'Ping the docs MCP for /status.',
+    prompt: 'Reply with exactly: Add directory override configured.',
     providerOptions: {
       'codex-cli': {
-        rmcpClient: true,
-        mcpServers: {
-          docs: {
-            transport: 'http',
-            url: 'https://mcp.example/api',
-            bearerTokenEnvVar: 'MCP_BEARER',
-          },
-        },
+        addDirs: ['examples'],
       },
     },
   });
-  console.log(withMcp.text);
+  console.log(withAddDir.text);
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

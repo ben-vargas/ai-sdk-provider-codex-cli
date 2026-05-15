@@ -15,7 +15,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -28,7 +28,7 @@ try {
   console.log('   API-level enforcement (more reliable)');
   console.log('   Guaranteed valid JSON output\n');
 
-  const model = appServer('gpt-5.3-codex', {});
+  const model = appServer('gpt-5.5', {});
 
   // Example 1: Complex nested schema with constraints
   async function example1_complexSchema() {

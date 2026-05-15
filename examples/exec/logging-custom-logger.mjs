@@ -47,7 +47,7 @@ async function main() {
   try {
     // Use custom logger with verbose mode enabled
     const result = streamText({
-      model: codexExec('gpt-5.3-codex', {
+      model: codexExec('gpt-5.5', {
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-failure',
@@ -81,7 +81,10 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+await main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 
 // Example: Integration with popular logging libraries
 console.log('\n Integration Examples:\n');

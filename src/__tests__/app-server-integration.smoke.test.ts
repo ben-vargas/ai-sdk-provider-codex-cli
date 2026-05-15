@@ -14,7 +14,7 @@ describeIntegration('app-server integration smoke', () => {
       const modelId = process.env.CODEX_APP_SERVER_INTEGRATION_MODEL ?? 'gpt-5.3-codex';
       const provider = createCodexAppServer({
         defaultSettings: {
-          minCodexVersion: '0.105.0',
+          minCodexVersion: '0.130.0',
           connectionTimeoutMs: 60_000,
           codexPath,
           approvalPolicy: 'never',
@@ -26,6 +26,7 @@ describeIntegration('app-server integration smoke', () => {
         const first = await generateText({
           model: provider(modelId),
           prompt: 'Reply with one short word.',
+          providerOptions: { 'codex-app-server': { threadMode: 'persistent' } },
         });
         expect(first.text.trim().length).toBeGreaterThan(0);
 

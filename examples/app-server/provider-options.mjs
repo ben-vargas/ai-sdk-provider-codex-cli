@@ -2,12 +2,12 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
   async function main() {
-    const model = appServer('gpt-5.3-codex', {
+    const model = appServer('gpt-5.5', {
       effort: 'low',
     });
 
@@ -50,24 +50,18 @@ try {
     });
     console.log(tuned.text);
 
-    console.log('\n=== Per-call MCP override ===');
-    const withMcp = await generateText({
+    console.log('\n=== Per-call Sandbox Override ===');
+    const sandboxed = await generateText({
       model,
-      prompt: 'Reply with exactly: MCP override configured.',
+      prompt: 'Reply with exactly: Sandbox override configured.',
       providerOptions: {
         'codex-app-server': {
-          rmcpClient: true,
-          mcpServers: {
-            docs: {
-              transport: 'http',
-              url: 'https://mcp.example/api',
-              bearerTokenEnvVar: 'MCP_BEARER',
-            },
-          },
+          approvalPolicy: 'never',
+          sandboxPolicy: { type: 'readOnly' },
         },
       },
     });
-    console.log(withMcp.text);
+    console.log(sandboxed.text);
 
     console.log('\nProvider options example complete.');
   }

@@ -58,8 +58,8 @@ function getMediaType(filePath) {
   return SUPPORTED_EXTENSIONS[ext] || 'image/png';
 }
 
-// Create model instance - gpt-5.3-codex supports vision/multimodal inputs
-const model = codexExec('gpt-5.3-codex', {
+// Create model instance - gpt-5.5 supports vision/multimodal inputs
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',

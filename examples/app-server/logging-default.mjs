@@ -3,13 +3,14 @@
  *
  * Run: node examples/app-server/logging-default.mjs
  *
- * This example demonstrates the default logging behavior of Codex CLI provider.
- * By default, only warn and error messages are logged.
- * Debug and info messages are suppressed unless verbose mode is enabled.
+ * This example demonstrates the default app-server logging behavior.
+ * By default, routine request debug output is suppressed. You may still see
+ * lifecycle info from the shared app-server client when the process closes.
  *
  * Expected output:
- * - No debug or info logs
- * - Only warn/error logs if something goes wrong
+ * - No debug logs
+ * - Warn/error logs if something goes wrong
+ * - Possible app-server lifecycle info when the client closes
  * - Clean output focused on the actual response
  */
 
@@ -17,21 +18,22 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
   async function main() {
     console.log('=== Default Logging (Non-Verbose Mode) ===\n');
     console.log('Expected behavior:');
-    console.log('- No debug or info logs');
-    console.log('- Only warn/error logs appear if needed');
+    console.log('- No debug logs');
+    console.log('- Warn/error logs appear if needed');
+    console.log('- App-server lifecycle info may appear when the process closes');
     console.log('- Clean output showing just the response\n');
 
     try {
-      // Default logging - only warn/error messages will appear
+      // Default logging suppresses request-level debug output.
       const result = streamText({
-        model: appServer('gpt-5.3-codex', {
+        model: appServer('gpt-5.5', {
           approvalPolicy: 'on-failure',
           sandboxPolicy: { type: 'workspaceWrite' },
         }),
@@ -49,8 +51,8 @@ try {
       const usage = await result.usage;
       console.log('Token usage:', usage);
 
-      console.log('\n Notice: No debug or info logs appeared above');
-      console.log('  This is the default behavior - only essential output is shown');
+      console.log('\n Notice: No debug logs appeared above');
+      console.log('  Routine request tracing is hidden in the default mode');
     } catch (error) {
       console.error('Error:', error);
       console.log('\n Troubleshooting:');

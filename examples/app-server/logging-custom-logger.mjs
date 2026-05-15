@@ -11,8 +11,8 @@
  * - Integrate with existing logging infrastructure
  *
  * Expected output:
- * - Custom prefixed log messages (e.g., "[CUSTOM-DEBUG]")
- * - All log levels when verbose: true
+ * - Custom prefixed log messages (for example, "[CUSTOM-INFO]")
+ * - Provider/app-server diagnostics routed through your logger
  * - Full control over log formatting and routing
  */
 
@@ -20,7 +20,7 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -47,12 +47,12 @@ try {
   async function main() {
     console.log('=== Custom Logger Example ===\n');
     console.log('This example shows how to integrate your own logging system.');
-    console.log('All logs will be prefixed with [CUSTOM-*] and include timestamps.\n');
+    console.log('Provider logs will be prefixed with [CUSTOM-*] and include timestamps.\n');
 
     try {
-      // Use custom logger with verbose mode enabled
+      // Use a custom logger with verbose mode enabled.
       const result = streamText({
-        model: appServer('gpt-5.3-codex', {
+        model: appServer('gpt-5.5', {
           approvalPolicy: 'on-failure',
           sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging to see debug/info
@@ -73,7 +73,7 @@ try {
       console.log('Token usage:', usage);
 
       console.log('\n Custom logger successfully integrated!');
-      console.log('  All logs above are formatted with custom prefixes and timestamps');
+      console.log('  Provider logs above use custom prefixes and timestamps');
       console.log('  You can route these to any logging service (Datadog, Sentry, etc.)');
     } catch (error) {
       console.error('Error:', error);

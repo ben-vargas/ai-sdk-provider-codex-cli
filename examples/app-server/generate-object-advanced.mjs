@@ -12,15 +12,15 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
   console.log(' Codex CLI - Advanced Object Generation\n');
 
   // Use the Codex flagship model to exercise extra-high reasoning effort.
-  // Requires codex-cli >= 0.60 for gpt-5.3-codex + xhigh.
-  const model = appServer('gpt-5.3-codex', {
+  // Requires the validated Codex CLI 0.130.x line for gpt-5.5 + xhigh.
+  const model = appServer('gpt-5.5', {
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
     effort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs

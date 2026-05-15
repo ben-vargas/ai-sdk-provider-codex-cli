@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Experimental JSON Events (Codex CLI v0.2.0+)
+ * App-Server JSON Events (Codex CLI)
  *
- * Demonstrates the new --experimental-json event format.
- * This example shows how the provider parses events like:
- * - session.created
+ * Demonstrates the codex app-server JSON-RPC event stream.
+ * This example shows how the provider maps notifications like:
+ * - thread.started
  * - turn.started / turn.completed
  * - item.started / item.updated / item.completed
  * - Usage tracking from turn.completed events
@@ -15,15 +15,29 @@ import { generateText, streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
-try {
-  console.log(' Experimental JSON Events\n');
-  console.log('This example demonstrates the new event format in v0.2.0.');
-  console.log('Events are parsed from --experimental-json output.\n');
+function getUsageTotals(usage) {
+  const inputTokens =
+    typeof usage.inputTokens === 'number' ? usage.inputTokens : (usage.inputTokens?.total ?? 0);
+  const outputTokens =
+    typeof usage.outputTokens === 'number' ? usage.outputTokens : (usage.outputTokens?.total ?? 0);
+  const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
+  const cacheRead =
+    usage.cachedInputTokens ??
+    usage.inputTokenDetails?.cacheReadTokens ??
+    usage.inputTokens?.cacheRead;
 
-  const model = appServer('gpt-5.3-codex', {});
+  return { inputTokens, outputTokens, totalTokens, cacheRead };
+}
+
+try {
+  console.log(' App-Server JSON Events\n');
+  console.log('This example demonstrates the codex app-server JSON-RPC event stream.');
+  console.log('Events are parsed from app-server notifications.\n');
+
+  const model = appServer('gpt-5.5', {});
 
   // Example 1: Basic text generation with usage tracking
   async function example1_basicWithUsage() {
@@ -37,11 +51,12 @@ try {
     console.log(' Response:');
     console.log(text);
     console.log('\n Usage (from turn.completed event):');
-    console.log(`   Input tokens:  ${usage.inputTokens.total}`);
-    console.log(`   Output tokens: ${usage.outputTokens.total}`);
-    console.log(`   Total tokens:  ${usage.inputTokens.total + usage.outputTokens.total}`);
-    if (usage.inputTokens.cacheRead) {
-      console.log(`   Cache read:    ${usage.inputTokens.cacheRead}`);
+    const totals = getUsageTotals(usage);
+    console.log(`   Input tokens:  ${totals.inputTokens}`);
+    console.log(`   Output tokens: ${totals.outputTokens}`);
+    console.log(`   Total tokens:  ${totals.totalTokens}`);
+    if (totals.cacheRead) {
+      console.log(`   Cache read:    ${totals.cacheRead}`);
     }
     console.log('\n Response metadata:');
     console.log(`   ID:        ${response.id}`);
@@ -55,17 +70,17 @@ try {
     console.log('2  Understanding Event Flow\n');
 
     console.log('When you call generateText or generateObject, the provider:');
-    console.log('  1. Spawns `codex exec --experimental-json`');
-    console.log('  2. Parses JSONL events from stdout');
+    console.log('  1. Starts or reuses a `codex app-server` JSON-RPC process');
+    console.log('  2. Sends thread/start and turn/start requests');
     console.log('  3. Extracts key data:');
-    console.log('     - session.created     sessionId');
+    console.log('     - thread.started      thread id');
     console.log('     - item.completed      assistant message text');
     console.log('     - turn.completed      usage stats');
     console.log('  4. Maps events to AI SDK format');
     console.log('  5. Returns structured response\n');
 
-    console.log('Event types in --experimental-json:');
-    console.log('   session.created   - Session initialization');
+    console.log('Common app-server event types:');
+    console.log('   thread.started    - Thread initialization');
     console.log('   turn.started      - Turn begins');
     console.log('   turn.completed    - Turn ends (includes usage)');
     console.log('   item.started      - Item begins (command, file change, etc.)');
@@ -90,8 +105,8 @@ try {
     }
 
     console.log('\n\n Stream complete!');
-    console.log('   Note: --experimental-json suppresses deltas,');
-    console.log('   so you typically get a final chunk instead of many small ones.\n');
+    console.log('   Note: app-server event streams may deliver final text');
+    console.log('   chunks instead of many small token-level deltas.\n');
   }
 
   await example1_basicWithUsage();
@@ -100,7 +115,7 @@ try {
 
   console.log(' Event showcase complete!');
   console.log('\n Key Takeaway:');
-  console.log('   The experimental JSON format provides:');
+  console.log('   The app-server JSON-RPC event stream provides:');
   console.log('   - Structured event types');
   console.log('   - Usage tracking');
   console.log('   - Better observability');

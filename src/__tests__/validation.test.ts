@@ -60,7 +60,7 @@ describe('validateSettings', () => {
     const res = validateAppServerSettings({
       codexPath: '/opt/homebrew/bin/codex',
       personality: 'pragmatic',
-      minCodexVersion: '0.105.0',
+      minCodexVersion: '0.130.0',
       sandboxPolicy: 'workspace-write',
     });
     expect(res.valid).toBe(true);

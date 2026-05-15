@@ -2,13 +2,13 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
   // Demonstrates custom CWD plus approval/sandbox policy options
 
-  const model = appServer('gpt-5.3-codex', {
+  const model = appServer('gpt-5.5', {
     cwd: process.cwd(),
     // Optional app-server style policy overrides:
     // approvalPolicy: 'on-request',

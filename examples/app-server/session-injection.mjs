@@ -5,7 +5,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.105.0-alpha.0',
+    minCodexVersion: '0.130.0',
     idleTimeoutMs: 30000,
     threadMode: 'persistent',
     effort: 'medium',
@@ -15,16 +15,16 @@ const provider = createCodexAppServer({
 
 try {
   const result = streamText({
-    model: provider('gpt-5.3-codex'),
+    model: provider('gpt-5.5'),
     prompt:
-      'Write a tiny Node.js utility that parses CSV with no dependencies. Return code in a single markdown code block only. Do not run commands or write files.',
+      'Write a tiny Node.js function named parseCsvLine that parses one CSV line with no dependencies. Return one markdown code block only. Do not include explanations, usage examples, commands, or file writes.',
     providerOptions: {
       'codex-app-server': {
         onSessionCreated: (session) => {
           // Demonstrates mid-execution guidance while the turn is in-flight.
           setTimeout(() => {
             void session.injectMessage(
-              'Also include basic input validation and one usage example. Keep this as response text only (no command execution, no file writes).',
+              'Update the code block to include basic input validation only. Keep exactly one markdown code block and no explanatory text.',
             );
           }, 500);
         },

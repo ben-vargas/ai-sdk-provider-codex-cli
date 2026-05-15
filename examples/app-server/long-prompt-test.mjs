@@ -63,11 +63,12 @@ export default function SignIn() {
 \`\`\`
 
 Requirements:
-1. Improve visual design (background depth, card treatment, spacing).
-2. Add a logo/brand placeholder.
-3. Improve button styling and hover/focus states.
-4. Add subtle animation.
-5. Keep Tailwind CSS only.
+1. Do not redesign the whole component.
+2. Prove you received the complete prompt by referencing callbackUrl and Linux.do.
+3. Return exactly three concise lines:
+   LONG_PROMPT_OK
+   callbackUrl + Linux.do
+   one Tailwind improvement under 20 words
 
 Return text only. Do not execute commands. Do not write or modify files.`;
 
@@ -84,7 +85,7 @@ async function main() {
 
   const codex = createCodexAppServer({
     defaultSettings: {
-      minCodexVersion: '0.105.0-alpha.0',
+      minCodexVersion: '0.130.0',
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
       approvalPolicy: 'on-failure',
@@ -97,16 +98,16 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('gpt-5.3-codex'),
+      model: codex('gpt-5.5'),
       system: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });
 
     console.log('\n=== Result ===\n');
     console.log(`Response length: ${result.text.length} chars`);
-    console.log(`First 500 chars:\n${result.text.slice(0, 500)}`);
+    console.log(`Response:\n${result.text.trim()}`);
 
-    if (result.text.length < 200) {
+    if (result.text.length < 40) {
       console.log('\nWARNING: Response is suspiciously short.');
       console.log('This may indicate prompt truncation or corruption.');
     }
@@ -125,8 +126,13 @@ async function main() {
       genericResponses.has(normalizedResponse) ||
       (normalizedResponse.length < 120 && /^((i am|i'm)\s+)?ready\b/.test(normalizedResponse));
 
-    if (isGenericResponse || result.text.length < 200) {
-      console.log('\nFAILURE: Got generic/short response instead of actual work.');
+    const containsTransportProof =
+      result.text.includes('LONG_PROMPT_OK') &&
+      normalizedResponse.includes('callbackurl') &&
+      normalizedResponse.includes('linux.do');
+
+    if (isGenericResponse || result.text.length < 40 || !containsTransportProof) {
+      console.log('\nFAILURE: Response did not prove the long prompt was received.');
       process.exitCode = 1;
       return;
     }

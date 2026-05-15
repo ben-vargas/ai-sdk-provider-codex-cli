@@ -961,6 +961,11 @@ describe('CodexCliLanguageModel', () => {
                 bearerTokenEnvVar: 'MCP_TOKEN',
                 httpHeaders: { 'x-debug': '1' },
               },
+              direct: {
+                transport: 'http',
+                url: 'https://direct.example',
+                bearerToken: 'DIRECT_TOKEN',
+              },
             },
           },
         },
@@ -974,6 +979,13 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('mcp_servers.remote.url=https://mcp.example');
       expect(argsCaptured).toContain('mcp_servers.remote.bearer_token_env_var=MCP_TOKEN');
       expect(argsCaptured).toContain('mcp_servers.remote.http_headers.x-debug=1');
+      expect(argsCaptured).toContain('mcp_servers.direct.url=https://direct.example');
+      expect(argsCaptured).toContain(
+        'mcp_servers.direct.http_headers.Authorization=Bearer DIRECT_TOKEN',
+      );
+      expect(argsCaptured.some((arg) => arg.includes('mcp_servers.direct.bearer_token='))).toBe(
+        false,
+      );
     });
 
     it('allows clearing stdio MCP args and tool lists with empty arrays', async () => {
@@ -1129,6 +1141,11 @@ describe('CodexCliLanguageModel', () => {
       expect(
         argsCaptured.some((arg) =>
           arg.includes('mcp_servers.remote.bearer_token=base-token-secret'),
+        ),
+      ).toBe(false);
+      expect(
+        argsCaptured.some((arg) =>
+          arg.includes('mcp_servers.remote.http_headers.Authorization=Bearer base-token-secret'),
         ),
       ).toBe(false);
     });

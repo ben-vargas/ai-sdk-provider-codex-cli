@@ -3,7 +3,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Demonstrates custom CWD and sandbox/approval options
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   cwd: process.cwd(),
   skipGitRepoCheck: true,

@@ -2,11 +2,22 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.105.0-alpha.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
 });
 
 try {
-  const model = appServer('gpt-5.3-codex', {});
+  const model = appServer('gpt-5.5', {
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'readOnly' },
+    configOverrides: {
+      web_search: 'disabled',
+      'tools.web_search': false,
+      'features.web_search_cached': false,
+      'features.web_search_request': false,
+    },
+    developerInstructions:
+      'This example is about shell tool streaming. Use only the shell exec tool. Do not use web search.',
+  });
 
   console.log(' Codex App Server Tool Streaming Demo');
   console.log('Prompt: "List the current directory with file sizes and summarize"\n');
@@ -15,7 +26,7 @@ try {
     const result = await streamText({
       model,
       prompt:
-        'List the files in the current directory along with their sizes. Print the command output and include a short summary in your final response.',
+        'Use the shell exec tool to list the files in the current directory along with their sizes. Do not use web search. Print the command output and include a short summary in your final response.',
     });
 
     const textBuffer = [];

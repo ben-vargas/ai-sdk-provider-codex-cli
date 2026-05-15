@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true,
@@ -80,11 +80,18 @@ try {
         break;
       }
       case 'finish': {
-        // AI SDK v6 stable uses nested usage structure with inputTokens.total, outputTokens.total
         const usage = part.totalUsage || part.usage;
-        const inputTotal = usage?.inputTokens?.total ?? 0;
-        const outputTotal = usage?.outputTokens?.total ?? 0;
-        console.log(`\n Finished (inputTokens=${inputTotal}, outputTokens=${outputTotal})`);
+        const inputTotal =
+          typeof usage?.inputTokens === 'number' ? usage.inputTokens : usage?.inputTokens?.total;
+        const outputTotal =
+          typeof usage?.outputTokens === 'number' ? usage.outputTokens : usage?.outputTokens?.total;
+        if (typeof inputTotal === 'number' || typeof outputTotal === 'number') {
+          console.log(
+            `\n Finished (inputTokens=${inputTotal ?? 'unknown'}, outputTokens=${outputTotal ?? 'unknown'})`,
+          );
+        } else {
+          console.log('\n Finished');
+        }
         break;
       }
       default:

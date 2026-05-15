@@ -306,7 +306,7 @@ export class AppServerRpcClient extends EventEmitter {
     if (this.serverCapabilities?.modelList === false) {
       throw new UnsupportedFeatureError({
         feature: 'model/list',
-        minCodexVersion: this.settings.minCodexVersion ?? '0.105.0',
+        minCodexVersion: this.settings.minCodexVersion ?? '0.130.0',
         serverVersion: this.serverVersion,
       });
     }
@@ -320,7 +320,7 @@ export class AppServerRpcClient extends EventEmitter {
       if (error instanceof JsonRpcRequestError && error.code === -32601) {
         throw new UnsupportedFeatureError({
           feature: 'model/list',
-          minCodexVersion: this.settings.minCodexVersion ?? '0.105.0',
+          minCodexVersion: this.settings.minCodexVersion ?? '0.130.0',
           serverVersion: this.serverVersion,
         });
       }
@@ -511,7 +511,7 @@ export class AppServerRpcClient extends EventEmitter {
       const message = String((error as Error)?.message ?? error);
       if (message.includes('ENOENT') || message.includes('unknown subcommand')) {
         throw new Error(
-          "codex app-server requires codex CLI >= 0.105.0. Run 'codex --version' to check.",
+          "codex app-server requires codex CLI >= 0.130.0. Run 'codex --version' to check.",
         );
       }
 
@@ -537,7 +537,7 @@ export class AppServerRpcClient extends EventEmitter {
     }
 
     this.serverVersion = detected;
-    const minVersion = this.settings.minCodexVersion ?? '0.105.0';
+    const minVersion = this.settings.minCodexVersion ?? '0.130.0';
     const compared = compareSemver(detected, minVersion);
     if (compared === undefined) {
       this.logger.warn(

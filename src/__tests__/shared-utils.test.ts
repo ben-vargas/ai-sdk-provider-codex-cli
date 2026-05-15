@@ -160,6 +160,12 @@ describe('shared-utils', () => {
           url: 'https://mcp.example.com',
           bearerTokenEnvVar: 'TOKEN_ENV',
         },
+        direct: {
+          transport: 'http',
+          url: 'https://direct.example.com',
+          bearerToken: 'DIRECT_TOKEN',
+          httpHeaders: { 'x-debug': '1' },
+        },
       },
       true,
     );
@@ -169,6 +175,12 @@ describe('shared-utils', () => {
     expect(overrides['mcp_servers.local.args']).toEqual(['server.js']);
     expect(overrides['mcp_servers.remote.url']).toBe('https://mcp.example.com');
     expect(overrides['mcp_servers.remote.bearer_token_env_var']).toBe('TOKEN_ENV');
+    expect(overrides['mcp_servers.direct.url']).toBe('https://direct.example.com');
+    expect(overrides['mcp_servers.direct.bearer_token']).toBeUndefined();
+    expect(overrides['mcp_servers.direct.http_headers']).toEqual({
+      'x-debug': '1',
+      Authorization: 'Bearer DIRECT_TOKEN',
+    });
   });
 
   it('rejects invalid MCP server names consistently during merge and override mapping', () => {

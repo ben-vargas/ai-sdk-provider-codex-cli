@@ -4,7 +4,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 async function main() {
   // Example 1: High reasoning effort
   console.log('=== Example 1: Deep Reasoning ===');
-  const deepThinking = codexExec('gpt-5.3-codex', {
+  const deepThinking = codexExec('gpt-5.5', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'high',
@@ -20,7 +20,7 @@ async function main() {
 
   // Example 2: Web search enabled
   console.log('\n=== Example 2: Web Search ===');
-  const withWebSearch = codexExec('gpt-5.3-codex', {
+  const withWebSearch = codexExec('gpt-5.5', {
     allowNpx: true,
     skipGitRepoCheck: true,
     webSearch: true,
@@ -34,7 +34,7 @@ async function main() {
 
   // Example 3: Generic config overrides
   console.log('\n=== Example 3: Advanced Config ===');
-  const advanced = codexExec('gpt-5.3-codex', {
+  const advanced = codexExec('gpt-5.5', {
     allowNpx: true,
     configOverrides: {
       model_context_window: 200000,
@@ -51,24 +51,12 @@ async function main() {
 
   // Example 4: Combined settings
   console.log('\n=== Example 4: All Features ===');
-  const fullFeatured = codexExec('gpt-5.3-codex', {
+  const fullFeatured = codexExec('gpt-5.5', {
     allowNpx: true,
     skipGitRepoCheck: true,
-    rmcpClient: true,
-    mcpServers: {
-      repo: {
-        transport: 'stdio',
-        command: 'node',
-        args: ['tools/repo-mcp.js'],
-      },
-      docs: {
-        transport: 'http',
-        url: 'https://mcp.internal/api',
-        bearerTokenEnvVar: 'MCP_BEARER',
-      },
-    },
-
-    // Custom
+    reasoningEffort: 'medium',
+    reasoningSummary: 'detailed',
+    modelVerbosity: 'medium',
     configOverrides: {
       sandbox_workspace_write: { network_access: true },
     },

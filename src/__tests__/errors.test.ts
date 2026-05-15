@@ -40,7 +40,7 @@ describe('errors', () => {
   it('unsupported feature helper is detected', () => {
     const err = new UnsupportedFeatureError({
       feature: 'model/list',
-      minCodexVersion: '0.105.0',
+      minCodexVersion: '0.130.0',
       serverVersion: '0.104.0',
     });
     expect(isUnsupportedFeatureError(err)).toBe(true);

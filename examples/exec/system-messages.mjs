@@ -3,7 +3,7 @@
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -11,10 +11,9 @@ const model = codexExec('gpt-5.3-codex', {
   color: 'never',
 });
 
-const messages = [
-  { role: 'system', content: 'You are a terse assistant. Always reply in exactly 3 words.' },
-  { role: 'user', content: 'Describe TypeScript in a nutshell.' },
-];
-
-const { text } = await generateText({ model, messages });
+const { text } = await generateText({
+  model,
+  system: 'You are a terse assistant. Always reply in exactly 3 words.',
+  prompt: 'Describe TypeScript in a nutshell.',
+});
 console.log('System-influenced reply:', text);

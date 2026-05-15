@@ -17,7 +17,7 @@ Provider-specific notes:
   - `npm i -g @openai/codex`
   - `codex login` (or set `OPENAI_API_KEY`)
 - Build this package before running examples: `npm run build`
-- App-server examples require Codex CLI `>= 0.105.0`.
+- App-server examples require Codex CLI `>= 0.130.0`.
 
 ## Run
 

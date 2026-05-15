@@ -1,11 +1,16 @@
 import { streamText } from 'ai';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const exampleCwd = dirname(fileURLToPath(import.meta.url));
+
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true,
   color: 'never',
+  cwd: exampleCwd,
 });
 
 console.log(' Multiple Tool Calls Demo');
@@ -15,7 +20,7 @@ try {
   const result = await streamText({
     model,
     prompt:
-      'List all .mjs files in the current directory with their sizes, identify the largest one, then count how many lines it has.',
+      'Using shell commands only and without web search, first list all .mjs files in the current directory with their sizes. Then run a separate shell command to count how many lines the largest .mjs file has.',
   });
 
   const toolCalls = [];
@@ -101,13 +106,16 @@ try {
           console.log(''.repeat(60));
         }
 
-        // Usage stats - AI SDK v6 stable uses nested structure
         const usage = part.totalUsage || part.usage;
-        const inputTotal = usage?.inputTokens?.total ?? 0;
-        const outputTotal = usage?.outputTokens?.total ?? 0;
-        console.log(
-          `\n Finished: ${toolCalls.length} tool calls, ${inputTotal} input tokens, ${outputTotal} output tokens`,
-        );
+        const inputTotal =
+          typeof usage?.inputTokens === 'number' ? usage.inputTokens : usage?.inputTokens?.total;
+        const outputTotal =
+          typeof usage?.outputTokens === 'number' ? usage.outputTokens : usage?.outputTokens?.total;
+        const usageSummary =
+          typeof inputTotal === 'number' || typeof outputTotal === 'number'
+            ? `, ${inputTotal ?? 'unknown'} input tokens, ${outputTotal ?? 'unknown'} output tokens`
+            : '';
+        console.log(`\n Finished: ${toolCalls.length} tool calls${usageSummary}`);
         break;
       }
     }

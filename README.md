@@ -10,7 +10,7 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with GPT‑5.1 / GPT‑5.2 class models (`gpt-5.1`, `gpt-5.2`, the Codex-specific `gpt-5.3-codex` / `gpt-5.2-codex`, the flagship `*-codex-max`, and the lightweight `*-codex-mini` slugs) using your ChatGPT Plus/Pro subscription.
+A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with current GPT models such as `gpt-5.5`, `gpt-5.2`, and `gpt-5.1`, plus Codex-specific slugs like `gpt-5.3-codex`, `gpt-5.2-codex`, `*-codex-max`, and `*-codex-mini`, using your ChatGPT Plus/Pro subscription.
 
 This package ships two provider modes:
 
@@ -54,7 +54,7 @@ npm i ai ai-sdk-provider-codex-cli
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires Codex CLI **>= 0.105.0** for full support of both provider modes (`codexExec` and `codexAppServer`). If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed. The optional dependency `@openai/codex` in this package pulls a compatible version automatically.
+> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.130.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.130.0`, the latest non-alpha release validated for this maintenance update. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -68,7 +68,7 @@ npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -90,14 +90,14 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.105.0',
+    minCodexVersion: '0.130.0',
     autoApprove: false,
     personality: 'pragmatic',
   },
 });
 
 const { textStream } = await streamText({
-  model: provider('gpt-5.3-codex'),
+  model: provider('gpt-5.5'),
   prompt: 'Write two short lines of encouragement.',
 });
 for await (const chunk of textStream) process.stdout.write(chunk);
@@ -107,7 +107,7 @@ await provider.close();
 
 ### App-server stateful threads (optional)
 
-By default, `codexAppServer` is stateless (new ephemeral thread per call). To continue a prior conversation, pass `threadId` in `providerOptions['codex-app-server']`.
+By default, `codexAppServer` is stateless (new ephemeral thread per call). To continue a prior conversation across calls, start a persistent thread and then pass its `threadId` in `providerOptions['codex-app-server']`.
 
 ```js
 import { generateText } from 'ai';
@@ -116,14 +116,17 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const provider = createCodexAppServer();
 
 const first = await generateText({
-  model: provider('gpt-5.3-codex'),
+  model: provider('gpt-5.5'),
   prompt: 'Start a migration checklist.',
+  providerOptions: {
+    'codex-app-server': { threadMode: 'persistent' },
+  },
 });
 
 const threadId = first.providerMetadata?.['codex-app-server']?.threadId;
 
 const second = await generateText({
-  model: provider('gpt-5.3-codex'),
+  model: provider('gpt-5.5'),
   prompt: 'Continue from step 2.',
   providerOptions: {
     'codex-app-server': { threadId },
@@ -142,7 +145,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const schema = z.object({ name: z.string(), age: z.number().int() });
 const { object } = await generateObject({
-  model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
   schema,
   prompt: 'Generate a small user profile.',
 });
@@ -175,7 +178,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { readFileSync } from 'fs';
 
-const model = codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true });
+const model = codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true });
 const imageBuffer = readFileSync('./screenshot.png');
 
 const { text } = await generateText({
@@ -217,7 +220,7 @@ import { streamText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const result = await streamText({
-  model: codexExec('gpt-5.3-codex', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
   prompt: 'List files and count lines in the largest one',
 });
 
@@ -253,20 +256,20 @@ Control logging verbosity and integrate with your observability stack:
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Default: warn/error only (clean production output)
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
 });
 
 // Verbose mode: enable debug/info logs for troubleshooting
-const verboseModel = codexExec('gpt-5.3-codex', {
+const verboseModel = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true, // Shows all log levels
 });
 
 // Custom logger: integrate with Winston, Pino, Datadog, etc.
-const customModel = codexExec('gpt-5.3-codex', {
+const customModel = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true,
@@ -279,7 +282,7 @@ const customModel = codexExec('gpt-5.3-codex', {
 });
 
 // Silent: disable all logging
-const silentModel = codexExec('gpt-5.3-codex', {
+const silentModel = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   logger: false, // No logs at all
@@ -388,7 +391,7 @@ Control reasoning effort, verbosity, and advanced Codex features at model creati
 ```ts
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,
   addDirs: ['../shared'],
@@ -442,7 +445,7 @@ values take precedence over constructor defaults while leaving other settings in
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.3-codex', {
+const model = codexExec('gpt-5.5', {
   allowNpx: true,
   reasoningEffort: 'medium',
   modelVerbosity: 'medium',
@@ -482,7 +485,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const appServerProvider = createCodexAppServer();
 
 const response = await generateText({
-  model: appServerProvider('gpt-5.3-codex'),
+  model: appServerProvider('gpt-5.5'),
   prompt: 'Continue this task.',
   providerOptions: {
     'codex-app-server': {

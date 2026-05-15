@@ -22,7 +22,7 @@
     "basic-usage.mjs": { "mustInclude": ["Result:"] },
     "check-cli.mjs": { "mustInclude": ["app-server"] },
     "conversation-history.mjs": { "mustInclude": ["threadId"] },
-    "generate-object-basic.mjs": { "mustInclude": ["Done"] },
+    "generate-object-basic.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
     "generate-object-constraints.mjs": { "mustInclude": ["Done"] },
     "generate-object-native-schema.mjs": { "mustInclude": ["Native schema showcase complete!"] },
     "generate-object-nested.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
@@ -32,15 +32,22 @@
     },
     "list-models.mjs": { "mustInclude": ["model(s)"] },
     "local-mcp-tool.mjs": { "mustInclude": ["42"] },
-    "long-prompt-test.mjs": { "mustInclude": ["Long Prompt Test"], "timeoutMs": 120000 },
+    "long-prompt-test.mjs": { "mustInclude": ["Long Prompt Test"], "timeoutMs": 180000 },
     "raw-chunks.mjs": { "mustInclude": ["Raw chunks example complete."] },
     "provider-options.mjs": {
       "mustInclude": ["Quick Response", "Deep Analysis", "Provider options example complete."],
       "timeoutMs": 120000
     },
     "session-injection.mjs": { "mustInclude": ["```"] },
-    "streaming-tool-calls.mjs": { "mustInclude": ["Tool"] },
-    "streaming-multiple-tools.mjs": { "mustInclude": ["tool"] },
+    "streaming-tool-calls.mjs": {
+      "mustInclude": ["Tool", "exec"],
+      "mustNotInclude": ["web_search"]
+    },
+    "streaming-multiple-tools.mjs": {
+      "mustInclude": ["Tool", "exec"],
+      "mustNotInclude": ["web_search"],
+      "timeoutMs": 90000
+    },
     "usage-metadata.mjs": { "mustInclude": ["Usage metadata example complete."] }
   }
 }
