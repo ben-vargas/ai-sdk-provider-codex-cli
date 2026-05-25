@@ -616,7 +616,13 @@ export class ExecLanguageModel implements LanguageModelV3 {
     inputPayload: unknown,
   ): void {
     const inputString = safeStringify(inputPayload);
-    controller.enqueue({ type: 'tool-input-start', id: toolCallId, toolName });
+    controller.enqueue({
+      type: 'tool-input-start',
+      id: toolCallId,
+      toolName,
+      providerExecuted: true,
+      dynamic: true,
+    });
     if (inputString) {
       controller.enqueue({ type: 'tool-input-delta', id: toolCallId, delta: inputString });
     }
@@ -627,6 +633,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
       toolName,
       input: inputString,
       providerExecuted: true,
+      dynamic: true,
     });
   }
 
@@ -665,6 +672,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
       toolCallId,
       toolName,
       result: (resultPayload ?? {}) as NonNullable<import('@ai-sdk/provider').JSONValue>,
+      dynamic: true,
       ...(isError ? { isError: true } : {}),
       ...(Object.keys(providerMetadataEntries).length
         ? { providerMetadata: { 'codex-cli': providerMetadataEntries } }

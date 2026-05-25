@@ -163,7 +163,7 @@ describe('AppServerStreamEmitter', () => {
     });
 
     emitter.emitApprovalRequest('approval_1');
-    emitter.emitToolOutputDelta('tool_1', 'exec', 'chunk');
+    emitter.emitToolOutputDelta('tool_1', 'exec', 'chunk', true);
 
     expect(parts).toContainEqual({
       type: 'tool-approval-request',
@@ -175,6 +175,7 @@ describe('AppServerStreamEmitter', () => {
         if (part.type !== 'tool-result') return false;
         return (
           part.toolCallId === 'tool_1' &&
+          part.dynamic === true &&
           (part.result as { type?: string; delta?: string }).type === 'output-delta'
         );
       }),

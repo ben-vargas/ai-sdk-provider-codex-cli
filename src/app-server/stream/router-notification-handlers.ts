@@ -13,11 +13,11 @@ function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | un
   const type = normalizeItemType(item.type);
 
   if (type === 'commandexecution') {
-    return { toolName: 'exec' };
+    return { toolName: 'exec', dynamic: true };
   }
 
   if (type === 'filechange') {
-    return { toolName: 'patch' };
+    return { toolName: 'patch', dynamic: true };
   }
 
   if (type === 'mcptoolcall') {
@@ -36,7 +36,7 @@ function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | un
   }
 
   if (type === 'websearch') {
-    return { toolName: 'web_search' };
+    return { toolName: 'web_search', dynamic: true };
   }
 
   return undefined;
@@ -139,6 +139,7 @@ export function createNotificationHandlers(
         itemId,
         tracked?.toolName ?? defaultToolName,
         params.delta,
+        tracked?.dynamic ?? true,
       );
     };
 

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-25
+
+### Fixed
+
+- Mark provider-executed Codex tools as dynamic in AI SDK streams so app-server tools such as `exec`, `patch`, and `web_search`, plus exec-mode tool events, are not rejected as unavailable caller tools when consumed through `toUIMessageStream()`.
+
 ## [1.2.0] - 2026-05-15
 
 ### Changed

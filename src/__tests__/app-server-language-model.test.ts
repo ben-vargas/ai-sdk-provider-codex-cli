@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { streamText } from 'ai';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import type { TurnStartParams } from '../app-server/protocol/types.js';
@@ -745,6 +746,75 @@ describe('AppServerLanguageModel', () => {
     expect(finish?.providerMetadata?.['codex-app-server']?.toolExecutionStats?.totalCalls).toBe(1);
     expect(finish?.providerMetadata?.['codex-app-server']?.toolExecutionStats?.byType?.exec).toBe(
       1,
+    );
+  });
+
+  it('marks provider-executed app-server tools dynamic for AI SDK UI streams', async () => {
+    const client = new FakeClient();
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        client.emit('notification', 'item/started', {
+          threadId: params.threadId,
+          turnId: 'turn_web_ui_1',
+          item: {
+            type: 'webSearch',
+            id: 'ws_ui_1',
+            query: 'latest United States news',
+            action: { type: 'search', queries: ['latest United States news'] },
+          },
+        });
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_web_ui_1',
+          item: {
+            type: 'webSearch',
+            id: 'ws_ui_1',
+            query: 'latest United States news',
+            action: { type: 'search', queries: ['latest United States news'] },
+          },
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_web_ui_1', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_web_ui_1' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
+    const result = streamText({
+      model: model as never,
+      prompt: 'Use web search for current news.',
+    });
+
+    const parts: unknown[] = [];
+    for await (const part of result.toUIMessageStream()) {
+      parts.push(part);
+    }
+
+    expect(JSON.stringify(parts)).not.toContain('Model tried to call unavailable tool');
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-input-start',
+        toolName: 'web_search',
+        providerExecuted: true,
+        dynamic: true,
+      }),
+    );
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-input-available',
+        toolName: 'web_search',
+        providerExecuted: true,
+        dynamic: true,
+      }),
+    );
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-available',
+        providerExecuted: true,
+        dynamic: true,
+      }),
     );
   });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { streamText } from 'ai';
 import { ExecLanguageModel } from '../exec-language-model.js';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
@@ -144,10 +145,12 @@ describe('ExecLanguageModel', () => {
       type: 'tool-call',
       toolName: 'exec',
       providerExecuted: true,
+      dynamic: true,
     });
     expect(res.content[1]).toMatchObject({
       type: 'tool-result',
       toolName: 'exec',
+      dynamic: true,
       result: {
         command: 'ls -la',
         aggregatedOutput: 'README.md\n',
@@ -243,10 +246,12 @@ describe('ExecLanguageModel', () => {
     const toolCall = received.find((p) => p.type === 'tool-call');
     expect(toolCall?.toolName).toBe('exec');
     expect(toolCall?.providerExecuted).toBe(true);
+    expect(toolCall?.dynamic).toBe(true);
     expect(toolCall?.input).toContain('ls -la');
 
     const toolResult = received.find((p) => p.type === 'tool-result');
     expect(toolResult?.toolCallId).toBe(toolCall?.toolCallId);
+    expect(toolResult?.dynamic).toBe(true);
     expect(toolResult?.result).toMatchObject({
       command: 'ls -la',
       aggregatedOutput: 'README.md\n',
@@ -261,6 +266,78 @@ describe('ExecLanguageModel', () => {
     });
     expect(finish?.usage.raw).toBeDefined();
     expect(finish?.finishReason).toEqual({ unified: 'stop', raw: undefined });
+  });
+
+  it('marks provider-executed exec tools dynamic for AI SDK UI streams', async () => {
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools-ui' }),
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'item_ui_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_ui_0',
+          item_type: 'command_execution',
+          command: 'ls -la',
+          aggregated_output: 'README.md\n',
+          exit_code: 0,
+          status: 'completed',
+        },
+      }),
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 4, output_tokens: 2, cached_input_tokens: 1 },
+      }),
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const result = streamText({
+      model: model as never,
+      prompt: 'List files',
+    });
+
+    const parts: unknown[] = [];
+    for await (const part of result.toUIMessageStream()) {
+      parts.push(part);
+    }
+
+    expect(JSON.stringify(parts)).not.toContain('Model tried to call unavailable tool');
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-input-start',
+        toolName: 'exec',
+        providerExecuted: true,
+        dynamic: true,
+      }),
+    );
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-input-available',
+        toolName: 'exec',
+        providerExecuted: true,
+        dynamic: true,
+      }),
+    );
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-available',
+        providerExecuted: true,
+        dynamic: true,
+      }),
+    );
   });
 
   it('includes approval/sandbox flags and output-last-message; uses npx with allowNpx', async () => {

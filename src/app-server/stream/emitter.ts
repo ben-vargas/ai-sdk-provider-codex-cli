@@ -145,7 +145,12 @@ export class AppServerStreamEmitter {
     });
   }
 
-  emitToolOutputDelta(toolCallId: string, toolName: string, delta: string): void {
+  emitToolOutputDelta(
+    toolCallId: string,
+    toolName: string,
+    delta: string,
+    dynamic?: boolean,
+  ): void {
     this.safeEnqueue({
       type: 'tool-result',
       toolCallId,
@@ -155,6 +160,7 @@ export class AppServerStreamEmitter {
         type: 'output-delta',
         delta,
       } as NonNullable<JSONValue>,
+      ...(dynamic ? { dynamic: true } : {}),
     });
   }
 
