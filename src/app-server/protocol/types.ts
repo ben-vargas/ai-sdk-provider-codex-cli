@@ -84,6 +84,7 @@ export interface Thread {
 
 export interface ThreadStartParams {
   model?: string | null;
+  serviceTier?: string | null;
   modelProvider?: string | null;
   cwd?: string | null;
   approvalPolicy?: unknown;
@@ -101,6 +102,7 @@ export interface ThreadStartResponse {
   thread: Thread;
   model: string;
   modelProvider: string;
+  serviceTier?: string | null;
   cwd: string;
   approvalPolicy: unknown;
   sandbox: unknown;
@@ -112,6 +114,7 @@ export interface ThreadResumeParams {
   history?: unknown[] | null;
   path?: string | null;
   model?: string | null;
+  serviceTier?: string | null;
   modelProvider?: string | null;
   cwd?: string | null;
   approvalPolicy?: unknown;
@@ -139,6 +142,7 @@ export interface TurnStartParams {
   approvalPolicy?: unknown;
   sandboxPolicy?: unknown;
   model?: string | null;
+  serviceTier?: string | null;
   effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;

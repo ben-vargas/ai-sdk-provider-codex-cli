@@ -416,6 +416,7 @@ export function buildTurnStartParams(args: {
     cwd?: string;
     approvalPolicy?: unknown;
     sandboxPolicy?: unknown;
+    serviceTier?: TurnStartParams['serviceTier'];
     effort?: TurnStartParams['effort'];
     summary?: TurnStartParams['summary'];
     personality?: TurnStartParams['personality'];
@@ -432,6 +433,7 @@ export function buildTurnStartParams(args: {
     approvalPolicy: args.settings.approvalPolicy,
     sandboxPolicy: args.settings.sandboxPolicy,
     model: args.modelId,
+    serviceTier: args.settings.serviceTier ?? null,
     effort: args.settings.effort,
     summary: args.settings.summary,
     personality: args.settings.personality,

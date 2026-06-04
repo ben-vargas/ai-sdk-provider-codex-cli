@@ -196,6 +196,7 @@ export const appServerSettingsSchema = z
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
     effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    serviceTier: z.string().nullable().optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
     approvalPolicy: z
       .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
@@ -240,6 +241,7 @@ export const appServerProviderOptionsSchema = z
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
     effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    serviceTier: z.string().nullable().optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
     approvalPolicy: z
       .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])

@@ -174,6 +174,52 @@ describe('AppServerLanguageModel', () => {
     });
   });
 
+  it('passes serviceTier to thread start and turn start', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { serviceTier: 'priority' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+    });
+
+    expect(client.threadStartCalls[0]).toEqual(
+      expect.objectContaining({ serviceTier: 'priority' }),
+    );
+    expect(client.turnStartCalls[0]).toEqual(
+      expect.objectContaining({ serviceTier: 'priority' }),
+    );
+  });
+
+  it('lets providerOptions override serviceTier and passes it to resume', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { serviceTier: 'default-tier' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      providerOptions: {
+        'codex-app-server': {
+          threadId: 'thr_existing',
+          serviceTier: 'priority',
+        },
+      },
+    });
+
+    expect(client.threadResumeCalls[0]).toEqual(
+      expect.objectContaining({ serviceTier: 'priority' }),
+    );
+    expect(client.turnStartCalls[0]).toEqual(
+      expect.objectContaining({ serviceTier: 'priority' }),
+    );
+  });
+
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
     const client = new FakeClient();
     client.turnStartImpl = async (params) => {

@@ -14,13 +14,13 @@
     "gpt-5.2-codex-max",
     "provider"
   ],
-  "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",
+  "homepage": "https://github.com/backspace-labs/ai-sdk-provider-codex-cli",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ben-vargas/ai-sdk-provider-codex-cli.git"
+    "url": "git+https://github.com/backspace-labs/ai-sdk-provider-codex-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues"
+    "url": "https://github.com/backspace-labs/ai-sdk-provider-codex-cli/issues"
   },
   "license": "MIT",
   "author": "Ben Vargas",
@@ -67,19 +67,19 @@
     "jsonc-parser": "^3.3.1"
   },
   "optionalDependencies": {
-    "@openai/codex": "^0.130.0"
+    "@openai/codex": "^0.137.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
     "@types/node": "20.19.41",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.8",
     "ai": "^6.0.3",
     "eslint": "^9.14.0",
     "prettier": "^3.3.3",
     "tsup": "8.5.1",
     "typescript": "5.6.3",
-    "vitest": "^3.2.4",
     "typescript-eslint": "^8.6.0",
+    "vitest": "^4.1.8",
     "zod": "^4.1.8"
   },
   "peerDependencies": {

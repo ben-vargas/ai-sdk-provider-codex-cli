@@ -195,6 +195,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       ...this.settings,
       personality: providerOptions.personality ?? this.settings.personality,
       effort: providerOptions.effort ?? this.settings.effort,
+      serviceTier: providerOptions.serviceTier ?? this.settings.serviceTier,
       summary: providerOptions.summary ?? this.settings.summary,
       approvalPolicy: providerOptions.approvalPolicy ?? this.settings.approvalPolicy,
       sandboxPolicy: providerOptions.sandboxPolicy ?? this.settings.sandboxPolicy,
@@ -368,6 +369,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     const startThread = async (ephemeral: boolean) => {
       const thread = await this.client.threadStart({
         model: this.modelId,
+        serviceTier: settings.serviceTier ?? null,
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
         sandbox: mapSandboxToThreadSandboxMode(settings),
@@ -404,6 +406,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           await this.client.threadResume({
             threadId: target.threadId,
             model: this.modelId,
+            serviceTier: settings.serviceTier ?? null,
             cwd: settings.cwd,
             approvalPolicy: mapApprovalPolicy(settings),
             sandbox: mapSandboxToThreadSandboxMode(settings),
@@ -553,6 +556,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
         sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
+        serviceTier: settings.serviceTier ?? null,
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
@@ -908,6 +912,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         cwd: settings.cwd,
         approvalPolicy: mapApprovalPolicy(settings),
         sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
+        serviceTier: settings.serviceTier ?? null,
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,

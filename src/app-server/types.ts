@@ -181,6 +181,7 @@ export interface CodexAppServerSettings {
 
   personality?: AppServerPersonality;
   effort?: ReasoningEffort;
+  serviceTier?: string | null;
   summary?: AppServerReasoningSummary;
   approvalPolicy?: AppServerApprovalPolicy;
   sandboxPolicy?: AppServerSandboxPolicy;
@@ -223,6 +224,7 @@ export interface CodexAppServerProviderOptions {
   includeRawChunks?: boolean;
   personality?: AppServerPersonality;
   effort?: ReasoningEffort;
+  serviceTier?: string | null;
   summary?: AppServerReasoningSummary;
   approvalPolicy?: AppServerApprovalPolicy;
   sandboxPolicy?: AppServerSandboxPolicy;

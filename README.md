@@ -7,8 +7,8 @@
 ![AI SDK v6](https://img.shields.io/badge/AI%20SDK-v6-000?logo=vercel&logoColor=white)
 ![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
-[![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/backspace-labs/ai-sdk-provider-codex-cli/issues)
+[![Latest Release](https://img.shields.io/github/v/release/backspace-labs/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/backspace-labs/ai-sdk-provider-codex-cli/releases/latest)
 
 A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with current GPT models such as `gpt-5.5`, `gpt-5.2`, and `gpt-5.1`, plus Codex-specific slugs like `gpt-5.3-codex`, `gpt-5.2-codex`, `*-codex-max`, and `*-codex-mini`, using your ChatGPT Plus/Pro subscription.
 
