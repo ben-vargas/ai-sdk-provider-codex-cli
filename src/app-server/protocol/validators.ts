@@ -431,6 +431,20 @@ const skillRequestApprovalParamsSchema = z
   })
   .passthrough();
 
+const mcpServerElicitationRequestParamsSchema = z
+  .object({
+    threadId: z.string(),
+    turnId: z.string().nullable().optional(),
+    serverName: z.string(),
+    mode: z.string().optional(),
+    message: z.string().optional(),
+    requestedSchema: z.unknown().optional(),
+    url: z.string().optional(),
+    elicitationId: z.string().optional(),
+    _meta: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .passthrough();
+
 const dynamicToolCallParamsSchema = z
   .object({
     threadId: z.string(),
@@ -452,6 +466,7 @@ export const serverRequestParamSchemas = {
   'item/commandExecution/requestApproval': commandExecutionRequestApprovalParamsSchema,
   'item/fileChange/requestApproval': fileChangeRequestApprovalParamsSchema,
   'item/tool/requestUserInput': toolRequestUserInputParamsSchema,
+  'mcpServer/elicitation/request': mcpServerElicitationRequestParamsSchema,
   'skill/requestApproval': skillRequestApprovalParamsSchema,
   'item/tool/call': dynamicToolCallParamsSchema,
   'account/chatgptAuthTokens/refresh': chatgptAuthTokensRefreshParamsSchema,
@@ -484,6 +499,13 @@ export const serverRequestSchema = z.discriminatedUnion('method', [
       id: jsonRpcIdSchema,
       method: z.literal('item/tool/requestUserInput'),
       params: toolRequestUserInputParamsSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      id: jsonRpcIdSchema,
+      method: z.literal('mcpServer/elicitation/request'),
+      params: mcpServerElicitationRequestParamsSchema,
     })
     .passthrough(),
   z

@@ -11,6 +11,7 @@ import type {
   AppServerCommandExecutionApprovalRequest,
   AppServerDynamicToolCallRequest,
   AppServerFileChangeApprovalRequest,
+  AppServerMcpElicitationRequest,
   AppServerSkillApprovalRequest,
   AppServerToolRequestUserInputRequest,
   AppServerUnhandledRequest,
@@ -854,6 +855,33 @@ export class AppServerRpcClient extends EventEmitter {
           return;
         }
         await sendResult({ decision: autoApprove ? 'approve' : 'decline' });
+        return;
+      }
+      case 'mcpServer/elicitation/request': {
+        const handled = await runHandler(() =>
+          handlers.onMcpElicitation?.(normalized as unknown as AppServerMcpElicitationRequest),
+        );
+        if (handled !== undefined) {
+          await sendResult(handled);
+          return;
+        }
+        const fallback = await runHandler(() =>
+          handlers.onUnhandled?.(normalized as unknown as AppServerUnhandledRequest),
+        );
+        if (fallback !== undefined) {
+          await sendResult(fallback);
+          return;
+        }
+        const meta = normalized.params._meta as
+          | { codex_approval_kind?: unknown }
+          | null
+          | undefined;
+        const isToolCallApproval = meta?.codex_approval_kind === 'mcp_tool_call';
+        if (isToolCallApproval && autoApprove) {
+          await sendResult({ action: 'accept', content: {} });
+        } else {
+          await sendResult({ action: 'decline', content: null });
+        }
         return;
       }
       case 'item/tool/requestUserInput': {

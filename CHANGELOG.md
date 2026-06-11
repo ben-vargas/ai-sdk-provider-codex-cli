@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Handle the `mcpServer/elicitation/request` server request introduced by Codex CLI >= 0.139 so MCP tool calls are no longer always rejected (#33). MCP tool call approval elicitations (`_meta.codex_approval_kind === 'mcp_tool_call'`) are accepted when `autoApprove` is `true` and declined otherwise; all other elicitations (for example plugin install suggestions and URL elicitations) are declined instead of failing with JSON-RPC `-32601`.
+
+### Added
+
+- New typed `onMcpElicitation` handler on `serverRequests` for custom MCP elicitation handling; `onUnhandled` is still consulted as a fallback for this method, preserving existing workarounds.
+
 ## [1.2.1] - 2026-05-25
 
 ### Fixed

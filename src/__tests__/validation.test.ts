@@ -88,6 +88,16 @@ describe('validateSettings', () => {
     expect(res.errors).toHaveLength(0);
   });
 
+  it('accepts onMcpElicitation in app-server serverRequests', () => {
+    const res = validateAppServerSettings({
+      serverRequests: {
+        onMcpElicitation: async () => ({ action: 'accept', content: {} }),
+      },
+    });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+  });
+
   it('rejects invalid app-server serverRequests values', () => {
     const res = validateAppServerSettings({
       serverRequests: {

@@ -1,0 +1,31 @@
+{
+  "id": 0,
+  "method": "mcpServer/elicitation/request",
+  "params": {
+    "threadId": "019eb8d5-83a0-7a80-b030-5522bff32ebb",
+    "turnId": "019eb8d5-83a7-7321-b059-39b655e1e130",
+    "serverName": "everything",
+    "mode": "form",
+    "_meta": {
+      "codex_approval_kind": "mcp_tool_call",
+      "persist": ["session", "always"],
+      "tool_title": "Echo Tool",
+      "tool_description": "Echoes back the input string",
+      "tool_params": {
+        "message": "ping"
+      },
+      "tool_params_display": [
+        {
+          "name": "message",
+          "value": "ping",
+          "display_name": "message"
+        }
+      ]
+    },
+    "message": "Allow the everything MCP server to run tool \"echo\"?",
+    "requestedSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  }
+}
