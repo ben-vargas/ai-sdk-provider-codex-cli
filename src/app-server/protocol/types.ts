@@ -444,6 +444,32 @@ export interface ToolRequestUserInputResponse {
   answers: Record<string, unknown>;
 }
 
+export type McpServerElicitationAction = 'accept' | 'decline' | 'cancel';
+
+export interface McpServerElicitationRequestParams {
+  threadId: string;
+  /** Nullable: the elicitation may arrive outside of an active turn. */
+  turnId?: string | null;
+  serverName: string;
+  /** 'form' requests carry message/requestedSchema; 'url' requests carry url/elicitationId. */
+  mode?: string;
+  message?: string;
+  requestedSchema?: unknown;
+  url?: string;
+  elicitationId?: string;
+  /**
+   * For MCP tool approval elicitations, Codex sets
+   * `codex_approval_kind: 'mcp_tool_call'` and may include `persist` hints.
+   */
+  _meta?: Record<string, unknown> | null;
+}
+
+export interface McpServerElicitationRequestResponse {
+  action: McpServerElicitationAction;
+  /** Structured user input for accepted elicitations; null for decline/cancel. */
+  content?: Record<string, unknown> | null;
+}
+
 export interface DynamicToolCallParams {
   threadId: string;
   turnId: string;

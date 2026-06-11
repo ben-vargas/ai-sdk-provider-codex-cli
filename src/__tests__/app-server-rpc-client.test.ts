@@ -320,6 +320,135 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('accepts MCP tool call elicitations when autoApprove is true', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: true } });
+    await client.ensureReady();
+
+    await callServerRequest(client, 31, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'everything',
+      mode: 'form',
+      _meta: { codex_approval_kind: 'mcp_tool_call', persist: ['session', 'always'] },
+      message: 'Allow the everything MCP server to run tool "echo"?',
+      requestedSchema: { type: 'object', properties: {} },
+    });
+
+    expect(writes).toContainEqual({ id: 31, result: { action: 'accept', content: {} } });
+    await client.close();
+  });
+
+  it('declines MCP tool call elicitations when autoApprove is false', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: false } });
+    await client.ensureReady();
+
+    await callServerRequest(client, 32, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'everything',
+      mode: 'form',
+      _meta: { codex_approval_kind: 'mcp_tool_call' },
+      message: 'Allow the everything MCP server to run tool "echo"?',
+      requestedSchema: { type: 'object', properties: {} },
+    });
+
+    expect(writes).toContainEqual({ id: 32, result: { action: 'decline', content: null } });
+    await client.close();
+  });
+
+  it('declines non tool-call elicitations even when autoApprove is true', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({ settings: { autoApprove: true } });
+    await client.ensureReady();
+
+    await callServerRequest(client, 33, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'codex_apps',
+      mode: 'form',
+      _meta: { codex_approval_kind: 'tool_suggestion', suggest_type: 'install' },
+      message: 'Install the Slack plugin?',
+      requestedSchema: { type: 'object', properties: {} },
+    });
+    await callServerRequest(client, 34, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'everything',
+      mode: 'url',
+      message: 'Open this URL to continue',
+      url: 'https://example.com/auth',
+      elicitationId: 'elic_1',
+    });
+
+    expect(writes).toContainEqual({ id: 33, result: { action: 'decline', content: null } });
+    expect(writes).toContainEqual({ id: 34, result: { action: 'decline', content: null } });
+    await client.close();
+  });
+
+  it('prefers onMcpElicitation handler over built-in elicitation defaults', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: {
+        autoApprove: false,
+        serverRequests: {
+          onMcpElicitation: async () => ({ action: 'accept' as const, content: {} }),
+        },
+      },
+    });
+    await client.ensureReady();
+
+    await callServerRequest(client, 35, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'everything',
+      mode: 'form',
+      _meta: { codex_approval_kind: 'mcp_tool_call' },
+      message: 'Allow the everything MCP server to run tool "echo"?',
+      requestedSchema: { type: 'object', properties: {} },
+    });
+
+    expect(writes).toContainEqual({ id: 35, result: { action: 'accept', content: {} } });
+    await client.close();
+  });
+
+  it('falls back to onUnhandled for elicitations when onMcpElicitation is absent', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: {
+        autoApprove: false,
+        serverRequests: {
+          onUnhandled: async () => ({ action: 'accept', content: {} }),
+        },
+      },
+    });
+    await client.ensureReady();
+
+    await callServerRequest(client, 36, 'mcpServer/elicitation/request', {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      serverName: 'everything',
+      mode: 'form',
+      _meta: { codex_approval_kind: 'mcp_tool_call' },
+      message: 'Allow the everything MCP server to run tool "echo"?',
+      requestedSchema: { type: 'object', properties: {} },
+    });
+
+    expect(writes).toContainEqual({ id: 36, result: { action: 'accept', content: {} } });
+    await client.close();
+  });
+
   it('honors per-thread autoApprove override over client-level setting', async () => {
     const { child, writes } = createMockProcess();
     setSpawnMock(() => child);

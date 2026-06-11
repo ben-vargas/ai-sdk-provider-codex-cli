@@ -363,7 +363,7 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 - `minCodexVersion`: minimum supported app-server version (semver)
 - `includeRawChunks`: emit raw JSON-RPC notifications as `raw` stream parts by default
 - `serverRequests`: typed handlers for server-initiated JSON-RPC requests
-- `autoApprove`: default approval response when no custom handler is provided
+- `autoApprove`: default approval response when no custom handler is provided (covers command execution, file changes, skills, and MCP tool call approvals via `mcpServer/elicitation/request` on Codex >= 0.139)
 - `persistExtendedHistory`: request extended thread history persistence
 - `threadMode`: `stateless` (default) or `persistent` automatic thread reuse
 - `resume`: shorthand to resume an existing thread id

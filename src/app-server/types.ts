@@ -8,6 +8,8 @@ import type {
   DynamicToolCallResponse,
   FileChangeRequestApprovalParams,
   FileChangeRequestApprovalResponse,
+  McpServerElicitationRequestParams,
+  McpServerElicitationRequestResponse,
   SkillRequestApprovalParams,
   SkillRequestApprovalResponse,
   ToolRequestUserInputParams,
@@ -104,6 +106,12 @@ export interface AppServerSkillApprovalRequest {
   params: SkillRequestApprovalParams;
 }
 
+export interface AppServerMcpElicitationRequest {
+  id: JsonRpcId;
+  method: 'mcpServer/elicitation/request';
+  params: McpServerElicitationRequestParams;
+}
+
 export interface AppServerToolRequestUserInputRequest {
   id: JsonRpcId;
   method: 'item/tool/requestUserInput';
@@ -126,6 +134,7 @@ export type AppServerTypedRequest =
   | AppServerCommandExecutionApprovalRequest
   | AppServerFileChangeApprovalRequest
   | AppServerSkillApprovalRequest
+  | AppServerMcpElicitationRequest
   | AppServerToolRequestUserInputRequest
   | AppServerDynamicToolCallRequest
   | AppServerAuthRefreshRequest;
@@ -155,6 +164,15 @@ export interface CodexAppServerRequestHandlers {
   onSkillApproval?: (
     request: AppServerSkillApprovalRequest,
   ) => Promise<SkillRequestApprovalResponse | undefined>;
+  /**
+   * Handles `mcpServer/elicitation/request` (Codex >= 0.139), which includes
+   * MCP tool call approvals (`params._meta.codex_approval_kind === 'mcp_tool_call'`).
+   * Built-in default: accept tool call approvals when `autoApprove` is true,
+   * decline all other elicitations.
+   */
+  onMcpElicitation?: (
+    request: AppServerMcpElicitationRequest,
+  ) => Promise<McpServerElicitationRequestResponse | undefined>;
   onToolRequestUserInput?: (
     request: AppServerToolRequestUserInputRequest,
   ) => Promise<ToolRequestUserInputResponse | undefined>;
