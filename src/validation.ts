@@ -158,6 +158,12 @@ const serverRequestsSchema = z
         message: 'onSkillApproval must be a function',
       })
       .optional(),
+    onMcpElicitation: z
+      .any()
+      .refine((val) => val === undefined || typeof val === 'function', {
+        message: 'onMcpElicitation must be a function',
+      })
+      .optional(),
     onToolRequestUserInput: z
       .any()
       .refine((val) => val === undefined || typeof val === 'function', {
