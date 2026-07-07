@@ -23,7 +23,7 @@ try {
     totalTokens: result.usage?.totalTokens ?? 0,
   });
 
-  const metadata = result.providerMetadata?.['codex-app-server'] ?? {};
+  const metadata = result.finalStep.providerMetadata?.['codex-app-server'] ?? {};
   console.log('Provider metadata keys:', Object.keys(metadata));
   console.log('Usage metadata example complete.');
 } finally {

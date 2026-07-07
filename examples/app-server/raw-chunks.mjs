@@ -14,14 +14,14 @@ try {
 
   const result = streamText({
     model,
-    includeRawChunks: true,
+    include: { rawChunks: true },
     prompt: 'Give a short two-sentence summary of why tests matter.',
   });
 
   let text = '';
   let rawChunkCount = 0;
 
-  for await (const part of result.fullStream) {
+  for await (const part of result.stream) {
     if (part.type === 'text-delta') {
       text += part.text ?? part.delta ?? '';
     }

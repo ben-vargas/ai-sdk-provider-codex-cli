@@ -78,7 +78,7 @@ These demonstrate features that only exist in `codex app-server` mode:
 - `examples/app-server/session-injection.mjs` - uses `onSessionCreated` + `session.injectMessage()`
 - `examples/app-server/local-mcp-tool.mjs` - registers in-process tools with `createSdkMcpServer()` (loopback-bound + bearer-auth local MCP transport)
 - `examples/app-server/abort.mjs` - demonstrates aborting an in-flight stream with `AbortController`
-- `examples/app-server/raw-chunks.mjs` - enables `includeRawChunks` and inspects raw protocol events
+- `examples/app-server/raw-chunks.mjs` - enables `include: { rawChunks: true }` and inspects raw protocol events
 - `examples/app-server/usage-metadata.mjs` - prints token usage and provider metadata from a generation
 
 ## Troubleshooting

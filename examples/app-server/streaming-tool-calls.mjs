@@ -30,8 +30,9 @@ try {
     });
 
     const textBuffer = [];
+    let threadId;
 
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       switch (part.type) {
         case 'response-metadata':
           break;
@@ -77,7 +78,7 @@ try {
           break;
         }
         case 'text-delta': {
-          // AI SDK fullStream uses .text for text-delta events
+          // AI SDK stream uses .text for text-delta events
           const textDelta = part.text ?? part.delta;
           if (typeof textDelta === 'string') {
             textBuffer.push(textDelta);
@@ -85,12 +86,15 @@ try {
           }
           break;
         }
+        case 'finish-step': {
+          threadId = part.providerMetadata?.['codex-app-server']?.threadId ?? threadId;
+          break;
+        }
         case 'finish': {
-          // AI SDK v6 stable uses nested usage structure with inputTokens.total, outputTokens.total
-          const usage = part.totalUsage || part.usage;
-          const inputTotal = usage?.inputTokens?.total ?? 0;
-          const outputTotal = usage?.outputTokens?.total ?? 0;
-          const threadId = part.providerMetadata?.['codex-app-server']?.threadId;
+          // AI SDK v7 usage exposes flat token totals
+          const usage = part.totalUsage;
+          const inputTotal = usage?.inputTokens ?? 0;
+          const outputTotal = usage?.outputTokens ?? 0;
           if (threadId) {
             console.log(`\n Thread: ${threadId}`);
           }

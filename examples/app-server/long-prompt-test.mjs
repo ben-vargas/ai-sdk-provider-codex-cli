@@ -99,7 +99,7 @@ async function main() {
 
     const result = await generateText({
       model: codex('gpt-5.5'),
-      system: FRONTEND_PROMPT,
+      instructions: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });
 

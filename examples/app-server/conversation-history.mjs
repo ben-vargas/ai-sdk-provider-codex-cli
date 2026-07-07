@@ -26,7 +26,7 @@ try {
   });
   console.log('Turn 1:', first.text);
 
-  const threadId = first.providerMetadata?.['codex-app-server']?.threadId;
+  const threadId = first.finalStep.providerMetadata?.['codex-app-server']?.threadId;
   if (!threadId) {
     throw new Error('No threadId returned from app-server provider.');
   }

@@ -15,7 +15,7 @@ try {
 
   const { text } = await generateText({
     model,
-    system: 'You are a terse assistant. Always reply in exactly 3 words.',
+    instructions: 'You are a terse assistant. Always reply in exactly 3 words.',
     prompt: 'Describe TypeScript in a nutshell.',
   });
   console.log('System-influenced reply:', text);
