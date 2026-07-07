@@ -64,7 +64,7 @@ npm i ai@^6 ai-sdk-provider-codex-cli@ai-sdk-v6
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.130.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.130.0`, the latest non-alpha release validated for this release line. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
+> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.142.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.142.5`, the latest non-alpha release validated for this release line. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -100,7 +100,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     autoApprove: false,
     personality: 'pragmatic',
   },

@@ -257,7 +257,14 @@ export function mapUnsupportedSettingsWarnings(options: {
   add(options.stopSequences?.length ? options.stopSequences : undefined, 'stopSequences');
   add(options.seed, 'seed');
   add(options.tools, 'tools');
-  add(options.toolChoice, 'toolChoice');
+  // ai@7 normalizes an unset toolChoice to { type: 'auto' } before calling the
+  // provider, so a bare 'auto' carries no user intent — warn only for
+  // meaningful choices ('required' | 'none' | 'tool').
+  const toolChoice = options.toolChoice as { type?: unknown } | undefined;
+  add(
+    toolChoice !== undefined && toolChoice.type === 'auto' ? undefined : toolChoice,
+    'toolChoice',
+  );
 
   return unsupported;
 }

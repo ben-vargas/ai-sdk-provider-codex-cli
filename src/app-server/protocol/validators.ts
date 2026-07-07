@@ -273,7 +273,19 @@ const imageGenerationItemSchema = z
   })
   .passthrough();
 
-export const threadItemSchema = z.discriminatedUnion('type', [
+// Forward-compat: codex regularly ships new thread item types (0.142 alone
+// added five). Unknown variants must still validate — the RPC client drops
+// notifications that fail schema validation, and dropping `turn/completed`
+// would hang the stream forever. Routing requires only a string `type`
+// (every other item field is typeof-guarded at the consumer); unknown items
+// flow through as raw chunks and are ignored by tool mapping.
+const unknownThreadItemSchema = z
+  .object({
+    type: z.string(),
+  })
+  .passthrough();
+
+const knownThreadItemSchema = z.discriminatedUnion('type', [
   userMessageItemSchema,
   agentMessageItemSchema,
   planItemSchema,
@@ -293,6 +305,8 @@ export const threadItemSchema = z.discriminatedUnion('type', [
   exitedReviewModeItemSchema,
   contextCompactionItemSchema,
 ]);
+
+export const threadItemSchema = knownThreadItemSchema.or(unknownThreadItemSchema);
 
 const codexHttpStatusCodeSchema = z
   .object({
@@ -320,6 +334,11 @@ const codexErrorInfoSchema = z.union([
   z
     .object({ activeTurnNotSteerable: z.object({ turnKind: z.string() }).passthrough() })
     .passthrough(),
+  // Forward-compat catch-alls: consumers only compare against the known string
+  // codes above (unknown codes fall back to the generic error path), so a new
+  // errorInfo variant must never fail validation and drop the notification.
+  z.string(),
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const turnSchema = z

@@ -78,12 +78,12 @@ describe('app-server protocol validators', () => {
     expect(serverRequestSchema.safeParse(request).success).toBe(true);
   });
 
-  it('rejects invalid codexErrorInfo payloads', () => {
+  it('tolerates unknown codexErrorInfo variants but rejects non-string/non-object payloads', () => {
     const schema = incomingNotificationSchemas['turn/completed'];
     expect(schema).toBeDefined();
     if (!schema) return;
 
-    const invalid = schema.safeParse({
+    const turnWithErrorInfo = (codexErrorInfo: unknown) => ({
       threadId: 'thr_1',
       turn: {
         id: 'turn_1',
@@ -91,13 +91,89 @@ describe('app-server protocol validators', () => {
         status: 'failed',
         error: {
           message: 'boom',
-          codexErrorInfo: { unsupported: true },
+          codexErrorInfo,
           additionalDetails: null,
         },
       },
     });
 
+    // Unknown future variants must validate; dropping the notification would
+    // hang the stream (turn/completed is the only completion signal).
+    expect(schema.safeParse(turnWithErrorInfo({ unsupported: true })).success).toBe(true);
+    expect(schema.safeParse(turnWithErrorInfo('futureErrorCode')).success).toBe(true);
+
+    // Structurally invalid payloads are still rejected.
+    expect(schema.safeParse(turnWithErrorInfo(42)).success).toBe(false);
+    expect(schema.safeParse(turnWithErrorInfo(['other'])).success).toBe(false);
+  });
+
+  it('tolerates unknown thread item types in turn/completed and item lifecycle notifications', () => {
+    const turnCompletedSchema = incomingNotificationSchemas['turn/completed'];
+    expect(turnCompletedSchema).toBeDefined();
+    if (!turnCompletedSchema) return;
+
+    const futureWidget = {
+      type: 'futureWidget',
+      id: 'item_future_1',
+      widgetPayload: { nested: true },
+    };
+
+    const completed = turnCompletedSchema.safeParse({
+      threadId: 'thr_1',
+      turn: {
+        id: 'turn_1',
+        items: [futureWidget],
+        status: 'completed',
+        error: null,
+      },
+    });
+    expect(completed.success, JSON.stringify(!completed.success && completed.error.issues)).toBe(
+      true,
+    );
+
+    for (const method of ['item/started', 'item/completed']) {
+      const schema = incomingNotificationSchemas[method];
+      expect(schema, method).toBeDefined();
+      const result = schema?.safeParse({
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        item: futureWidget,
+      });
+      expect(result?.success, method).toBe(true);
+    }
+
+    // Items missing a string `type` are still rejected — routing requires it.
+    const invalid = turnCompletedSchema.safeParse({
+      threadId: 'thr_1',
+      turn: {
+        id: 'turn_1',
+        items: [{ id: 'item_untyped', payload: 'x' }],
+        status: 'completed',
+        error: null,
+      },
+    });
     expect(invalid.success).toBe(false);
+  });
+
+  it('validates a failed turn combining a fabricated item type and errorInfo variant', () => {
+    const schema = incomingNotificationSchemas['turn/completed'];
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    const result = schema.safeParse({
+      threadId: 'thr_1',
+      turn: {
+        id: 'turn_1',
+        items: [{ type: 'futureWidget', id: 'item_future_1' }],
+        status: 'failed',
+        error: {
+          message: 'future failure',
+          codexErrorInfo: { futureVariant: { detail: 'x' } },
+          additionalDetails: null,
+        },
+      },
+    });
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true);
   });
 });
 

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ai` (dev): ^7.0.0
 - `zod` peer dependency narrowed to `^3.25.76 || ^4.1.8`
 - Model discovery guidance: documentation no longer maintains a static model catalog; use `listModels()` / `provider.listModels()` — available slugs follow your installed Codex CLI
+- Optional `@openai/codex` dependency: `^0.130.0` → `^0.142.5`; app-server protocol types synced with and release-tested against Codex CLI 0.142.5
 
 ### Migration from AI SDK v6
 

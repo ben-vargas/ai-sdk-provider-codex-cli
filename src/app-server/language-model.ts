@@ -79,12 +79,14 @@ function resolveReasoningEffort(args: {
     return { effort: reasoning as ReasoningEffort };
   }
 
+  // Align with the exec provider: ignore the unmappable value and fall back
+  // to the otherwise-configured effort (providerOptions > settings default).
   return {
-    effort: undefined,
+    effort: args.defaultEffort,
     warning: {
       type: 'unsupported',
       feature: 'reasoning',
-      details: `Codex app-server does not support reasoning effort '${reasoning}'; effort will be unset.`,
+      details: `Codex app-server does not support reasoning effort '${reasoning}'; it will be ignored.`,
     },
   };
 }

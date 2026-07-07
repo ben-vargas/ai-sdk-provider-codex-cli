@@ -1003,6 +1003,28 @@ describe('ExecLanguageModel', () => {
       expect(warning).toBeDefined();
       expect(warning?.details).toContain("'ultra'");
     });
+
+    it('warns and keeps configured effort for unmappable top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'medium' },
+      });
+      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=medium');
+      const warning = res.warnings.find(
+        (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
+          w.type === 'unsupported' && w.feature === 'reasoning',
+      );
+      expect(warning?.details).toContain("'ultra'; it will be ignored");
+    });
   });
 
   describe('Phase 2: providerOptions overrides', () => {

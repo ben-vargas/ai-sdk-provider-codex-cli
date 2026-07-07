@@ -35,10 +35,24 @@ function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | un
     };
   }
 
+  if (type === 'dynamictoolcall') {
+    const tool = 'tool' in item && typeof item.tool === 'string' && item.tool ? item.tool : 'tool';
+    const namespace =
+      'namespace' in item && typeof item.namespace === 'string' && item.namespace
+        ? item.namespace
+        : undefined;
+    return {
+      toolName: namespace ? `${namespace}__${tool}` : tool,
+      dynamic: true,
+    };
+  }
+
   if (type === 'websearch') {
     return { toolName: 'web_search', dynamic: true };
   }
 
+  // hookPrompt, subAgentActivity, sleep, and imageGeneration items (plus any
+  // unknown future item types) are intentionally unmapped: raw chunks only for now.
   return undefined;
 }
 

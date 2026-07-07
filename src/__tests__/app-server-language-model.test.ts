@@ -236,7 +236,7 @@ describe('AppServerLanguageModel', () => {
     expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('minimal');
   });
 
-  it('warns and unsets effort for unmappable reasoning values', async () => {
+  it('warns and keeps configured effort for unmappable reasoning values', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
       id: 'gpt-5.3-codex',
@@ -249,9 +249,13 @@ describe('AppServerLanguageModel', () => {
       reasoning: 'ultra' as never,
     });
 
-    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBeUndefined();
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
     expect(result.warnings).toContainEqual(
-      expect.objectContaining({ type: 'unsupported', feature: 'reasoning' }),
+      expect.objectContaining({
+        type: 'unsupported',
+        feature: 'reasoning',
+        details: expect.stringContaining("'ultra'; it will be ignored"),
+      }),
     );
   });
 

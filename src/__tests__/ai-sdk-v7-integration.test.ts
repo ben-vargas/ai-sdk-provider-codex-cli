@@ -2,20 +2,25 @@
  * End-to-end integration tests: AI SDK v7 (`ai` package) <-> this provider.
  *
  * These tests call the provider exclusively through the real `ai@7`
- * entrypoints (generateText, streamText, generateObject) so that any
- * spec-version or shape mismatch between ai@7 and the LanguageModelV4
- * implementation fails loudly. The Codex CLI child process is mocked at the
- * `node:child_process` boundary using the same pattern as
- * exec-language-model.test.ts; everything between `ai` and `spawn` is real.
+ * entrypoints (generateText, streamText, generateObject, streamObject) so
+ * that any spec-version or shape mismatch between ai@7 and the
+ * LanguageModelV4 implementation fails loudly. For the exec provider the
+ * Codex CLI child process is mocked at the `node:child_process` boundary
+ * using the same pattern as exec-language-model.test.ts; for the app-server
+ * provider the JSON-RPC client is faked using the same pattern as
+ * app-server-language-model.test.ts. Everything between `ai` and those
+ * boundaries is real.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateText, streamText, generateObject } from 'ai';
+import { generateText, streamText, generateObject, streamObject } from 'ai';
 import { z } from 'zod';
 import * as childProcess from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createCodexExec } from '../index.js';
+import { AppServerLanguageModel } from '../app-server/language-model.js';
+import type { TurnStartParams } from '../app-server/protocol/types.js';
 
 interface MockChildProcess extends EventEmitter {
   stdout: PassThrough;
@@ -184,14 +189,15 @@ describe('AI SDK v7 integration (exec provider)', () => {
     expect(capture.stdin()).toContain('User: Say hi');
   });
 
-  // KNOWN BUG (do not "fix" this test — fix the provider): ai@7 normalizes an
-  // unset toolChoice to { type: 'auto' } before calling the model, and the
-  // provider warns on ANY defined toolChoice. A bare generateText call should
-  // be warning-free. Marked `.fails` so it passes while the bug exists and
-  // flags loudly once the provider stops warning on ai@7's default toolChoice
-  // (then remove `.fails`).
-  it.fails('a bare generateText call surfaces no unsupported-setting warnings', async () => {
+  it('a bare generateText call surfaces no unsupported-setting warnings', async () => {
     installCapturingSpawn(codexTurn('plain'));
+
+    // ai@7 normalizes an unset toolChoice to { type: 'auto' } before calling
+    // the model; the provider treats that default as carrying no user intent,
+    // so a bare call is warning-free end to end. In Node, ai@7 routes warning
+    // noise through process.emitWarning (console.warn is only its fallback).
+    const emitWarningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await generateText({
       model: provider('gpt-5'),
@@ -199,6 +205,36 @@ describe('AI SDK v7 integration (exec provider)', () => {
     });
 
     expect(result.warnings ?? []).toEqual([]);
+    // With zero warnings, ai@7's warning logger stays silent — no process
+    // warning noise from a plain call.
+    const aiSdkNoise = emitWarningSpy.mock.calls.filter(([message]) =>
+      String(message).includes('AI SDK Warning'),
+    );
+    expect(aiSdkNoise).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('a meaningful toolChoice still yields the unsupported-setting warning', async () => {
+    installCapturingSpawn(codexTurn('plain'));
+
+    // Swallow ai@7's warning noise so the suite output stays clean; the spy
+    // doubles as the observable end of the warning pipeline.
+    const emitWarningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const result = await generateText({
+      model: provider('gpt-5'),
+      prompt: 'Force a tool',
+      toolChoice: 'required',
+    });
+
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ type: 'unsupported', feature: 'toolChoice' }),
+    );
+    expect(emitWarningSpy).toHaveBeenCalledWith(
+      expect.stringContaining('toolChoice'),
+      expect.anything(),
+    );
   });
 
   it('streamText yields text deltas and a finish part via result.stream', async () => {
@@ -260,6 +296,37 @@ describe('AI SDK v7 integration (exec provider)', () => {
       },
     });
     expect(schemaJson.required).toEqual(expect.arrayContaining(['name', 'age']));
+  });
+
+  it('streamObject yields partials and resolves the final object from codex JSON output', async () => {
+    const capture = installCapturingSpawn(
+      codexTurn('{"name":"Grace Hopper","age":45}', 'thread-stream-obj'),
+    );
+
+    const result = streamObject({
+      model: provider('gpt-5'),
+      schema: z.object({ name: z.string(), age: z.number() }),
+      prompt: 'Extract the person',
+    });
+
+    const partials: unknown[] = [];
+    for await (const partial of result.partialObjectStream) {
+      partials.push(partial);
+    }
+
+    // The exec JSONL surface carries no text deltas (assistant text arrives
+    // only via item.completed), so the provider emits the complete JSON as a
+    // single text-delta at process close: the partial stream produces at
+    // least one partial, and the last one is already the finished object.
+    expect(partials.length).toBeGreaterThanOrEqual(1);
+    expect(partials.at(-1)).toEqual({ name: 'Grace Hopper', age: 45 });
+
+    await expect(result.object).resolves.toEqual({ name: 'Grace Hopper', age: 45 });
+
+    // The zod schema flowed through ai@7's responseFormat into the STREAMING
+    // CLI invocation's --output-schema temp file (doStream plumbing, distinct
+    // from the generateObject/doGenerate path above).
+    expect(capture.args).toContain('--output-schema');
   });
 
   it('top-level reasoning option maps to the codex reasoning-effort config', async () => {
@@ -350,5 +417,114 @@ describe('AI SDK v7 integration (exec provider)', () => {
     // falling into an unsupported-image warning.
     const warningText = JSON.stringify(result.warnings ?? []);
     expect(warningText).not.toMatch(/image/i);
+  });
+});
+
+/**
+ * Minimal app-server JSON-RPC fake (same pattern as
+ * app-server-language-model.test.ts): `turnStart` drives notifications over
+ * the shared EventEmitter channel the provider's router subscribes to.
+ */
+class FakeAppServerClient extends EventEmitter {
+  turnStartCalls: TurnStartParams[] = [];
+  turnStartImpl?: (params: TurnStartParams) => Promise<{ turn: { id: string } }>;
+  private nextContextId = 1;
+
+  async threadStart(_params: unknown) {
+    return {
+      thread: { id: 'thr_v7' },
+      model: 'gpt-5.3-codex',
+      modelProvider: 'openai',
+      cwd: '/tmp',
+      approvalPolicy: 'never',
+      sandbox: { type: 'workspaceWrite' },
+      reasoningEffort: null,
+    };
+  }
+
+  async turnStart(params: TurnStartParams) {
+    this.turnStartCalls.push(params);
+    if (!this.turnStartImpl) throw new Error('turnStartImpl not installed for this test');
+    return await this.turnStartImpl(params);
+  }
+
+  async turnInterrupt(_params: { threadId: string; turnId: string }) {
+    return {};
+  }
+
+  async withThreadLock(_threadId: string, fn: () => Promise<unknown>) {
+    return await fn();
+  }
+
+  registerRequestContext(
+    _threadId: string,
+    _context: { handlers: Record<string, unknown>; autoApprove?: boolean },
+  ): string {
+    return `ctx_${this.nextContextId++}`;
+  }
+
+  bindRequestContext(_contextId: string, _turnId: string) {}
+
+  clearRequestContext(_contextId: string) {}
+
+  clearRequestContextForTurn(_turnId: string) {}
+
+  hasTurnCompleted(_turnId: string): boolean {
+    return false;
+  }
+}
+
+describe('AI SDK v7 integration (app-server provider)', () => {
+  it('streamObject resolves the object built from json-mode buffered deltas', async () => {
+    const client = new FakeAppServerClient();
+    client.turnStartImpl = async (params) => {
+      // Emit asynchronously (deterministic, no wall-clock delay) so the turn
+      // id is bound before the notifications arrive.
+      setImmediate(() => {
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_json_1',
+          itemId: 'item_json_1',
+          delta: '{"name":"Grace Hopper"',
+        });
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_json_1',
+          itemId: 'item_json_1',
+          delta: ',"age":45}',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_json_1', items: [], status: 'completed', error: null },
+        });
+      });
+      return { turn: { id: 'turn_json_1' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
+
+    const result = streamObject({
+      model: model as never,
+      schema: z.object({ name: z.string(), age: z.number() }),
+      prompt: 'Extract the person',
+    });
+
+    const partials: unknown[] = [];
+    for await (const partial of result.partialObjectStream) {
+      partials.push(partial);
+    }
+
+    // In JSON mode the emitter (jsonModeLastTextBlockOnly) buffers every
+    // incremental text delta and replays only the LAST completed text block
+    // as a single text-delta at finish, so ai@7 never observes incremental
+    // JSON: the partial stream collapses to exactly one partial — the
+    // completed object.
+    expect(partials).toEqual([{ name: 'Grace Hopper', age: 45 }]);
+
+    await expect(result.object).resolves.toEqual({ name: 'Grace Hopper', age: 45 });
+
+    // The json responseFormat flowed into turn/start as an outputSchema.
+    const turnStart = client.turnStartCalls[0] as TurnStartParams & { outputSchema?: unknown };
+    expect(turnStart?.outputSchema).toMatchObject({ type: 'object' });
   });
 });
