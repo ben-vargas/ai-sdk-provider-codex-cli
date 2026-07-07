@@ -1,10 +1,10 @@
 import type {
   JSONValue,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
-  SharedV3ProviderMetadata,
-  SharedV3Warning,
+  LanguageModelV4FinishReason,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
+  SharedV4ProviderMetadata,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import { generateId } from '@ai-sdk/provider-utils';
 
@@ -25,13 +25,13 @@ export class AppServerStreamEmitter {
   private closed = false;
 
   constructor(
-    private readonly controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
+    private readonly controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>,
     private readonly options: AppServerStreamEmitterOptions,
   ) {
     this.jsonModeLastTextBlockOnly = Boolean(options.jsonModeLastTextBlockOnly);
   }
 
-  private safeEnqueue(part: LanguageModelV3StreamPart): void {
+  private safeEnqueue(part: LanguageModelV4StreamPart): void {
     if (this.closed) return;
     try {
       this.controller.enqueue(part);
@@ -40,7 +40,7 @@ export class AppServerStreamEmitter {
     }
   }
 
-  emitStreamStart(warnings: SharedV3Warning[]): void {
+  emitStreamStart(warnings: SharedV4Warning[]): void {
     this.safeEnqueue({ type: 'stream-start', warnings });
   }
 
@@ -190,9 +190,9 @@ export class AppServerStreamEmitter {
   }
 
   emitFinish(
-    finishReason: LanguageModelV3FinishReason,
-    usage: LanguageModelV3Usage,
-    providerMetadata?: SharedV3ProviderMetadata,
+    finishReason: LanguageModelV4FinishReason,
+    usage: LanguageModelV4Usage,
+    providerMetadata?: SharedV4ProviderMetadata,
   ): void {
     if (this.jsonModeLastTextBlockOnly) {
       if (this.textId) {

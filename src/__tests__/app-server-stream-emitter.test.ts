@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import { AppServerStreamEmitter } from '../app-server/stream/emitter.js';
 import { createEmptyCodexUsage } from '../shared-utils.js';
 
 function createCapture() {
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
   const controller = {
-    enqueue: (part: LanguageModelV3StreamPart) => parts.push(part),
+    enqueue: (part: LanguageModelV4StreamPart) => parts.push(part),
     close: vi.fn(),
     error: vi.fn(),
-  } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as ReadableStreamDefaultController<LanguageModelV4StreamPart>;
 
   return { parts, controller };
 }
@@ -193,7 +193,7 @@ describe('AppServerStreamEmitter', () => {
       error: vi.fn(() => {
         throw new Error('already errored');
       }),
-    } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+    } as unknown as ReadableStreamDefaultController<LanguageModelV4StreamPart>;
 
     const emitter = new AppServerStreamEmitter(controller, {
       modelId: 'gpt-5.3-codex',

@@ -68,7 +68,7 @@ describe('extractImageData', () => {
     });
   });
 
-  describe('AI SDK v6 file parts', () => {
+  describe('legacy untagged file parts', () => {
     it('handles image file part with Buffer data', () => {
       const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
       const result = extractImageData({
@@ -89,6 +89,81 @@ describe('extractImageData', () => {
       });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('AI SDK v4 tagged file data', () => {
+    it('handles tagged data variant with bytes', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/webp',
+        data: { type: 'data', data: Uint8Array.from([0x52, 0x49, 0x46, 0x46]) },
+      });
+
+      expect(result?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(result?.mimeType).toBe('image/webp');
+    });
+
+    it('handles tagged data variant with base64 string', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'data', data: 'iVBORw0KGgo=' },
+      });
+
+      expect(result?.data).toBe('data:image/png;base64,iVBORw0KGgo=');
+      expect(result?.mimeType).toBe('image/png');
+    });
+
+    it('handles tagged url variant with data: URL', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'url', url: new URL('data:image/png;base64,iVBORw0KGgo=') },
+      });
+
+      expect(result?.data).toBe('data:image/png;base64,iVBORw0KGgo=');
+    });
+
+    it('returns null for tagged http url variant', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'url', url: new URL('https://example.com/image.png') },
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null for tagged reference variant', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'reference', reference: { openai: 'file-123' } },
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null for tagged text variant', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image/png',
+        data: { type: 'text', text: 'not image bytes' },
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('detects full media type from top-level segment mediaType', () => {
+      const result = extractImageData({
+        type: 'file',
+        mediaType: 'image',
+        data: { type: 'data', data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]) },
+      });
+
+      expect(result?.mimeType).toBe('image/png');
+      expect(result?.data).toMatch(/^data:image\/png;base64,/);
     });
   });
 

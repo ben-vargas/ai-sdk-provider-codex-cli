@@ -1,4 +1,5 @@
 import type { ConvertedToolResult, ConvertedWarning, NormalizedToolOutput } from './types.js';
+import { isImageMediaType } from './image-converter.js';
 
 export function safeJsonStringify(value: unknown): string {
   if (value === undefined) return '';
@@ -9,6 +10,17 @@ export function safeJsonStringify(value: unknown): string {
   } catch {
     return '[unserializable]';
   }
+}
+
+/**
+ * Describe the `type` tag of a runtime value that fell outside the static
+ * union (used for warnings about unrecognized parts).
+ */
+function describeTypeTag(value: unknown): string {
+  if (typeof value === 'object' && value !== null && 'type' in value) {
+    return String(value.type);
+  }
+  return 'unknown';
 }
 
 export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedToolResult {
@@ -31,19 +43,42 @@ export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedT
       const parts = output.value
         .map((part) => {
           if (part.type === 'text') return part.text;
-          if (part.type === 'file-data') {
-            return `[file-data: ${part.mediaType}${part.filename ? `, ${part.filename}` : ''}]`;
+
+          if (part.type === 'file') {
+            const prefix = isImageMediaType(part.mediaType) ? 'image' : 'file';
+            const data = part.data;
+            if (data.type === 'data') {
+              return prefix === 'image'
+                ? `[image-data: ${part.mediaType}]`
+                : `[file-data: ${part.mediaType}${part.filename ? `, ${part.filename}` : ''}]`;
+            }
+            if (data.type === 'url') return `[${prefix}-url: ${data.url}]`;
+            if (data.type === 'reference') {
+              return prefix === 'image' ? '[image-file-id]' : '[file-id]';
+            }
+            if (data.type === 'text') return data.text;
+
+            warnings.push({
+              type: 'unsupported',
+              feature: 'tool-result.content.file',
+              details: `Unsupported tool file content data type "${describeTypeTag(data)}".`,
+            });
+            return '[unsupported-tool-content-part]';
           }
-          if (part.type === 'file-url') return `[file-url: ${part.url}]`;
-          if (part.type === 'file-id') return '[file-id]';
-          if (part.type === 'image-data') return `[image-data: ${part.mediaType}]`;
-          if (part.type === 'image-url') return `[image-url: ${part.url}]`;
-          if (part.type === 'image-file-id') return '[image-file-id]';
+
+          if (part.type === 'custom') {
+            warnings.push({
+              type: 'unsupported',
+              feature: 'tool-result.content.custom',
+              details: 'Custom tool content parts are not supported.',
+            });
+            return '';
+          }
 
           warnings.push({
             type: 'unsupported',
-            feature: `tool-result.content.${String((part as { type?: unknown }).type)}`,
-            details: `Unsupported tool content part "${String((part as { type?: unknown }).type)}".`,
+            feature: `tool-result.content.${describeTypeTag(part)}`,
+            details: `Unsupported tool content part "${describeTypeTag(part)}".`,
           });
           return '[unsupported-tool-content-part]';
         })
@@ -57,8 +92,8 @@ export function formatToolResultOutput(output: NormalizedToolOutput): ConvertedT
         warnings: [
           {
             type: 'unsupported',
-            feature: `tool-result.output.${String((output as { type?: unknown }).type)}`,
-            details: `Unsupported tool result output type "${String((output as { type?: unknown }).type)}".`,
+            feature: `tool-result.output.${describeTypeTag(output)}`,
+            details: `Unsupported tool result output type "${describeTypeTag(output)}".`,
           },
         ],
       };

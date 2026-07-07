@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import type { LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4StreamPart, LanguageModelV4Usage } from '@ai-sdk/provider';
 import { AppServerStreamEmitter } from '../app-server/stream/emitter.js';
 import { AppServerNotificationRouter } from '../app-server/stream/router.js';
 
 class FakeClient extends EventEmitter {}
 
 function createCapture() {
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
   const controller = {
-    enqueue: (part: LanguageModelV3StreamPart) => parts.push(part),
+    enqueue: (part: LanguageModelV4StreamPart) => parts.push(part),
     close: vi.fn(),
     error: vi.fn(),
-  } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as ReadableStreamDefaultController<LanguageModelV4StreamPart>;
 
   return { parts, controller };
 }
@@ -27,7 +27,7 @@ describe('AppServerNotificationRouter', () => {
       includeRawChunks: true,
     });
 
-    let usage: LanguageModelV3Usage | undefined;
+    let usage: LanguageModelV4Usage | undefined;
     let completedTurnId: string | undefined;
     const router = new AppServerNotificationRouter({
       client: client as never,
@@ -374,7 +374,7 @@ describe('AppServerNotificationRouter', () => {
       threadId: 'thr_usage',
     });
 
-    let usage: LanguageModelV3Usage | undefined;
+    let usage: LanguageModelV4Usage | undefined;
     const router = new AppServerNotificationRouter({
       client: client as never,
       emitter,

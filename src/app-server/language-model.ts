@@ -1,19 +1,19 @@
 import type {
-  LanguageModelV3,
-  LanguageModelV3Content,
-  LanguageModelV3File,
-  LanguageModelV3FinishReason,
-  LanguageModelV3Reasoning,
-  LanguageModelV3Source,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Text,
-  LanguageModelV3ToolApprovalRequest,
-  LanguageModelV3ToolCall,
-  LanguageModelV3ToolResult,
-  LanguageModelV3Usage,
-  LanguageModelV3ResponseMetadata,
-  SharedV3ProviderMetadata,
-  SharedV3Warning,
+  LanguageModelV4,
+  LanguageModelV4Content,
+  LanguageModelV4File,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Reasoning,
+  LanguageModelV4Source,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Text,
+  LanguageModelV4ToolApprovalRequest,
+  LanguageModelV4ToolCall,
+  LanguageModelV4ToolResult,
+  LanguageModelV4Usage,
+  LanguageModelV4ResponseMetadata,
+  SharedV4ProviderMetadata,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -34,7 +34,7 @@ import type {
   CodexAppServerRequestHandlers,
   CodexAppServerSettings,
 } from './types.js';
-import type { CodexModelId, Logger, McpServerConfig } from '../types-shared.js';
+import type { CodexModelId, Logger, McpServerConfig, ReasoningEffort } from '../types-shared.js';
 import type { UserInput } from './protocol/types.js';
 import { AppServerRpcClient } from './rpc/client.js';
 import { AppServerSession } from './session.js';
@@ -51,6 +51,43 @@ type PromptImage =
       type: 'remote';
       url: string;
     };
+
+const CODEX_REASONING_EFFORTS: Record<string, true> = {
+  none: true,
+  minimal: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+};
+
+function resolveReasoningEffort(args: {
+  reasoning: string | undefined;
+  providerEffort: ReasoningEffort | undefined;
+  defaultEffort: ReasoningEffort | undefined;
+}): { effort: ReasoningEffort | undefined; warning?: SharedV4Warning } {
+  if (args.providerEffort !== undefined) {
+    return { effort: args.providerEffort };
+  }
+
+  const { reasoning } = args;
+  if (reasoning === undefined || reasoning === 'provider-default') {
+    return { effort: args.defaultEffort };
+  }
+
+  if (CODEX_REASONING_EFFORTS[reasoning]) {
+    return { effort: reasoning as ReasoningEffort };
+  }
+
+  return {
+    effort: undefined,
+    warning: {
+      type: 'unsupported',
+      feature: 'reasoning',
+      details: `Codex app-server does not support reasoning effort '${reasoning}'; effort will be unset.`,
+    },
+  };
+}
 
 function isThreadNotFoundError(error: unknown): boolean {
   const message = String((error as Error)?.message ?? error);
@@ -150,13 +187,10 @@ export interface AppServerLanguageModelOptions {
   onSdkMcpServerReleased?: (server: SdkMcpServer) => void;
 }
 
-export class AppServerLanguageModel implements LanguageModelV3 {
-  readonly specificationVersion = 'v3' as const;
+export class AppServerLanguageModel implements LanguageModelV4 {
+  readonly specificationVersion = 'v4' as const;
   readonly provider = 'codex-app-server';
-  readonly defaultObjectGenerationMode = 'json' as const;
-  readonly supportsImageUrls = true;
   readonly supportedUrls = {};
-  readonly supportsStructuredOutputs = true;
 
   readonly modelId: string;
   readonly settings: CodexAppServerSettings;
@@ -574,7 +608,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   ): {
     promptText: string;
     images: PromptImage[];
-    warnings: SharedV3Warning[];
+    warnings: SharedV4Warning[];
     systemInstruction?: string;
   } {
     const converted = convertPromptToCodexInput({
@@ -605,38 +639,38 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
+    options: Parameters<LanguageModelV4['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doGenerate']>>> {
     const { stream, request } = await this.doStream(
-      options as Parameters<LanguageModelV3['doStream']>[0],
+      options as Parameters<LanguageModelV4['doStream']>[0],
     );
 
-    const content: LanguageModelV3Content[] = [];
-    const textPartsById = new Map<string, LanguageModelV3Text>();
-    const reasoningPartsById = new Map<string, LanguageModelV3Reasoning>();
+    const content: LanguageModelV4Content[] = [];
+    const textPartsById = new Map<string, LanguageModelV4Text>();
+    const reasoningPartsById = new Map<string, LanguageModelV4Reasoning>();
     let activeTextBlockId: string | undefined;
     let activeReasoningBlockId: string | undefined;
-    let responseMetadata: LanguageModelV3ResponseMetadata = {
+    let responseMetadata: LanguageModelV4ResponseMetadata = {
       id: generateId(),
       timestamp: new Date(),
       modelId: this.modelId,
     };
-    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
-    let warnings: SharedV3Warning[] = [];
-    let providerMetadata: SharedV3ProviderMetadata | undefined;
+    let usage: LanguageModelV4Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV4FinishReason = { unified: 'other', raw: undefined };
+    let warnings: SharedV4Warning[] = [];
+    let providerMetadata: SharedV4ProviderMetadata | undefined;
 
     const ensureTextPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Text => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Text => {
       const existing = textPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Text = {
+      const part: LanguageModelV4Text = {
         type: 'text',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -648,15 +682,15 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     const ensureReasoningPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Reasoning => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Reasoning => {
       const existing = reasoningPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Reasoning = {
+      const part: LanguageModelV4Reasoning = {
         type: 'reasoning',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -668,16 +702,16 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     const pushContentPart = (
       part:
-        | LanguageModelV3File
-        | LanguageModelV3Source
-        | LanguageModelV3ToolApprovalRequest
-        | LanguageModelV3ToolCall
-        | LanguageModelV3ToolResult,
+        | LanguageModelV4File
+        | LanguageModelV4Source
+        | LanguageModelV4ToolApprovalRequest
+        | LanguageModelV4ToolCall
+        | LanguageModelV4ToolResult,
     ): void => {
       content.push(part);
     };
 
-    for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
+    for await (const part of stream as AsyncIterable<LanguageModelV4StreamPart>) {
       if (part.type === 'stream-start') {
         warnings = part.warnings;
         continue;
@@ -802,15 +836,24 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   }
 
   async doStream(
-    options: Parameters<LanguageModelV3['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doStream']>>> {
+    options: Parameters<LanguageModelV4['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doStream']>>> {
     const providerOptions = await parseProviderOptions<CodexAppServerProviderOptions>({
       provider: this.provider,
       providerOptions: options.providerOptions,
       schema: appServerProviderOptionsSchema as never,
     });
 
-    const settings = this.mergeSettings(providerOptions);
+    const mergedSettings = this.mergeSettings(providerOptions);
+    const resolvedReasoning = resolveReasoningEffort({
+      reasoning: options.reasoning,
+      providerEffort: providerOptions?.effort,
+      defaultEffort: mergedSettings.effort,
+    });
+    const settings: CodexAppServerSettings =
+      resolvedReasoning.effort === mergedSettings.effort
+        ? mergedSettings
+        : { ...mergedSettings, effort: resolvedReasoning.effort };
     const sdkServerLifecycle: 'provider' | 'request' =
       this.resolveThreadMode(settings, providerOptions) === 'persistent' ? 'provider' : 'request';
     const includeRawChunks = this.resolveIncludeRawChunks(
@@ -819,7 +862,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       providerOptions,
     );
 
-    const warnings: SharedV3Warning[] = [
+    const warnings: SharedV4Warning[] = [
       ...mapUnsupportedSettingsWarnings({
         temperature: options.temperature,
         topP: options.topP,
@@ -833,6 +876,10 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         toolChoice: (options as { toolChoice?: unknown }).toolChoice,
       }),
     ];
+
+    if (resolvedReasoning.warning) {
+      warnings.push(resolvedReasoning.warning);
+    }
 
     const developerInstructionsOverride =
       providerOptions?.developerInstructions ?? settings.developerInstructions;
@@ -942,7 +989,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       },
     });
 
-    const stream = new ReadableStream<LanguageModelV3StreamPart>({
+    const stream = new ReadableStream<LanguageModelV4StreamPart>({
       start: async (controller) => {
         await turnStreamController.start(controller);
       },

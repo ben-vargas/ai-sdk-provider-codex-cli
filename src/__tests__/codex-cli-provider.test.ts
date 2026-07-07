@@ -9,6 +9,13 @@ describe('createCodexCli', () => {
     expect(model.modelId).toBe('gpt-5');
   });
 
+  it('exposes specification version v4 on provider and models', () => {
+    const provider = createCodexCli();
+    expect(provider.specificationVersion).toBe('v4');
+    const model = provider('gpt-5');
+    expect(model.specificationVersion).toBe('v4');
+  });
+
   it('accepts addDirs in defaultSettings', () => {
     const provider = createCodexCli({
       defaultSettings: { addDirs: ['../shared', '/tmp/lib'] },

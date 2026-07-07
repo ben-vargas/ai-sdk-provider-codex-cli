@@ -197,6 +197,25 @@ function formatAssistantParts(parts: PromptContentPart[]): {
       continue;
     }
 
+    if (part.type === 'custom') {
+      const kind = 'kind' in part && typeof part.kind === 'string' ? part.kind : undefined;
+      warnings.push({
+        type: 'unsupported',
+        feature: 'prompt.assistant.custom',
+        details: `Custom content parts are not supported${kind ? ` (kind "${kind}")` : ''}.`,
+      });
+      continue;
+    }
+
+    if (part.type === 'reasoning-file') {
+      warnings.push({
+        type: 'unsupported',
+        feature: 'prompt.assistant.reasoning-file',
+        details: 'Reasoning file parts are not supported.',
+      });
+      continue;
+    }
+
     warnings.push({
       type: 'unsupported',
       feature: `prompt.assistant.${part.type}`,

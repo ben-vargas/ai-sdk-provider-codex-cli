@@ -174,6 +174,87 @@ describe('AppServerLanguageModel', () => {
     });
   });
 
+  it('maps top-level reasoning option to turn effort', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'high',
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('high');
+  });
+
+  it('prefers providerOptions effort over top-level reasoning', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'low',
+      providerOptions: { 'codex-app-server': { effort: 'xhigh' } },
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('xhigh');
+  });
+
+  it('leaves configured effort untouched for provider-default reasoning', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'medium' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'provider-default',
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
+  });
+
+  it('leaves configured effort untouched when reasoning is undefined', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'minimal' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('minimal');
+  });
+
+  it('warns and unsets effort for unmappable reasoning values', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'medium' },
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'ultra' as never,
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBeUndefined();
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ type: 'unsupported', feature: 'reasoning' }),
+    );
+  });
+
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
     const client = new FakeClient();
     client.turnStartImpl = async (params) => {

@@ -1,4 +1,4 @@
-import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
+import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { AppServerLanguageModel } from './language-model.js';
 import type { CodexAppServerProviderSettings, CodexAppServerSettings } from './types.js';
@@ -23,10 +23,10 @@ export interface CodexAppServerModelListResult {
  *
  * Use this via `createCodexAppServer()` or the default `codexAppServer` export.
  */
-export interface CodexAppServerProvider extends ProviderV3 {
-  (modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
-  languageModel(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
-  chat(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV3;
+export interface CodexAppServerProvider extends ProviderV4 {
+  (modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV4;
+  languageModel(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV4;
+  chat(modelId: CodexModelId, settings?: CodexAppServerSettings): LanguageModelV4;
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
   close(): Promise<void>;
@@ -133,7 +133,7 @@ export function createCodexAppServer(
 
       return createModel(modelId, settings);
     },
-    { specificationVersion: 'v3' as const },
+    { specificationVersion: 'v4' as const },
   ) as unknown as CodexAppServerProvider;
 
   provider.languageModel = createModel;

@@ -1,5 +1,5 @@
 import { generateId } from '@ai-sdk/provider-utils';
-import type { LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4Usage } from '@ai-sdk/provider';
 import type { ThreadItem, ThreadTokenUsageUpdatedNotification, Turn } from '../protocol/types.js';
 import { safeStringify } from '../../shared-utils.js';
 import type { AppServerStreamEmitter } from './emitter.js';
@@ -47,7 +47,7 @@ export interface NotificationHandlerContext {
   toolTracker: ToolTracker;
   textItemIdsWithDelta: Set<string>;
   reasoningItemIdsWithDelta: Set<string>;
-  onUsage: (usage: LanguageModelV3Usage) => void;
+  onUsage: (usage: LanguageModelV4Usage) => void;
   onTurnCompleted: (turn: Turn) => void;
   onError: (error: Error) => void;
   isSameTurn: (params: Record<string, unknown>) => boolean;

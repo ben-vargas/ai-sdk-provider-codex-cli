@@ -170,7 +170,7 @@ describe('mapMessagesToPrompt', () => {
       expect(images[0]?.data).toMatch(/^data:image\/png;base64,/);
     });
 
-    it('handles AI SDK v6 file parts for image input', () => {
+    it('handles legacy untagged file parts for image input', () => {
       const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46]); // RIFF
       const { images } = mapMessagesToPrompt([
         {
@@ -181,6 +181,26 @@ describe('mapMessagesToPrompt', () => {
           ],
         },
       ] as any);
+
+      expect(images).toHaveLength(1);
+      expect(images[0]?.data).toMatch(/^data:image\/webp;base64,/);
+      expect(images[0]?.mimeType).toBe('image/webp');
+    });
+
+    it('handles AI SDK v4 tagged file parts for image input', () => {
+      const { images } = mapMessagesToPrompt([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Tagged file part image' },
+            {
+              type: 'file',
+              mediaType: 'image/webp',
+              data: { type: 'data', data: Uint8Array.from([0x52, 0x49, 0x46, 0x46]) },
+            },
+          ],
+        },
+      ] as never);
 
       expect(images).toHaveLength(1);
       expect(images[0]?.data).toMatch(/^data:image\/webp;base64,/);

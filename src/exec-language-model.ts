@@ -7,22 +7,22 @@ import { dirname, join } from 'node:path';
 import type { ReadableStreamDefaultController } from 'node:stream/web';
 import { z } from 'zod';
 import type {
-  LanguageModelV3,
-  LanguageModelV3File,
-  LanguageModelV3FinishReason,
-  LanguageModelV3Reasoning,
-  LanguageModelV3ResponseMetadata,
-  LanguageModelV3Source,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Text,
-  LanguageModelV3ToolApprovalRequest,
-  LanguageModelV3ToolCall,
-  LanguageModelV3ToolResult,
-  LanguageModelV3Usage,
-  LanguageModelV3Content,
+  LanguageModelV4,
+  LanguageModelV4File,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Reasoning,
+  LanguageModelV4ResponseMetadata,
+  LanguageModelV4Source,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Text,
+  LanguageModelV4ToolApprovalRequest,
+  LanguageModelV4ToolCall,
+  LanguageModelV4ToolResult,
+  LanguageModelV4Usage,
+  LanguageModelV4Content,
   JSONObject,
-  SharedV3ProviderMetadata,
-  SharedV3Warning,
+  SharedV4ProviderMetadata,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
@@ -47,7 +47,7 @@ import {
   safeStringify,
   sanitizeJsonSchema,
 } from './shared-utils.js';
-import type { CodexModelId } from './types-shared.js';
+import type { CodexModelId, ReasoningEffort } from './types-shared.js';
 
 export interface ExecLanguageModelOptions {
   id: CodexModelId; // model id for Codex (-m)
@@ -86,6 +86,16 @@ interface ActiveToolItem {
   inputPayload?: unknown;
   hasEmittedCall: boolean;
 }
+
+// Codex reasoning effort levels; kept in compile-time sync with ReasoningEffort.
+const codexReasoningEfforts: Record<ReasoningEffort, true> = {
+  none: true,
+  minimal: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+};
 
 const codexCliProviderOptionsSchema: z.ZodType<CodexExecProviderOptions> = z
   .object({
@@ -139,13 +149,10 @@ function resolveCodexPath(
   }
 }
 
-export class ExecLanguageModel implements LanguageModelV3 {
-  readonly specificationVersion = 'v3' as const;
+export class ExecLanguageModel implements LanguageModelV4 {
+  readonly specificationVersion = 'v4' as const;
   readonly provider = 'codex-cli';
-  readonly defaultObjectGenerationMode = 'json' as const;
-  readonly supportsImageUrls = false;
   readonly supportedUrls = {};
-  readonly supportsStructuredOutputs = true;
 
   readonly modelId: string;
   readonly settings: CodexExecSettings;
@@ -471,7 +478,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     }
   }
 
-  private extractUsage(evt: ExperimentalJsonEvent): LanguageModelV3Usage | undefined {
+  private extractUsage(evt: ExperimentalJsonEvent): LanguageModelV4Usage | undefined {
     const reported = evt.usage;
     if (!reported) return undefined;
     const inputTotal = reported.input_tokens ?? 0;
@@ -610,7 +617,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
   }
 
   private emitToolInvocation(
-    controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>,
     toolCallId: string,
     toolName: string,
     inputPayload: unknown,
@@ -638,7 +645,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
   }
 
   private emitToolResult(
-    controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>,
     toolCallId: string,
     toolName: string,
     item: ExperimentalJsonItem,
@@ -705,40 +712,40 @@ export class ExecLanguageModel implements LanguageModelV3 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
+    options: Parameters<LanguageModelV4['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doGenerate']>>> {
     this.logger.debug(`[codex-cli] Starting doGenerate request with model: ${this.modelId}`);
 
     const { stream, request } = await this.doStream(
-      options as Parameters<LanguageModelV3['doStream']>[0],
+      options as Parameters<LanguageModelV4['doStream']>[0],
     );
 
-    const content: LanguageModelV3Content[] = [];
-    const textPartsById = new Map<string, LanguageModelV3Text>();
-    const reasoningPartsById = new Map<string, LanguageModelV3Reasoning>();
+    const content: LanguageModelV4Content[] = [];
+    const textPartsById = new Map<string, LanguageModelV4Text>();
+    const reasoningPartsById = new Map<string, LanguageModelV4Reasoning>();
     let activeTextBlockId: string | undefined;
     let activeReasoningBlockId: string | undefined;
-    let responseMetadata: LanguageModelV3ResponseMetadata = {
+    let responseMetadata: LanguageModelV4ResponseMetadata = {
       id: generateId(),
       timestamp: new Date(),
       modelId: this.modelId,
     };
-    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
-    let warnings: SharedV3Warning[] = [];
-    let providerMetadata: SharedV3ProviderMetadata | undefined;
+    let usage: LanguageModelV4Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV4FinishReason = { unified: 'other', raw: undefined };
+    let warnings: SharedV4Warning[] = [];
+    let providerMetadata: SharedV4ProviderMetadata | undefined;
 
     const ensureTextPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Text => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Text => {
       const existing = textPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Text = {
+      const part: LanguageModelV4Text = {
         type: 'text',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -750,15 +757,15 @@ export class ExecLanguageModel implements LanguageModelV3 {
 
     const ensureReasoningPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Reasoning => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Reasoning => {
       const existing = reasoningPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Reasoning = {
+      const part: LanguageModelV4Reasoning = {
         type: 'reasoning',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -770,16 +777,16 @@ export class ExecLanguageModel implements LanguageModelV3 {
 
     const pushContentPart = (
       part:
-        | LanguageModelV3File
-        | LanguageModelV3Source
-        | LanguageModelV3ToolApprovalRequest
-        | LanguageModelV3ToolCall
-        | LanguageModelV3ToolResult,
+        | LanguageModelV4File
+        | LanguageModelV4Source
+        | LanguageModelV4ToolApprovalRequest
+        | LanguageModelV4ToolCall
+        | LanguageModelV4ToolResult,
     ): void => {
       content.push(part);
     };
 
-    for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
+    for await (const part of stream as AsyncIterable<LanguageModelV4StreamPart>) {
       if (part.type === 'stream-start') {
         warnings = part.warnings;
         continue;
@@ -895,7 +902,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     const codexProviderMetadata =
       providerMetadata && typeof providerMetadata === 'object'
         ? { ...providerMetadata }
-        : ({} as SharedV3ProviderMetadata);
+        : ({} as SharedV4ProviderMetadata);
 
     if (this.sessionId) {
       const existing = codexProviderMetadata['codex-cli'];
@@ -923,8 +930,8 @@ export class ExecLanguageModel implements LanguageModelV3 {
   }
 
   async doStream(
-    options: Parameters<LanguageModelV3['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doStream']>>> {
+    options: Parameters<LanguageModelV4['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doStream']>>> {
     this.logger.debug(`[codex-cli] Starting doStream request with model: ${this.modelId}`);
 
     const { promptText, images, warnings: mappingWarnings } = mapMessagesToPrompt(options.prompt);
@@ -943,7 +950,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
         toolChoice: (options as { toolChoice?: unknown }).toolChoice,
       }),
       ...(mappingWarnings ?? []),
-    ] as SharedV3Warning[];
+    ] as SharedV4Warning[];
 
     this.logger.debug(
       `[codex-cli] Converted ${options.prompt.length} messages (${images.length} images) for streaming, response format: ${options.responseFormat?.type ?? 'none'}`,
@@ -954,7 +961,30 @@ export class ExecLanguageModel implements LanguageModelV3 {
       providerOptions: options.providerOptions,
       schema: codexCliProviderOptionsSchema,
     });
-    const effectiveSettings = this.mergeSettings(providerOptions);
+    let effectiveSettings = this.mergeSettings(providerOptions);
+
+    // Map the top-level v4 `reasoning` call option to Codex reasoning effort.
+    // The provider-specific option wins when present; 'provider-default' and
+    // undefined leave the existing default behavior untouched.
+    const topLevelReasoning = options.reasoning;
+    if (
+      topLevelReasoning !== undefined &&
+      topLevelReasoning !== 'provider-default' &&
+      providerOptions?.reasoningEffort === undefined
+    ) {
+      if (Object.hasOwn(codexReasoningEfforts, topLevelReasoning)) {
+        effectiveSettings = {
+          ...effectiveSettings,
+          reasoningEffort: topLevelReasoning,
+        };
+      } else {
+        warnings.push({
+          type: 'unsupported',
+          feature: 'reasoning',
+          details: `Codex CLI does not support reasoning effort '${topLevelReasoning}'; it will be ignored.`,
+        });
+      }
+    }
 
     const responseFormat =
       options.responseFormat?.type === 'json'
@@ -967,7 +997,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
       `[codex-cli] Executing Codex CLI for streaming: ${cmd} with ${args.length} arguments`,
     );
 
-    const stream = new ReadableStream<LanguageModelV3StreamPart>({
+    const stream = new ReadableStream<LanguageModelV4StreamPart>({
       start: (controller) => {
         const startTime = Date.now();
         // Use stdin to pass prompt - avoids command line length limits and escaping issues on Windows
@@ -984,7 +1014,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
         let accumulatedText = '';
         const activeTools = new Map<string, ActiveToolItem>();
         let responseMetadataSent = false;
-        let lastUsage: LanguageModelV3Usage | undefined;
+        let lastUsage: LanguageModelV4Usage | undefined;
         let turnFailureMessage: string | undefined;
 
         // Define cleanup early so it's available for early abort
@@ -1149,7 +1179,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
             controller.enqueue({ type: 'text-end', id: textId });
           }
 
-          const usageSummary: LanguageModelV3Usage = lastUsage ?? createEmptyCodexUsage();
+          const usageSummary: LanguageModelV4Usage = lastUsage ?? createEmptyCodexUsage();
           const totalTokens =
             (usageSummary.inputTokens.total ?? 0) + (usageSummary.outputTokens.total ?? 0);
           this.logger.info(
@@ -1249,7 +1279,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
     });
 
     return { stream, request: { body: promptText } } as Awaited<
-      ReturnType<LanguageModelV3['doStream']>
+      ReturnType<LanguageModelV4['doStream']>
     >;
   }
 }

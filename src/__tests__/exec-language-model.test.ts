@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { streamText } from 'ai';
 import { ExecLanguageModel } from '../exec-language-model.js';
+import type { LanguageModelV4CallOptions, SharedV4Warning } from '@ai-sdk/provider';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
@@ -58,6 +59,11 @@ vi.mock('node:child_process', async () => {
 
 // Access the helper to swap mocks inside tests
 const childProc = await import('node:child_process');
+// The vi.mock factory above augments the module with __setSpawnMock, which the
+// node:child_process module type cannot express.
+const mockableChildProc = childProc as unknown as {
+  __setSpawnMock: (fn: (cmd: string, args: string[]) => unknown) => void;
+};
 
 describe('ExecLanguageModel', () => {
   beforeEach(() => {
@@ -904,6 +910,100 @@ describe('ExecLanguageModel', () => {
       expect(lastArgs).toContain('--full-auto');
       expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
       expect(lastArgs).toContain('model_reasoning_effort=medium');
+    });
+  });
+
+  describe('top-level reasoning call option', () => {
+    const reasoningLines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-reasoning-option' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'ok' },
+      }),
+    ];
+    const prompt = [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: 'Hi' }] },
+    ];
+
+    it('maps top-level reasoning to Codex effort and overrides constructor default', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'low' },
+      });
+      await model.doGenerate({ prompt, reasoning: 'high' });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=high');
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=low');
+    });
+
+    it('providerOptions reasoningEffort overrides top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      await model.doGenerate({
+        prompt,
+        reasoning: 'low',
+        providerOptions: { 'codex-cli': { reasoningEffort: 'xhigh' } },
+      });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=xhigh');
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=low');
+    });
+
+    it("leaves effort unset for reasoning: 'provider-default'", async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      const res = await model.doGenerate({ prompt, reasoning: 'provider-default' });
+
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
+      expect(
+        res.warnings.filter((w) => w.type === 'unsupported' && w.feature === 'reasoning'),
+      ).toHaveLength(0);
+    });
+
+    it('warns and leaves effort unset for unmappable top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      // Runtime forward-compat: a future reasoning level outside the v4 union.
+      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
+
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
+      const warning = res.warnings.find(
+        (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
+          w.type === 'unsupported' && w.feature === 'reasoning',
+      );
+      expect(warning).toBeDefined();
+      expect(warning?.details).toContain("'ultra'");
     });
   });
 

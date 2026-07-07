@@ -1,4 +1,4 @@
-import type { LanguageModelV3, ProviderV3 } from '@ai-sdk/provider';
+import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { ExecLanguageModel } from './exec-language-model.js';
 import type { CodexExecProviderSettings, CodexExecSettings } from './types.js';
@@ -6,10 +6,10 @@ import { getLogger } from './logger.js';
 import { validateExecSettings } from './validation.js';
 import type { CodexModelId } from './types-shared.js';
 
-export interface CodexExecProvider extends ProviderV3 {
-  (modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
-  languageModel(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
-  chat(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV3;
+export interface CodexExecProvider extends ProviderV4 {
+  (modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV4;
+  languageModel(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV4;
+  chat(modelId: CodexModelId, settings?: CodexExecSettings): LanguageModelV4;
   embeddingModel(modelId: string): never;
   imageModel(modelId: string): never;
 }
@@ -28,7 +28,7 @@ export function createCodexExec(options: CodexExecProviderSettings = {}): CodexE
   const createModel = (
     modelId: CodexModelId,
     settings: CodexExecSettings = {},
-  ): LanguageModelV3 => {
+  ): LanguageModelV4 => {
     const merged: CodexExecSettings = { ...options.defaultSettings, ...settings };
     const v = validateExecSettings(merged);
     if (!v.valid) throw new Error(`Invalid settings: ${v.errors.join(', ')}`);
@@ -41,7 +41,7 @@ export function createCodexExec(options: CodexExecProviderSettings = {}): CodexE
       if (new.target) throw new Error('The Codex CLI provider function cannot be called with new.');
       return createModel(modelId, settings);
     },
-    { specificationVersion: 'v3' as const },
+    { specificationVersion: 'v4' as const },
   ) as CodexExecProvider;
 
   provider.languageModel = createModel;
