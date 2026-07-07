@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+> Historical implementation plan. This document records the pre-migration state and decisions used to build the v7 branch; use the other `docs/ai-sdk-v7/*` guides for current user-facing guidance.
+
 This plan covers the `ai-sdk-provider-codex-cli` upgrade from the current AI SDK v6 line to an AI SDK v7-compatible release. It also records the branch/release strategy and agent-capability opportunities from AI SDK v7 and the Claude Agent SDK that are worth considering without overcommitting Codex-specific APIs that the Codex app-server protocol does not expose yet.
 
 ## Current repo and release state

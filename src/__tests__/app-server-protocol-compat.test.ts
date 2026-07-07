@@ -107,6 +107,38 @@ describe('app-server protocol validators', () => {
     expect(schema.safeParse(turnWithErrorInfo(['other'])).success).toBe(false);
   });
 
+  it('tolerates future turn status and missing nullable error details', () => {
+    const schema = incomingNotificationSchemas['turn/completed'];
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    expect(
+      schema.safeParse({
+        threadId: 'thr_1',
+        turn: {
+          id: 'turn_1',
+          items: [],
+          status: 'futureStatus',
+        },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      schema.safeParse({
+        threadId: 'thr_1',
+        turn: {
+          id: 'turn_1',
+          items: [],
+          status: 'failed',
+          error: {
+            message: 'future failure',
+            codexErrorInfo: { futureError: { nested: true } },
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it('tolerates unknown thread item types in turn/completed and item lifecycle notifications', () => {
     const turnCompletedSchema = incomingNotificationSchemas['turn/completed'];
     expect(turnCompletedSchema).toBeDefined();

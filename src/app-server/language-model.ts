@@ -75,7 +75,7 @@ function resolveReasoningEffort(args: {
     return { effort: args.defaultEffort };
   }
 
-  if (CODEX_REASONING_EFFORTS[reasoning]) {
+  if (Object.hasOwn(CODEX_REASONING_EFFORTS, reasoning)) {
     return { effort: reasoning as ReasoningEffort };
   }
 

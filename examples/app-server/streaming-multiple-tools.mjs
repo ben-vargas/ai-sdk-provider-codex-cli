@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const appServer = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     idleTimeoutMs: 30000,
     cwd: __dirname,
   },

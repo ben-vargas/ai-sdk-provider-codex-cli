@@ -14,6 +14,7 @@ describe('createCodexExec', () => {
     expect(provider.specificationVersion).toBe('v4');
     const model = provider('gpt-5');
     expect(model.specificationVersion).toBe('v4');
+    expect(model.supportedUrls).toEqual({});
   });
 
   it('accepts addDirs in defaultSettings', () => {

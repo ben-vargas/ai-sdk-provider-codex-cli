@@ -345,14 +345,14 @@ export const turnSchema = z
   .object({
     id: z.string(),
     items: z.array(threadItemSchema),
-    status: z.enum(['completed', 'interrupted', 'failed', 'inProgress']),
+    status: z.string(),
     error: z
       .object({
         message: z.string(),
-        codexErrorInfo: codexErrorInfoSchema.nullable(),
-        additionalDetails: z.string().nullable(),
+        codexErrorInfo: codexErrorInfoSchema.nullish(),
+        additionalDetails: z.string().nullish(),
       })
-      .nullable(),
+      .nullish(),
   })
   .passthrough();
 

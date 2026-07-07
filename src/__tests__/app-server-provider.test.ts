@@ -9,12 +9,20 @@ import { createSdkMcpServer, tool } from '../tools/index.js';
 describe('createCodexAppServer', () => {
   it('creates language model instances', () => {
     const provider = createCodexAppServer({
-      defaultSettings: { minCodexVersion: '0.130.0', personality: 'pragmatic' },
+      defaultSettings: { minCodexVersion: '0.142.5', personality: 'pragmatic' },
     });
 
     const model: any = provider('gpt-5.3-codex');
     expect(model.provider).toBe('codex-app-server');
     expect(model.modelId).toBe('gpt-5.3-codex');
+  });
+
+  it('exposes specification version v4 and empty supportedUrls on models', () => {
+    const provider = createCodexAppServer();
+    expect(provider.specificationVersion).toBe('v4');
+    const model = provider('gpt-5.5');
+    expect(model.specificationVersion).toBe('v4');
+    expect(model.supportedUrls).toEqual({});
   });
 
   it('exposes close()', async () => {
@@ -97,7 +105,7 @@ describe('createCodexAppServer', () => {
   it('uses a distinct RPC client when per-model transport settings differ', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {
-        minCodexVersion: '0.130.0',
+        minCodexVersion: '0.142.5',
         requestTimeoutMs: 10_000,
       },
     });
@@ -124,7 +132,7 @@ describe('createCodexAppServer', () => {
   it('reuses RPC client when only non-transport model settings differ', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {
-        minCodexVersion: '0.130.0',
+        minCodexVersion: '0.142.5',
       },
     });
 
@@ -143,7 +151,7 @@ describe('createCodexAppServer', () => {
   it('reuses persistent model instances for identical model + settings', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {
-        minCodexVersion: '0.130.0',
+        minCodexVersion: '0.142.5',
       },
     });
 
@@ -175,7 +183,7 @@ describe('createCodexAppServer', () => {
 
     const provider = createCodexAppServer({
       defaultSettings: {
-        minCodexVersion: '0.130.0',
+        minCodexVersion: '0.142.5',
         threadMode: 'persistent',
         mcpServers: {
           math: sdkServer,
@@ -219,7 +227,7 @@ describe('createCodexAppServer', () => {
     };
 
     const provider = createCodexAppServer({
-      defaultSettings: { minCodexVersion: '0.130.0' },
+      defaultSettings: { minCodexVersion: '0.142.5' },
     });
 
     const first = provider('gpt-5.3-codex', createSettings());
@@ -253,7 +261,7 @@ describe('createCodexAppServer', () => {
     };
 
     const provider = createCodexAppServer({
-      defaultSettings: { minCodexVersion: '0.130.0' },
+      defaultSettings: { minCodexVersion: '0.142.5' },
     });
 
     const first = provider('gpt-5.3-codex', createSettings());
@@ -285,7 +293,7 @@ describe('createCodexAppServer', () => {
     };
 
     const provider = createCodexAppServer({
-      defaultSettings: { minCodexVersion: '0.130.0' },
+      defaultSettings: { minCodexVersion: '0.142.5' },
     });
 
     const first = provider('gpt-5.3-codex', createSettings(0));
@@ -311,7 +319,7 @@ describe('createCodexAppServer', () => {
     });
 
     const provider = createCodexAppServer({
-      defaultSettings: { minCodexVersion: '0.130.0' },
+      defaultSettings: { minCodexVersion: '0.142.5' },
     });
 
     const first = provider('gpt-5.3-codex', {
@@ -341,7 +349,7 @@ describe('createCodexAppServer', () => {
   it('retains persistent model cache entries until provider.close()', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {
-        minCodexVersion: '0.130.0',
+        minCodexVersion: '0.142.5',
       },
     });
 

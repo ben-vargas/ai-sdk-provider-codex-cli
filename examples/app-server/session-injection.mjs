@@ -5,7 +5,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     idleTimeoutMs: 30000,
     threadMode: 'persistent',
     effort: 'medium',

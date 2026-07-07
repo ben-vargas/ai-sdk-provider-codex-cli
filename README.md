@@ -133,7 +133,7 @@ const first = await generateText({
   },
 });
 
-const threadId = first.providerMetadata?.['codex-app-server']?.threadId;
+const threadId = first.finalStep.providerMetadata?.['codex-app-server']?.threadId;
 
 const second = await generateText({
   model: provider('gpt-5.5'),
@@ -199,7 +199,7 @@ const { text } = await generateText({
       role: 'user',
       content: [
         { type: 'text', text: 'What do you see in this image?' },
-        { type: 'image', image: imageBuffer, mimeType: 'image/png' },
+        { type: 'file', data: imageBuffer, mediaType: 'image/png' },
       ],
     },
   ],
