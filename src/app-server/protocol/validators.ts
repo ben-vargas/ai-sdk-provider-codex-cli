@@ -48,6 +48,8 @@ const userInputTextSchema = z
   })
   .passthrough();
 
+// Codex 0.142.5 always emits `url`; the refine keeps tolerance for pre-0.142
+// servers that emitted `imageUrl` instead.
 const userInputImageSchema = z
   .object({
     type: z.literal('image'),
@@ -215,6 +217,62 @@ const contextCompactionItemSchema = z
   })
   .passthrough();
 
+// codex >= 0.142
+const hookPromptItemSchema = z
+  .object({
+    type: z.literal('hookPrompt'),
+    id: z.string(),
+    fragments: z.array(z.unknown()),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const dynamicToolCallItemSchema = z
+  .object({
+    type: z.literal('dynamicToolCall'),
+    id: z.string(),
+    namespace: z.string().nullable(),
+    tool: z.string(),
+    arguments: z.unknown(),
+    status: z.string(),
+    contentItems: z.array(z.unknown()).nullable(),
+    success: z.boolean().nullable(),
+    durationMs: z.number().nullable(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const subAgentActivityItemSchema = z
+  .object({
+    type: z.literal('subAgentActivity'),
+    id: z.string(),
+    kind: z.string(),
+    agentThreadId: z.string(),
+    agentPath: z.string(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const sleepItemSchema = z
+  .object({
+    type: z.literal('sleep'),
+    id: z.string(),
+    durationMs: z.number(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const imageGenerationItemSchema = z
+  .object({
+    type: z.literal('imageGeneration'),
+    id: z.string(),
+    status: z.string(),
+    revisedPrompt: z.string().nullable(),
+    result: z.string(),
+    savedPath: z.string().optional(),
+  })
+  .passthrough();
+
 export const threadItemSchema = z.discriminatedUnion('type', [
   userMessageItemSchema,
   agentMessageItemSchema,
@@ -223,7 +281,12 @@ export const threadItemSchema = z.discriminatedUnion('type', [
   commandExecutionItemSchema,
   fileChangeItemSchema,
   mcpToolCallItemSchema,
+  dynamicToolCallItemSchema,
   collabAgentToolCallItemSchema,
+  hookPromptItemSchema,
+  subAgentActivityItemSchema,
+  sleepItemSchema,
+  imageGenerationItemSchema,
   webSearchItemSchema,
   imageViewItemSchema,
   enteredReviewModeItemSchema,
@@ -242,6 +305,7 @@ const codexErrorInfoSchema = z.union([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
+    'cyberPolicy',
     'internalServerError',
     'unauthorized',
     'badRequest',
@@ -253,6 +317,9 @@ const codexErrorInfoSchema = z.union([
   z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
+  z
+    .object({ activeTurnNotSteerable: z.object({ turnKind: z.string() }).passthrough() })
+    .passthrough(),
 ]);
 
 export const turnSchema = z
@@ -424,6 +491,8 @@ const toolRequestUserInputParamsSchema = z
   })
   .passthrough();
 
+// External contract: `skill/requestApproval` was removed from the codex
+// 0.142.5 server-request surface; kept for pre-0.142 servers.
 const skillRequestApprovalParamsSchema = z
   .object({
     itemId: z.string(),
