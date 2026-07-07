@@ -12,6 +12,7 @@ try {
     });
 
     console.log('=== Quick Response (Low Effort) ===');
+    console.log('Per-call option:', JSON.stringify({ effort: 'low' }));
     const quick = await generateText({
       model,
       prompt: 'Summarize JSON schema validation in one short sentence.',
@@ -24,41 +25,46 @@ try {
     console.log(quick.text);
 
     console.log('\n=== Deep Analysis (High Effort) ===');
+    console.log('Per-call option:', JSON.stringify({ effort: 'high' }));
     const deep = await generateText({
       model,
       prompt: 'Compare event-driven and batch ETL in exactly 2 concise bullets.',
       providerOptions: {
         'codex-app-server': {
-          effort: 'medium',
+          effort: 'high',
         },
       },
     });
     console.log(deep.text);
 
     console.log('\n=== Custom Config Overrides per Call ===');
+    const configOverrides = {
+      experimental_resume: 'provider-options.jsonl',
+      'sandbox_workspace_write.network_access': true,
+    };
+    console.log('Per-call option:', JSON.stringify({ configOverrides }));
     const tuned = await generateText({
       model,
       prompt: 'Reply with exactly: Config overrides applied.',
       providerOptions: {
         'codex-app-server': {
-          configOverrides: {
-            experimental_resume: 'provider-options.jsonl',
-            'sandbox_workspace_write.network_access': true,
-          },
+          configOverrides,
         },
       },
     });
     console.log(tuned.text);
 
     console.log('\n=== Per-call Sandbox Override ===');
+    const sandboxOverride = {
+      approvalPolicy: 'never',
+      sandboxPolicy: { type: 'readOnly' },
+    };
+    console.log('Per-call option:', JSON.stringify(sandboxOverride));
     const sandboxed = await generateText({
       model,
       prompt: 'Reply with exactly: Sandbox override configured.',
       providerOptions: {
-        'codex-app-server': {
-          approvalPolicy: 'never',
-          sandboxPolicy: { type: 'readOnly' },
-        },
+        'codex-app-server': sandboxOverride,
       },
     });
     console.log(sandboxed.text);
