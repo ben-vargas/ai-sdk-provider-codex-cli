@@ -456,9 +456,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
               : undefined;
           if (target.persistent) {
             this.persistentThreadId = target.threadId;
-            if (target.explicit) {
-              this.persistentThreadRawEventsEnabled = undefined;
-            }
+            this.persistentThreadRawEventsEnabled = knownRawEvents;
           }
 
           return {

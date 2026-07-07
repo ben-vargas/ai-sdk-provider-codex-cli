@@ -1473,6 +1473,43 @@ describe('AppServerLanguageModel', () => {
     ).toBe(true);
   });
 
+  it('preserves raw-event negotiation when explicitly resuming the known persistent thread', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent', includeRawChunks: true },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    const explicitResume = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second' }] as never,
+      providerOptions: { 'codex-app-server': { threadId: 'thr_new' } },
+    });
+
+    const continuedPersistent = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Third' }] as never,
+    });
+
+    expect(
+      explicitResume.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+    expect(
+      continuedPersistent.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+  });
+
   it('invokes onSessionCreated and supports injectMessage()', async () => {
     const client = new FakeClient();
     let session:
