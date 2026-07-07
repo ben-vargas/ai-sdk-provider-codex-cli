@@ -921,9 +921,7 @@ describe('ExecLanguageModel', () => {
         item: { item_type: 'assistant_message', text: 'ok' },
       }),
     ];
-    const prompt = [
-      { role: 'user' as const, content: [{ type: 'text' as const, text: 'Hi' }] },
-    ];
+    const prompt = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'Hi' }] }];
 
     it('maps top-level reasoning to Codex effort and overrides constructor default', async () => {
       let argsCaptured: string[] = [];

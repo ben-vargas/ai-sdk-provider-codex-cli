@@ -3,14 +3,14 @@
 [![npm version](https://img.shields.io/npm/v/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
 [![npm downloads](https://img.shields.io/npm/dm/ai-sdk-provider-codex-cli.svg)](https://www.npmjs.com/package/ai-sdk-provider-codex-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-43853d?logo=node.js&logoColor=white)
-![AI SDK v6](https://img.shields.io/badge/AI%20SDK-v6-000?logo=vercel&logoColor=white)
-![Modules: ESM + CJS](https://img.shields.io/badge/modules-ESM%20%2B%20CJS-3178c6)
+![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-43853d?logo=node.js&logoColor=white)
+![AI SDK v7](https://img.shields.io/badge/AI%20SDK-v7-000?logo=vercel&logoColor=white)
+![Modules: ESM only](https://img.shields.io/badge/modules-ESM%20only-3178c6)
 ![TypeScript](https://img.shields.io/badge/TypeScript-blue)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v6 that integrates OpenAI's Codex CLI with current GPT models such as `gpt-5.5`, `gpt-5.2`, and `gpt-5.1`, plus Codex-specific slugs like `gpt-5.3-codex`, `gpt-5.2-codex`, `*-codex-max`, and `*-codex-mini`, using your ChatGPT Plus/Pro subscription.
+A community provider for Vercel AI SDK v7 that integrates OpenAI's Codex CLI (for example `gpt-5.5`) using your ChatGPT Plus/Pro subscription. Available model slugs follow whatever your installed Codex CLI exposes — use `listModels()` / `provider.listModels()` to discover them.
 
 This package ships two provider modes:
 
@@ -20,20 +20,22 @@ This package ships two provider modes:
 - Works with `generateText`, `streamText`, and `generateObject`
 - Uses ChatGPT OAuth from `codex login` (tokens in `~/.codex/auth.json`) or `OPENAI_API_KEY`
 - Node-only (spawns a local process); supports CI and local dev
-- **v1.0.0**: AI SDK v6 stable migration with LanguageModelV3 interface
-- **v0.5.0**: Adds comprehensive logging system with verbose mode and custom logger support
-- **v0.3.0**: Adds comprehensive tool streaming support for monitoring autonomous tool execution
+- Requires Node.js >= 22; published as an ESM-only package
+- **v2.0.0**: AI SDK v7 migration with the native LanguageModelV4 provider spec (package line 2.x)
+- **v1.0.0**: AI SDK v6 migration with the LanguageModelV3 interface (now on the `ai-sdk-v6` tag)
 
 ## Version Compatibility
 
-| Provider Version | AI SDK Version | NPM Tag     | NPM Installation                                      |
-| ---------------- | -------------- | ----------- | ----------------------------------------------------- |
-| 1.x.x            | v6             | `latest`    | `npm i ai-sdk-provider-codex-cli ai@^6.0.0`           |
-| 0.x.x            | v5             | `ai-sdk-v5` | `npm i ai-sdk-provider-codex-cli@ai-sdk-v5 ai@^5.0.0` |
+| Package line      | AI SDK | npm tag               | Git branch  | Status                       |
+| ----------------- | ------ | --------------------- | ----------- | ---------------------------- |
+| 2.x               | v7     | `latest`, `ai-sdk-v7` | `main`      | Active development           |
+| 1.x               | v6     | `ai-sdk-v6`           | `ai-sdk-v6` | Maintenance                  |
+| 0.7.x             | v5     | `ai-sdk-v5`           | `ai-sdk-v5` | Maintenance / critical fixes |
+| `0.1.0-ai-sdk-v4` | v4     | `ai-sdk-v4`           | `ai-sdk-v4` | Frozen                       |
 
 ## Installation
 
-### For AI SDK v6 (default)
+### For AI SDK v7 (default)
 
 1. Install and authenticate Codex CLI
 
@@ -42,10 +44,18 @@ npm i -g @openai/codex
 codex login   # or set OPENAI_API_KEY
 ```
 
-2. Install provider and AI SDK v6
+2. Install provider and AI SDK v7
 
 ```bash
 npm i ai ai-sdk-provider-codex-cli
+```
+
+> **Requirements:** Node.js >= 22. This package is ESM-only (no CommonJS build); load it with `import` (or dynamic `import()` from CJS).
+
+### For AI SDK v6
+
+```bash
+npm i ai@^6 ai-sdk-provider-codex-cli@ai-sdk-v6
 ```
 
 ### For AI SDK v5
@@ -54,7 +64,7 @@ npm i ai ai-sdk-provider-codex-cli
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.130.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.130.0`, the latest non-alpha release validated for this maintenance update. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
+> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.130.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.130.0`, the latest non-alpha release validated for this release line. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -154,11 +164,12 @@ console.log(object);
 
 ## Features
 
-- AI SDK v6 compatible (LanguageModelV3)
+- AI SDK v7 compatible (native LanguageModelV4 provider spec)
 - Dual provider architecture:
   - `codexExec` / `createCodexExec` for `codex exec`
   - `codexAppServer` / `createCodexAppServer` for `codex app-server`
 - Backward-compatible aliases: `codexCli` / `createCodexCli` map to exec mode
+- Model discovery via `listModels()` / `provider.listModels()` — available slugs follow your installed Codex CLI
 - Streaming and non‑streaming
 - **Configurable logging** (v0.5.0+) - Verbose mode, custom loggers, or silent operation
 - **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
@@ -224,7 +235,7 @@ const result = await streamText({
   prompt: 'List files and count lines in the largest one',
 });
 
-for await (const part of result.fullStream) {
+for await (const part of result.stream) {
   if (part.type === 'tool-call') {
     console.log('🔧 Tool:', part.toolName);
   }
@@ -298,7 +309,7 @@ const silentModel = codexExec('gpt-5.5', {
 
 **Default Logger:** Adds level tags `[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]` to console output. Use a custom logger or `logger: false` if you need different formatting.
 
-See `examples/exec/logging-*.mjs` and `examples/app-server/logging-*.mjs` for complete examples, and [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) for detailed configuration.
+See `examples/exec/logging-*.mjs` and `examples/app-server/logging-*.mjs` for complete examples, and [docs/ai-sdk-v7/guide.md](docs/ai-sdk-v7/guide.md) for detailed configuration.
 
 ### Text Streaming behavior
 
@@ -319,11 +330,11 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
 ## Documentation
 
 - Getting started, configuration, and troubleshooting live in `docs/`:
-  - [docs/ai-sdk-v5/guide.md](docs/ai-sdk-v5/guide.md) – full usage guide and examples
-  - [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) – all settings and how they map to CLI flags
-  - [docs/ai-sdk-v5/troubleshooting.md](docs/ai-sdk-v5/troubleshooting.md) – common issues and fixes
-  - [docs/ai-sdk-v5/limitations.md](docs/ai-sdk-v5/limitations.md) – known constraints and behavior differences
-  - [docs/ai-sdk-v5/migration-app-server-v2.md](docs/ai-sdk-v5/migration-app-server-v2.md) – app-server v2 migration notes
+  - [docs/ai-sdk-v7/guide.md](docs/ai-sdk-v7/guide.md) – full usage guide and examples
+  - [docs/ai-sdk-v7/configuration.md](docs/ai-sdk-v7/configuration.md) – all settings and how they map to CLI flags
+  - [docs/ai-sdk-v7/troubleshooting.md](docs/ai-sdk-v7/troubleshooting.md) – common issues and fixes
+  - [docs/ai-sdk-v7/limitations.md](docs/ai-sdk-v7/limitations.md) – known constraints and behavior differences
+  - [docs/ai-sdk-v7/migration-v6-to-v7.md](docs/ai-sdk-v7/migration-v6-to-v7.md) – migrating from the 1.x (AI SDK v6) package line
 - See [examples/](examples/) for runnable scripts covering core usage, streaming, permissions/sandboxing, and object generation.
 - Validation helpers:
   - `npm run validate:docs` checks markdown links and example command paths
@@ -351,7 +362,7 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
   - `verbose`: Enable debug/info logs (default: `false` for clean output)
   - `logger`: Custom logger object or `false` to disable all logging
 
-See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the full list and examples.
+See [docs/ai-sdk-v7/configuration.md](docs/ai-sdk-v7/configuration.md) for the full list and examples.
 
 ### App-server settings highlights
 
@@ -361,7 +372,7 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 - `requestTimeoutMs`: default per-request JSON-RPC timeout
 - `idleTimeoutMs`: close idle app-server process after inactivity
 - `minCodexVersion`: minimum supported app-server version (semver)
-- `includeRawChunks`: emit raw JSON-RPC notifications as `raw` stream parts by default
+- `includeRawChunks`: emit raw JSON-RPC notifications as `raw` stream parts by default (per call, prefer the standard AI SDK v7 option `include: { rawChunks: true }` on `streamText`)
 - `serverRequests`: typed handlers for server-initiated JSON-RPC requests
 - `autoApprove`: default approval response when no custom handler is provided (covers command execution, file changes, skills, and MCP tool call approvals via `mcpServer/elicitation/request` on Codex >= 0.139)
 - `persistExtendedHistory`: request extended thread history persistence
@@ -369,7 +380,7 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 - `resume`: shorthand to resume an existing thread id
 - `onSessionCreated`: receive a session object for `injectMessage()` / `interrupt()`
 
-Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`).
+Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`). Raw chunk emission can also be requested per call with the standard AI SDK v7 option `include: { rawChunks: true }`.
 
 Additional app-server helpers:
 
@@ -475,7 +486,9 @@ const response = await generateText({
 });
 ```
 
-**Precedence:** `providerOptions['codex-cli']` > constructor `CodexCliSettings` > Codex CLI defaults.
+**Precedence:** `providerOptions['codex-cli']` > top-level `reasoning` call option > constructor `CodexCliSettings` > Codex CLI defaults.
+
+The AI SDK v7 top-level `reasoning` option (`'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'`) maps directly to Codex reasoning effort in both provider modes; provider-specific effort options (`reasoningEffort` for exec, `effort` for app-server) win when both are set, and `'provider-default'` leaves your configured default untouched.
 
 App-server per-call overrides use `providerOptions['codex-app-server']`:
 
@@ -499,12 +512,12 @@ const response = await generateText({
 
 ## Zod Compatibility
 
-- Peer supports `zod@^3 || ^4`
+- Peer dependency: `zod@^3.25.76 || ^4.1.8`
 - Validation logic normalizes v3/v4 error shapes
 
 ## Limitations
 
-- Node ≥ 18, local process only (no Edge)
+- Node ≥ 22, ESM-only, local process only (no Edge)
 - Codex `--experimental-json` mode emits events rather than streaming deltas; streaming typically yields a final chunk. The CLI provides the final assistant text in the `item.completed` event, which this provider reads and emits at the end.
 - Some AI SDK parameters are unsupported by Codex CLI (e.g., temperature/topP/penalties); the provider surfaces warnings and ignores them
 

@@ -418,8 +418,7 @@ describe('prompt-converter', () => {
     expect(
       converted.warnings.some(
         (warning) =>
-          warning.type === 'unsupported' &&
-          warning.feature === 'prompt.assistant.reasoning-file',
+          warning.type === 'unsupported' && warning.feature === 'prompt.assistant.reasoning-file',
       ),
     ).toBe(true);
   });

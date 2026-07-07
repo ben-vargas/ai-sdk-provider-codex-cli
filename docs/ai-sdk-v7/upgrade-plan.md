@@ -30,7 +30,7 @@ This plan covers the `ai-sdk-provider-codex-cli` upgrade from the current AI SDK
 1. **Release AI SDK v7 compatibility as `2.0.0`.** The AI SDK major/provider-interface change is a breaking contract, matching the prior v5-to-v6 `1.0.0` cutover.
 2. **Keep `main` as the active SDK-major line.** Cut an `ai-sdk-v6` maintenance branch from current `main`/`v1.2.2` before v7 lands.
 3. **Make v7 native, not merely v3-proxied.** AI SDK v7 can still accept `LanguageModelV3`, but its v3-to-v4 adapter only overrides `specificationVersion`; it does not down-convert v4 prompt/file shapes. Target native `LanguageModelV4` / `ProviderV4` for the stable v7 release.
-4. **Ship `2.0.0` ESM-only (decided).** AI SDK v7 packages are ESM-only and require Node 22+; `@ai-sdk/provider-utils@5` is an ESM-only *runtime* dependency. A retained CJS entry would rely on `require(esm)` — unflagged only from Node 22.12+ while `engines >=22` admits 22.0–22.11 — and would break if the dependency graph ever gains top-level await. Remove the `require` export and CJS build; document ESM-only support.
+4. **Ship `2.0.0` ESM-only (decided).** AI SDK v7 packages are ESM-only and require Node 22+; `@ai-sdk/provider-utils@5` is an ESM-only _runtime_ dependency. A retained CJS entry would rely on `require(esm)` — unflagged only from Node 22.12+ while `engines >=22` admits 22.0–22.11 — and would break if the dependency graph ever gains top-level await. Remove the `require` export and CJS build; document ESM-only support.
 5. **Do not hard-code a broad model catalog.** Use one current example model (`gpt-5.5` if still returned by `listModels()` during release verification) and document that model availability follows the installed Codex CLI. Keep `listModels()` / `provider.listModels()` prominent.
 6. **Treat Claude Agent SDK features as design references, not a direct API surface.** Add only features backed by Codex app-server protocol or AI SDK v7 public APIs. Defer Claude-specific fork/session-store/hooks/background-task/file-rewind APIs unless Codex exposes equivalent capabilities.
 
@@ -352,12 +352,12 @@ Update README:
 - Badge/headline: AI SDK v7.
 - Compatibility table:
 
-| Package line | AI SDK | npm tag | Git branch | Status |
-| --- | --- | --- | --- | --- |
-| `2.x` | v7 | `latest`, `ai-sdk-v7` | `main` | active |
-| `1.x` | v6 | `ai-sdk-v6` | `ai-sdk-v6` | maintenance |
-| `0.7.x` | v5 | `ai-sdk-v5` | `ai-sdk-v5` | maintenance/critical fixes |
-| `0.1.0-ai-sdk-v4` | v4 | `ai-sdk-v4` | `ai-sdk-v4` | frozen |
+| Package line      | AI SDK | npm tag               | Git branch  | Status                     |
+| ----------------- | ------ | --------------------- | ----------- | -------------------------- |
+| `2.x`             | v7     | `latest`, `ai-sdk-v7` | `main`      | active                     |
+| `1.x`             | v6     | `ai-sdk-v6`           | `ai-sdk-v6` | maintenance                |
+| `0.7.x`           | v5     | `ai-sdk-v5`           | `ai-sdk-v5` | maintenance/critical fixes |
+| `0.1.0-ai-sdk-v4` | v4     | `ai-sdk-v4`           | `ai-sdk-v4` | frozen                     |
 
 - Link active docs to `docs/ai-sdk-v7/*`.
 - Keep historical docs under their existing SDK-major folders.
