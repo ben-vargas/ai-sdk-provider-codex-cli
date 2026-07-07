@@ -427,10 +427,12 @@ describe('AI SDK v7 integration (exec provider)', () => {
  */
 class FakeAppServerClient extends EventEmitter {
   turnStartCalls: TurnStartParams[] = [];
+  threadStartCalls: unknown[] = [];
   turnStartImpl?: (params: TurnStartParams) => Promise<{ turn: { id: string } }>;
   private nextContextId = 1;
 
-  async threadStart(_params: unknown) {
+  async threadStart(params: unknown) {
+    this.threadStartCalls.push(params);
     return {
       thread: { id: 'thr_v7' },
       model: 'gpt-5.3-codex',
@@ -526,5 +528,56 @@ describe('AI SDK v7 integration (app-server provider)', () => {
     // The json responseFormat flowed into turn/start as an outputSchema.
     const turnStart = client.turnStartCalls[0] as TurnStartParams & { outputSchema?: unknown };
     expect(turnStart?.outputSchema).toMatchObject({ type: 'object' });
+  });
+
+  it('streamText include.rawChunks enables app-server raw chunks through ai@7', async () => {
+    const client = new FakeAppServerClient();
+    client.turnStartImpl = async (params) => {
+      setImmediate(() => {
+        client.emit('notification', 'item/agentMessage/delta', {
+          threadId: params.threadId,
+          turnId: 'turn_raw_v7',
+          itemId: 'item_raw_v7',
+          delta: 'raw text',
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_raw_v7', items: [], status: 'completed', error: null },
+        });
+      });
+      return { turn: { id: 'turn_raw_v7' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
+
+    const result = streamText({
+      model: model as never,
+      prompt: 'Stream with raw chunks',
+      include: { rawChunks: true },
+    });
+
+    const parts: unknown[] = [];
+    for await (const part of result.stream) {
+      parts.push(part);
+    }
+
+    function isRawDeltaNotification(part: unknown): part is {
+      type: 'raw';
+      rawValue: { method?: unknown };
+    } {
+      if (part === null || typeof part !== 'object' || !('type' in part)) return false;
+      if (part.type !== 'raw' || !('rawValue' in part)) return false;
+      const rawValue = part.rawValue;
+      return (
+        rawValue !== null &&
+        typeof rawValue === 'object' &&
+        'method' in rawValue &&
+        rawValue.method === 'item/agentMessage/delta'
+      );
+    }
+
+    expect(parts.some(isRawDeltaNotification)).toBe(true);
+    const [threadStart] = client.threadStartCalls;
+    expect(threadStart).toMatchObject({ experimentalRawEvents: true });
   });
 });
