@@ -576,7 +576,7 @@ describe('AppServerLanguageModel', () => {
 
     const result = await model.doGenerate({
       prompt: [
-        { role: 'system', content: 'ignored' },
+        { role: 'system', content: 'Resume system guidance' },
         { role: 'user', content: 'First' },
         { role: 'assistant', content: 'ignored assistant history' },
         { role: 'user', content: 'Second' },
@@ -585,7 +585,12 @@ describe('AppServerLanguageModel', () => {
     });
 
     expect(client.threadResumeCalls).toHaveLength(1);
-    expect((client.threadResumeCalls[0] as { threadId: string }).threadId).toBe('thr_existing');
+    const resumeCall = client.threadResumeCalls[0] as {
+      threadId: string;
+      developerInstructions?: string;
+    };
+    expect(resumeCall.threadId).toBe('thr_existing');
+    expect(resumeCall.developerInstructions).toBe('Resume system guidance');
     const firstInput = ((client.turnStartCalls[0] as TurnStartParams).input[0] as { text?: string })
       .text;
     expect(firstInput).toBe('Second');
@@ -1519,6 +1524,91 @@ describe('AppServerLanguageModel', () => {
           warning.message.includes('includeRawChunks was requested while resuming an existing'),
       ),
     ).toBe(false);
+  });
+
+  it('does not warn when stateless thread resume uses known raw-event negotiation', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First raw stateless turn' }] as never,
+      includeRawChunks: true,
+    });
+    const threadId = (first.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+
+    const resumed = await model.doGenerate({
+      prompt: [
+        { role: 'user', content: 'Older stateless turn' },
+        { role: 'assistant', content: 'Earlier answer' },
+        { role: 'user', content: 'Second raw stateless turn' },
+      ] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId } },
+    });
+
+    expect(client.threadResumeCalls).toHaveLength(1);
+    expect((client.threadResumeCalls[0] as { threadId?: string }).threadId).toBe(threadId);
+    expect(
+      resumed.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+  });
+
+  it('warns when raw chunks are requested while resuming an unknown external thread', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Resume unknown raw thread' }] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId: 'thr_external_raw' } },
+    });
+
+    expect(
+      result.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(true);
+  });
+
+  it('warns when a stateless thread without raw-event negotiation resumes with raw chunks', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First non-raw stateless turn' }] as never,
+    });
+    const threadId = (first.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+
+    const resumed = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second raw stateless turn' }] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId } },
+    });
+
+    expect(
+      resumed.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(true);
   });
 
   it('invokes onSessionCreated and supports injectMessage()', async () => {

@@ -211,6 +211,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
 
   private persistentThreadId?: string;
   private persistentThreadRawEventsEnabled?: boolean;
+  private readonly rawEventsByThreadId = new Map<string, boolean>();
   private persistentSession?: AppServerSession;
   private persistentBootstrapLock = Promise.resolve();
 
@@ -456,15 +457,20 @@ export class AppServerLanguageModel implements LanguageModelV4 {
             sandbox: mapSandboxToThreadSandboxMode(settings),
             config: configOverrides,
             baseInstructions: settings.baseInstructions,
-            developerInstructions: developerInstructionsOverride,
+            developerInstructions: developerInstructionsOverride ?? systemInstruction,
             personality: settings.personality,
             persistExtendedHistory: settings.persistExtendedHistory ?? false,
           });
 
+          const cachedRawEvents = this.rawEventsByThreadId.get(target.threadId);
           const knownRawEvents =
-            target.persistent && this.persistentThreadId === target.threadId
+            cachedRawEvents ??
+            (target.persistent && this.persistentThreadId === target.threadId
               ? this.persistentThreadRawEventsEnabled
-              : undefined;
+              : undefined);
+          if (cachedRawEvents !== undefined) {
+            this.rememberThreadRawEvents(target.threadId, cachedRawEvents);
+          }
           if (target.persistent) {
             this.persistentThreadId = target.threadId;
             this.persistentThreadRawEventsEnabled = knownRawEvents;
@@ -498,6 +504,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         }
 
         const newThreadId = await startThread(false);
+        this.rememberThreadRawEvents(newThreadId, includeRawChunks);
         this.persistentThreadId = newThreadId;
         this.persistentThreadRawEventsEnabled = includeRawChunks;
         return {
@@ -511,6 +518,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
 
       if (!threadState.threadId) {
         const newThreadId = await startThread(!threadState.persistent);
+        this.rememberThreadRawEvents(newThreadId, includeRawChunks);
         if (threadState.persistent) {
           this.persistentThreadId = newThreadId;
           this.persistentThreadRawEventsEnabled = includeRawChunks;
@@ -560,6 +568,20 @@ export class AppServerLanguageModel implements LanguageModelV4 {
     }
   }
 
+  private rememberThreadRawEvents(threadId: string, enabled: boolean): void {
+    this.rawEventsByThreadId.delete(threadId);
+    this.rawEventsByThreadId.set(threadId, enabled);
+
+    if (this.rawEventsByThreadId.size <= 256) {
+      return;
+    }
+
+    const oldestThreadId = this.rawEventsByThreadId.keys().next().value;
+    if (typeof oldestThreadId === 'string') {
+      this.rawEventsByThreadId.delete(oldestThreadId);
+    }
+  }
+
   private clearPersistentThreadState(threadId?: string): void {
     if (threadId && this.persistentThreadId && this.persistentThreadId !== threadId) {
       return;
@@ -567,6 +589,9 @@ export class AppServerLanguageModel implements LanguageModelV4 {
 
     this.persistentThreadId = undefined;
     this.persistentThreadRawEventsEnabled = undefined;
+    if (threadId) {
+      this.rawEventsByThreadId.delete(threadId);
+    }
 
     if (!threadId || this.persistentSession?.threadId === threadId) {
       this.persistentSession = undefined;
