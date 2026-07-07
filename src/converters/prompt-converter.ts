@@ -52,7 +52,7 @@ function isToolApprovalResponsePart(part: PromptContentPart): part is {
   );
 }
 
-function collectSystemInstruction(prompt: readonly PromptMessage[]): string | undefined {
+export function collectSystemInstruction(prompt: readonly PromptMessage[]): string | undefined {
   const parts: string[] = [];
 
   for (const message of prompt) {

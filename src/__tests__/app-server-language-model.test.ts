@@ -1144,7 +1144,11 @@ describe('AppServerLanguageModel', () => {
     });
     await flush(1);
     const secondPromise = model.doGenerate({
-      prompt: [{ role: 'user', content: 'Second concurrent' }] as never,
+      prompt: [
+        { role: 'user', content: 'Older concurrent history' },
+        { role: 'assistant', content: 'Assistant history' },
+        { role: 'user', content: 'Second concurrent' },
+      ] as never,
       providerOptions: {
         'codex-app-server': {
           configOverrides: { race_token: 'second-call' },
@@ -1176,6 +1180,13 @@ describe('AppServerLanguageModel', () => {
     expect(firstThreadId).toBe('thr_created_1');
     expect(secondThreadId).toBe('thr_created_1');
     expect(client.withThreadLockCalls).toEqual(['thr_created_1', 'thr_created_1']);
+
+    const secondTurnInput = (
+      (client.turnStartCalls[1] as TurnStartParams).input[0] as {
+        text?: string;
+      }
+    ).text;
+    expect(secondTurnInput).toBe('Second concurrent');
   });
 
   it('throws clear stale-thread error when persistent thread resume fails', async () => {

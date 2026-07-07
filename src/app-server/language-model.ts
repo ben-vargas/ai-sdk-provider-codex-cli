@@ -18,7 +18,11 @@ import type {
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { createVerboseLogger, getLogger } from '../logger.js';
-import { convertPromptToCodexInput, type PromptMessage } from '../converters/index.js';
+import {
+  collectSystemInstruction,
+  convertPromptToCodexInput,
+  type PromptMessage,
+} from '../converters/index.js';
 import { cleanupTempImages, type ImageData, writeImageToTempFile } from '../image-utils.js';
 import {
   createEmptyCodexUsage,
@@ -388,7 +392,8 @@ export class AppServerLanguageModel implements LanguageModelV4 {
     settings: CodexAppServerSettings;
     providerOptions?: CodexAppServerProviderOptions;
     configOverrides?: Record<string, unknown>;
-    developerInstructions?: string;
+    developerInstructionsOverride?: string;
+    systemInstruction?: string;
     includeRawChunks: boolean;
   }): Promise<{
     threadId: string;
@@ -397,8 +402,14 @@ export class AppServerLanguageModel implements LanguageModelV4 {
     resumed: boolean;
     rawEventsNegotiated?: boolean;
   }> {
-    const { settings, providerOptions, configOverrides, developerInstructions, includeRawChunks } =
-      args;
+    const {
+      settings,
+      providerOptions,
+      configOverrides,
+      developerInstructionsOverride,
+      systemInstruction,
+      includeRawChunks,
+    } = args;
     const threadState = this.resolveTargetThreadId(settings, providerOptions);
 
     const startThread = async (ephemeral: boolean) => {
@@ -409,7 +420,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         sandbox: mapSandboxToThreadSandboxMode(settings),
         config: configOverrides,
         baseInstructions: settings.baseInstructions,
-        developerInstructions,
+        developerInstructions: developerInstructionsOverride ?? systemInstruction,
         personality: settings.personality,
         ephemeral,
         experimentalRawEvents: includeRawChunks,
@@ -445,7 +456,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
             sandbox: mapSandboxToThreadSandboxMode(settings),
             config: configOverrides,
             baseInstructions: settings.baseInstructions,
-            developerInstructions,
+            developerInstructions: developerInstructionsOverride,
             personality: settings.personality,
             persistExtendedHistory: settings.persistExtendedHistory ?? false,
           });
@@ -884,15 +895,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
     const developerInstructionsOverride =
       providerOptions?.developerInstructions ?? settings.developerInstructions;
 
-    const threadState = this.resolveTargetThreadId(settings, providerOptions);
-    const prompt = this.preparePrompt(options.prompt as unknown[], Boolean(threadState.threadId));
-
-    warnings.push(...prompt.warnings);
-
-    const effectiveDeveloperInstructions =
-      developerInstructionsOverride ??
-      (!threadState.threadId ? prompt.systemInstruction : undefined);
-
+    const systemInstruction = collectSystemInstruction(options.prompt as readonly PromptMessage[]);
     const resolvedConfig = await this.resolveConfig(settings, sdkServerLifecycle);
     let releasedSdkServers = false;
     const releaseUsedSdkMcpServers = () => {
@@ -911,7 +914,8 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         settings,
         providerOptions,
         configOverrides: resolvedConfig.configOverrides,
-        developerInstructions: effectiveDeveloperInstructions,
+        developerInstructionsOverride,
+        systemInstruction,
         includeRawChunks,
       });
     } catch (error) {
@@ -932,6 +936,10 @@ export class AppServerLanguageModel implements LanguageModelV4 {
           'includeRawChunks was requested while resuming an existing thread that may not emit raw events. Start a new thread to guarantee raw chunk events.',
       });
     }
+
+    const prompt = this.preparePrompt(options.prompt as unknown[], threadResolution.resumed);
+
+    warnings.push(...prompt.warnings);
 
     let input: UserInput[] = [];
     let tempImagePaths: string[] = [];
@@ -975,7 +983,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
       session,
       abortSignal: options.abortSignal,
       shouldSerializeTurnStart: threadResolution.persistent || threadResolution.explicit,
-      hadInitialThreadId: Boolean(threadState.threadId),
+      hadInitialThreadId: threadResolution.resumed,
       threadResolution: {
         persistent: threadResolution.persistent,
         explicit: threadResolution.explicit,
