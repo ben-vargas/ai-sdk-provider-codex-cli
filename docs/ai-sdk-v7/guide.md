@@ -7,7 +7,7 @@ This guide explains how to use the Codex CLI provider with Vercel AI SDK v7 for 
 - **AI SDK v7** (`ai@^7`) and `ai-sdk-provider-codex-cli@^2`
 - **Node.js 22 or later** (AI SDK v7 requirement)
 - **ESM only** — version 2.x of this package ships no CommonJS build. `require('ai-sdk-provider-codex-cli')` is not supported; use `import` (add `"type": "module"` to your `package.json` or use `.mjs` files)
-- **zod** peer dependency: `^3.25.76 || ^4.1.8`
+- **zod** peer dependency: `^4.1.8`
 - A working Codex CLI (`codex login` or `OPENAI_API_KEY`)
 
 Using AI SDK v6? Stay on the 1.x line: see [migration-v6-to-v7.md](./migration-v6-to-v7.md#staying-on-ai-sdk-v6).

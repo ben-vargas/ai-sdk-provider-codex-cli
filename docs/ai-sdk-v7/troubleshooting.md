@@ -86,7 +86,7 @@ See [LIMITATIONS.md](../../LIMITATIONS.md) for full details.
 
 Codex executes its own tools and cannot call back into AI SDK `tools` definitions; the provider warns and ignores `tools`/`toolChoice`. Expose custom capabilities as MCP servers instead (`mcpServers`, or `createSdkMcpServer()` in app-server mode). See [limitations.md](./limitations.md#tools--tool-streaming).
 
-## zod v3/v4 compatibility
+## zod v4 requirement
 
-- The peer range is `zod@^3.25.76 || ^4.1.8` (matching AI SDK v7). If `npm i` reports an unmet peer, upgrade zod within that range.
+- The peer range is `zod@^4.1.8` only. Zod 3 is not supported: importing under Zod 3 throws because `.refine().passthrough()` is unavailable on Zod 3's `ZodEffects`. Upgrade to Zod 4 if `npm i` reports an unmet peer.
 - NPM warnings from transitive peers do not affect functionality.

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node.js >= 22 required**: the supported `engines` floor moves from Node 18 to Node 22
 - **ESM-only package**: the CJS build, the `require` export condition, and the `main`/`module` fields are removed; consume via `import` (or dynamic `import()` from CommonJS)
 - **Legacy model properties removed**: v6-era model properties are gone in favor of the v4 model surface; models now expose the v4 `supportedUrls` map (currently `{}`)
+- **`zod` peer dependency is Zod 4 only**: `^4.1.8` (Zod 3 is not supported). Importing under Zod 3 throws because `.refine().passthrough()` is unavailable on Zod 3's `ZodEffects`. 1.x allowed `zod@^3.0.0 || ^4.0.0`.
 
 ### Added
 
@@ -30,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `@ai-sdk/provider`: ^4.0.0
   - `@ai-sdk/provider-utils`: ^5.0.0
   - `ai` (dev): ^7.0.0
-- `zod` peer dependency narrowed to `^3.25.76 || ^4.1.8`
+- `zod` peer dependency narrowed to `^4.1.8` (Zod 4 only; see Breaking Changes)
 - Model discovery guidance: documentation no longer maintains a static model catalog; use `listModels()` / `provider.listModels()` — available slugs follow your installed Codex CLI
 - Optional `@openai/codex` dependency: `^0.130.0` → `^0.142.5`; app-server protocol types synced with and release-tested against Codex CLI 0.142.5
 

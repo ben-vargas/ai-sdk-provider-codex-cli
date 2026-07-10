@@ -14,7 +14,7 @@ Requirements that changed with 2.0.0:
 | ------------- | -------------------- | -------------------------------------------------- |
 | Node.js       | >= 18                | **>= 22**                                          |
 | Module format | ESM + CJS            | **ESM-only** (no `require()`)                      |
-| zod peer      | `^3.0.0 \|\| ^4.0.0` | `^3.25.76 \|\| ^4.1.8`                             |
+| zod peer      | `^3.0.0 \|\| ^4.0.0` | `^4.1.8` (Zod 4 only)                              |
 | Provider spec | LanguageModelV3      | **LanguageModelV4** (`specificationVersion: 'v4'`) |
 
 ## Staying on AI SDK v6
@@ -182,7 +182,7 @@ The app-server provider also exposes `provider.listModels()` over its existing p
 ## Checklist
 
 1. `node --version` ≥ 22; project runs as ESM.
-2. `npm i ai@^7 ai-sdk-provider-codex-cli@^2` (zod within `^3.25.76 || ^4.1.8`).
+2. `npm i ai@^7 ai-sdk-provider-codex-cli@^2` (zod `^4.1.8` required).
 3. Replace `require()` with `import`.
 4. Rename `system:` → `instructions:`; fix persisted chats containing `{ role: 'system' }`.
 5. Rename `result.fullStream` → `result.stream`; `includeRawChunks` → `include: { rawChunks: true }`.

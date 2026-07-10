@@ -512,8 +512,7 @@ const response = await generateText({
 
 ## Zod Compatibility
 
-- Peer dependency: `zod@^3.25.76 || ^4.1.8`
-- Validation logic normalizes v3/v4 error shapes
+- Peer dependency: `zod@^4.1.8` (Zod 4 only; Zod 3 is not supported)
 
 ## Limitations
 
