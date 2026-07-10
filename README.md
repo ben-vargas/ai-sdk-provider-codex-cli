@@ -241,7 +241,7 @@ for await (const part of result.stream) {
     console.log('🔧 Tool:', part.toolName);
   }
   if (part.type === 'tool-result') {
-    console.log('✅ Result:', part.result);
+    console.log('✅ Result:', part.output);
   }
 }
 ```

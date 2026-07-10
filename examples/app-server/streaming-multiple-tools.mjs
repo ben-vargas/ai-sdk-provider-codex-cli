@@ -69,10 +69,13 @@ try {
         }
 
         case 'tool-result': {
-          const output =
-            part.result && typeof part.result === 'object' && part.result.type === 'tool-result'
-              ? part.result.output
-              : part.result;
+          // Preliminary output-delta parts can arrive before the final tool result;
+          // skip them so summary/completion counting stays correct.
+          if (part.preliminary === true) {
+            break;
+          }
+
+          const output = part.output;
           const tool = toolCalls.find((t) => t.id === part.toolCallId);
 
           if (tool) {

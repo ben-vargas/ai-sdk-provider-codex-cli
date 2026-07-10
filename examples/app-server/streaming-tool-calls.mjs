@@ -58,17 +58,16 @@ try {
           console.log(` Executing tool: ${part.toolName} (${part.toolCallId})`);
           break;
         case 'tool-result': {
-          const result = part.result;
+          const output = part.output;
 
-          if (result && typeof result === 'object' && result.type === 'output-delta') {
-            const streamLabel = result.stream ?? 'stdout';
-            if (typeof result.output === 'string' && result.output.length > 0) {
-              console.log(` ${streamLabel}:\n${result.output}`);
+          if (output && typeof output === 'object' && output.type === 'output-delta') {
+            if (typeof output.delta === 'string' && output.delta.length > 0) {
+              console.log(` stdout:\n${output.delta}`);
             }
             break;
           }
 
-          const payload = result ?? part.providerMetadata?.['codex-app-server'];
+          const payload = output ?? part.providerMetadata?.['codex-app-server'];
           if (payload) {
             console.log(` Tool result (${part.toolCallId}):\n${JSON.stringify(payload, null, 2)}`);
           } else {
