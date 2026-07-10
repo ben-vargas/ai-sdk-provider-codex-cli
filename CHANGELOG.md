@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-10
+
+### Changed
+
+- Update the optional `@openai/codex` dependency from `^0.130.0` to `^0.144.0`, making Codex CLI 0.144.x the validated support baseline for both `codexExec` and `codexAppServer` on the AI SDK v6 line (#36). The previous `^0.130.0` caret capped installs at 0.130.x, so the bundled CLI could silently shadow a newer global install via `node_modules/.bin`.
+- Raise the app-server default `minCodexVersion` from `0.130.0` to `0.144.0` to match the new baseline (set `minCodexVersion` explicitly to accept older CLIs).
+- Refresh AI SDK v6 lockfile dependencies for the new Codex baseline.
+
 ## [1.2.2] - 2026-06-11
 
 ### Fixed
