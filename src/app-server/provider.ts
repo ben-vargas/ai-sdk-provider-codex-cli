@@ -44,7 +44,7 @@ export interface CodexAppServerProvider extends ProviderV3 {
  * @example
  * ```ts
  * const provider = createCodexAppServer({
- *   defaultSettings: { minCodexVersion: '0.130.0' },
+ *   defaultSettings: { minCodexVersion: '0.144.0' },
  * });
  *
  * try {
