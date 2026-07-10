@@ -171,12 +171,12 @@ console.log(object);
 - Backward-compatible aliases: `codexCli` / `createCodexCli` map to exec mode
 - Model discovery via `listModels()` / `provider.listModels()` — available slugs follow your installed Codex CLI
 - Streaming and non‑streaming
-- **Configurable logging** (v0.5.0+) - Verbose mode, custom loggers, or silent operation
-- **Tool streaming support** (v0.3.0+) - Monitor autonomous tool execution in real-time
-- **Native JSON Schema support** via `--output-schema` (API-enforced with `strict: true`)
+- **Configurable logging** - Verbose mode, custom loggers, or silent operation
+- **Tool streaming support** - Monitor autonomous tool execution in real-time
+- **Native JSON Schema support** via `--output-schema` (exec) / the `outputSchema` turn parameter (app-server)
 - JSON object generation with Zod schemas (100-200 fewer tokens per request vs prompt engineering)
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
-- Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
+- Fallback to `npx -y @openai/codex` when the local `@openai/codex` package can't be resolved (`allowNpx`)
 - Usage tracking from experimental JSON event format
 - **Image support** - Local binary images in both providers; remote HTTP/HTTPS image URLs work via AI SDK download
 
@@ -217,13 +217,13 @@ console.log(text);
 
 - Pass remote images as `{ type: 'file', data: new URL('https://...'), mediaType: 'image/png' }` message parts in either mode
 - Both providers declare `supportedUrls = {}`, so the AI SDK downloads the URL itself and hands the provider the bytes, which flow through the same temp-file path as local images
-- Native URL passthrough (sending the URL for Codex to fetch server-side) is deferred until the Codex app-server verifiably accepts remote image URLs
+- Raw URL shapes that bypass the AI SDK's download step are warned and skipped in exec mode; app-server mode forwards them to Codex as-is, but the SDK download route above is the supported path
 
 Local image data is written to temporary files and passed to Codex CLI via `--image` (or app-server `localImage`). Temp files are automatically cleaned up after each request.
 
 See [examples/exec/image-support.mjs](examples/exec/image-support.mjs) and [examples/app-server/image-support.mjs](examples/app-server/image-support.mjs) for complete working examples.
 
-### Tool Streaming (v0.3.0+)
+### Tool Streaming
 
 The provider supports comprehensive tool streaming, enabling real-time monitoring of Codex CLI's autonomous tool execution:
 
@@ -256,11 +256,11 @@ for await (const part of result.stream) {
 **Current behavior:**
 
 - `codexExec`: tool outputs are delivered in final `tool-result` events.
-- `codexAppServer`: when Codex emits tool output delta notifications, the provider surfaces `tool-result` parts with `result.type === 'output-delta'` during streaming.
+- `codexAppServer`: when Codex emits tool output delta notifications, the provider surfaces `tool-result` parts whose `output.type === 'output-delta'` during streaming.
 
 See `examples/exec/streaming-tool-calls.mjs`, `examples/exec/streaming-multiple-tools.mjs`, and their app-server counterparts under `examples/app-server/`.
 
-### Logging Configuration (v0.5.0+)
+### Logging Configuration
 
 Control logging verbosity and integrate with your observability stack:
 
@@ -349,17 +349,17 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
 
 ## Configuration (high level)
 
-- `allowNpx`: If true, falls back to `npx -y @openai/codex` when Codex is not on PATH
+- `allowNpx`: The provider prefers the locally installed `@openai/codex` package; when it can't be resolved, `allowNpx: true` falls back to `npx -y @openai/codex` (otherwise a `codex` binary on PATH is used)
 - `cwd`: Working directory for Codex
 - `addDirs`: Extra directories Codex may read/write (repeats `--add-dir`)
 - Autonomy/sandbox:
   - `fullAuto` (equivalent to `--full-auto`)
   - `dangerouslyBypassApprovalsAndSandbox` (bypass approvals and sandbox; dangerous)
   - Otherwise the provider writes `-c approval_policy=...` and `-c sandbox_mode=...` for you; defaults to `on-failure` and `workspace-write`
-- `skipGitRepoCheck`: enable by default for CI/non‑repo contexts
+- `skipGitRepoCheck`: on by default (pass `false` to keep Codex's git-repo check for CI/non‑repo safety)
 - `color`: `always` | `never` | `auto`
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably
-- Logging (v0.5.0+):
+- Logging:
   - `verbose`: Enable debug/info logs (default: `false` for clean output)
   - `logger`: Custom logger object or `false` to disable all logging
 
@@ -396,7 +396,7 @@ Local MCP security defaults:
 - Without `cacheKey`, SDK MCP server/tool function identity participates in persistent keying to avoid conflating closure-dependent tool behavior.
 - Use `createSdkMcpServer({ cacheKey })` when you intentionally recreate equivalent SDK MCP definitions per call and want stable persistent model reuse.
 
-## Model Parameters & Advanced Options (v0.4.0+)
+## Model Parameters & Advanced Options
 
 Control reasoning effort, verbosity, and advanced Codex features at model creation time:
 
@@ -448,7 +448,7 @@ Nested override objects are flattened to dotted keys (e.g., the example above em
 `-c sandbox_workspace_write.network_access=true`). Arrays are serialized to JSON strings.
 MCP server env/header objects flatten the same way (e.g., `mcp_servers.docs.http_headers.x-tenant=acme`).
 
-### Per-call overrides via `providerOptions` (v0.4.0+)
+### Per-call overrides via `providerOptions`
 
 Override these parameters for individual AI SDK calls using the `providerOptions` map. Per-call
 values take precedence over constructor defaults while leaving other settings intact.
@@ -521,7 +521,7 @@ const response = await generateText({
 - Codex `--experimental-json` mode emits events rather than streaming deltas; streaming typically yields a final chunk. The CLI provides the final assistant text in the `item.completed` event, which this provider reads and emits at the end.
 - Some AI SDK parameters are unsupported by Codex CLI (e.g., temperature/topP/penalties); the provider surfaces warnings and ignores them
 
-### JSON Schema Limitations (v0.2.0+)
+### JSON Schema Limitations
 
 **⚠️ Important:** OpenAI strict mode has limitations:
 

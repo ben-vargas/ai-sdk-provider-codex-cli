@@ -1,10 +1,14 @@
 # Known Limitations
 
-## Native JSON Schema Support (v0.2.0+)
+This document covers the 2.x package line (AI SDK v7) and applies to both provider modes — `codexExec` and `codexAppServer` — except where a mode is called out explicitly. For a condensed overview, see [docs/ai-sdk-v7/limitations.md](docs/ai-sdk-v7/limitations.md).
+
+## Native JSON Schema Support
+
+Structured output (`generateObject`, `streamObject`, and `responseFormat: { type: 'json' }`) is implemented with OpenAI's strict-mode output schemas. The provider sanitizes your JSON schema and passes it to Codex — via `--output-schema` in exec mode and the `outputSchema` turn parameter in app-server mode. Strict mode imposes the constraints below in both modes.
 
 ### Optional Fields Not Supported
 
-**OpenAI's strict mode** (used by `--output-schema`) **does not support optional fields**. All properties in the schema must be in the `required` array.
+**OpenAI's strict mode does not support optional fields.** All properties in the schema must be in the `required` array.
 
 **Impact:**
 
@@ -84,46 +88,54 @@ const schema = z.object({
 
 ### Image Support
 
-The provider supports multimodal (image) inputs, but with some limitations:
+The provider supports multimodal (image) inputs with these characteristics:
 
-**Not supported:**
-
-- HTTP/HTTPS image URLs - Images must be provided as binary data (Buffer, Uint8Array) or base64 strings
-- The AI SDK will pass images as base64 data, which the provider handles correctly
-
-**How it works:**
-
-- Images are written to temporary files
-- Passed to Codex CLI via the `--image` flag
-- Temp files are automatically cleaned up after the request completes
-
-**Supported formats:**
+**Supported input forms:**
 
 - Base64 data URLs (`data:image/png;base64,...`)
 - Raw base64 strings
 - `Buffer` / `Uint8Array` / `ArrayBuffer`
+- Remote `https://` URLs — both providers declare `supportedUrls = {}`, so the AI SDK downloads the image itself and delivers inline data to the provider; remote images work end to end through the temp-file path below
+- AI SDK v7 tagged file data (`{ type: 'data' | 'url' }`)
+
+**Not supported:**
+
+- `file://` URLs — rejected with an `unsupported` warning in both modes
+- Non-image `{ type: 'file' }` parts — skipped with an `unsupported` warning
+- Tagged `'text'` and `'reference'` file data for images — skipped with a warning
+- Raw HTTP(S) URL shapes that reach the exec provider directly, bypassing the AI SDK's download step — these produce an `unsupported` warning
+
+**How it works:**
+
+- Image bytes are written to temporary files
+- Passed to Codex via the `--image` flag (exec mode) or as `localImage` inputs (app-server mode)
+- Temp files are automatically cleaned up after the request completes
 
 ### Usage Tracking
 
-Currently returns `{ inputTokens: 0, outputTokens: 0, totalTokens: 0 }` for all requests. This is a Codex CLI limitation where `turn.completed` events don't consistently populate usage statistics.
+Both modes report real token usage from Codex events (`turn.completed` in exec mode, `thread/tokenUsage/updated` notifications in app-server mode), including cached input tokens.
+
+Notes:
+
+- With AI SDK v7, `result.usage` aggregates **all steps**; use `result.finalStep.usage` for final-step-only numbers.
+- Detailed fields live under `usage.inputTokenDetails` (e.g. `cacheReadTokens`) and `usage.outputTokenDetails` (e.g. `reasoningTokens`); the legacy top-level `cachedInputTokens` / `reasoningTokens` aliases were removed by AI SDK 7.
+- If Codex omits usage data for a turn, the provider reports zeros rather than failing.
 
 ### Streaming
 
-**Status:** Not currently supported with `--experimental-json` format (expected in future Codex CLI releases)
+Streaming granularity differs by mode:
 
-The `--experimental-json` output format (introduced in Codex CLI on Sept 25, 2025) currently only emits `item.completed` events with full text content. Incremental streaming via `item.updated` or delta events is **not yet implemented** by OpenAI.
+- **`codexAppServer` (recommended for streaming):** true incremental text deltas via `item/agentMessage/delta` notifications — `streamText()` emits progressively.
+- **`codexExec`:** Codex's `--experimental-json` output emits events (`thread.started`, `turn.completed`, `item.completed`) rather than text deltas, so `streamText()` works functionally but delivers the full response in a single chunk once generation completes. The provider reads the final assistant text from the `item.completed` event.
 
-**What this means:**
+Tool calls and results stream in real time in both modes (with `providerExecuted: true`), but tool _output_ streaming is limited: exec mode delivers tool output in the final `tool-result` event, and app-server mode surfaces output deltas only when Codex emits delta notifications.
 
-- `streamText()` works functionally but delivers the entire response in a single chunk after generation completes
-- No incremental text deltas - you wait for the full response, then receive it all at once
-- The AI SDK's streaming interface is supported, but actual incremental streaming is not available
+If OpenAI adds delta events to the exec JSON output format, this provider will surface them in exec mode as well.
 
-**Future support:**
-The Codex CLI commit message (344d4a1d) explicitly states: "or other item types like `item.output_delta` when we need streaming" and notes "more event types and item types to come."
+### Unsupported AI SDK Parameters
 
-When OpenAI adds streaming support to the experimental JSON format, this provider will be updated to handle those events and enable true incremental streaming.
+Codex CLI does not accept sampling and generation-control parameters. The provider ignores these with an `unsupported` warning: `temperature`, `topP`, `topK`, `maxOutputTokens`, `presencePenalty`, `frequencyPenalty`, `stopSequences`, `seed`.
 
-### Color Output
+AI SDK-defined `tools` / `toolChoice` are also not forwarded — Codex executes its own tools (exec, patch, web_search, MCP tools) autonomously and cannot call back into SDK tool implementations. (`toolChoice: 'auto'` is ignored without a warning, since AI SDK v7 sends it by default.) Use Codex MCP servers (including `createSdkMcpServer()` in app-server mode) to expose your own capabilities instead.
 
-When using `color: 'never'` mode (recommended for parsing), Codex CLI still includes ANSI control sequences in some log lines. The provider filters these out, but it's not 100% reliable.
+The top-level `reasoning` call option **is** supported and maps to Codex reasoning effort in both modes; see [docs/ai-sdk-v7/configuration.md](docs/ai-sdk-v7/configuration.md#reasoning-precedence).
