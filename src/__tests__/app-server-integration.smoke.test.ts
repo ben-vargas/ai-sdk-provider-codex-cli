@@ -14,7 +14,7 @@ describeIntegration('app-server integration smoke', () => {
       const modelId = process.env.CODEX_APP_SERVER_INTEGRATION_MODEL ?? 'gpt-5.3-codex';
       const provider = createCodexAppServer({
         defaultSettings: {
-          minCodexVersion: '0.142.5',
+          minCodexVersion: '0.144.0',
           connectionTimeoutMs: 60_000,
           codexPath,
           approvalPolicy: 'never',
