@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { streamText } from 'ai';
 import { ExecLanguageModel } from '../exec-language-model.js';
+import type { LanguageModelV4CallOptions, SharedV4Warning } from '@ai-sdk/provider';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'node:fs';
@@ -58,6 +59,11 @@ vi.mock('node:child_process', async () => {
 
 // Access the helper to swap mocks inside tests
 const childProc = await import('node:child_process');
+// The vi.mock factory above augments the module with __setSpawnMock, which the
+// node:child_process module type cannot express.
+const mockableChildProc = childProc as unknown as {
+  __setSpawnMock: (fn: (cmd: string, args: string[]) => unknown) => void;
+};
 
 describe('ExecLanguageModel', () => {
   beforeEach(() => {
@@ -266,6 +272,131 @@ describe('ExecLanguageModel', () => {
     });
     expect(finish?.usage.raw).toBeDefined();
     expect(finish?.finishReason).toEqual({ unified: 'stop', raw: undefined });
+  });
+
+  it('reassembles a JSONL event split across two stdout data chunks', async () => {
+    const threadLine = JSON.stringify({ type: 'thread.started', thread_id: 'thread-split' }) + '\n';
+    const itemLine =
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'Hello Split' },
+      }) + '\n';
+    const turnLine =
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }) +
+      '\n';
+    // Split mid-JSON so neither fragment alone is valid JSON
+    const splitAt = 40;
+    const itemPart1 = itemLine.slice(0, splitAt);
+    const itemPart2 = itemLine.slice(splitAt);
+
+    (childProc as any).__setSpawnMock((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as any;
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new PassThrough();
+      child.kill = vi.fn();
+
+      // Force distinct stdout 'data' events with macrotask gaps between partial writes
+      setTimeout(() => {
+        child.stdout.write(threadLine);
+        setTimeout(() => {
+          child.stdout.write(itemPart1);
+          setTimeout(() => {
+            child.stdout.write(itemPart2);
+            setTimeout(() => {
+              child.stdout.write(turnLine);
+              child.stdout.end();
+              child.emit('close', 0);
+            }, 0);
+          }, 0);
+        }, 0);
+      }, 5);
+
+      return child;
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'Say hi' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    const it = (rs as any)[Symbol.asyncIterator]();
+    for await (const part of it) received.push(part);
+
+    const types = received.map((p) => p.type);
+    expect(types).toContain('response-metadata');
+    expect(types).toContain('text-delta');
+    expect(types).toContain('finish');
+    const deltaPayload = received.find((p) => p.type === 'text-delta');
+    expect(deltaPayload?.delta).toBe('Hello Split');
+    const finish = received.find((p) => p.type === 'finish');
+    expect(finish?.usage).toMatchObject({
+      inputTokens: { total: 1 },
+      outputTokens: { total: 1 },
+    });
+  });
+
+  it('flushes a final JSONL line delivered without a trailing newline before close', async () => {
+    // The final item.completed event is split mid-JSON across two data chunks, and the
+    // completing fragment has no trailing newline. Neither fragment alone is valid JSON,
+    // and there is no later data event or newline to trigger processing — so the event
+    // can only be parsed via the close-time stdoutBuffer flush path.
+    const threadLine = JSON.stringify({ type: 'thread.started', thread_id: 'thread-noeol' }) + '\n';
+    const itemLine = JSON.stringify({
+      type: 'item.completed',
+      item: { item_type: 'assistant_message', text: 'Flushed Split' },
+    }); // intentionally no trailing \n
+    // Split mid-JSON so neither fragment alone is valid JSON
+    const splitAt = 40;
+    const itemPart1 = itemLine.slice(0, splitAt);
+    const itemPart2 = itemLine.slice(splitAt);
+
+    (childProc as any).__setSpawnMock((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as any;
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new PassThrough();
+      child.kill = vi.fn();
+
+      // Force distinct stdout 'data' events; final fragment has no \n and close follows immediately
+      setTimeout(() => {
+        child.stdout.write(threadLine);
+        setTimeout(() => {
+          child.stdout.write(itemPart1);
+          setTimeout(() => {
+            child.stdout.write(itemPart2);
+            child.stdout.end();
+            child.emit('close', 0);
+          }, 0);
+        }, 0);
+      }, 5);
+
+      return child;
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'Say hi' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    const it = (rs as any)[Symbol.asyncIterator]();
+    for await (const part of it) received.push(part);
+
+    const types = received.map((p) => p.type);
+    expect(types).toContain('text-delta');
+    expect(types).toContain('finish');
+    const deltaPayload = received.find((p) => p.type === 'text-delta');
+    expect(deltaPayload?.delta).toBe('Flushed Split');
   });
 
   it('marks provider-executed exec tools dynamic for AI SDK UI streams', async () => {
@@ -904,6 +1035,120 @@ describe('ExecLanguageModel', () => {
       expect(lastArgs).toContain('--full-auto');
       expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
       expect(lastArgs).toContain('model_reasoning_effort=medium');
+    });
+  });
+
+  describe('top-level reasoning call option', () => {
+    const reasoningLines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-reasoning-option' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'ok' },
+      }),
+    ];
+    const prompt = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'Hi' }] }];
+
+    it('maps top-level reasoning to Codex effort and overrides constructor default', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'low' },
+      });
+      await model.doGenerate({ prompt, reasoning: 'high' });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=high');
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=low');
+    });
+
+    it('providerOptions reasoningEffort overrides top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      await model.doGenerate({
+        prompt,
+        reasoning: 'low',
+        providerOptions: { 'codex-cli': { reasoningEffort: 'xhigh' } },
+      });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=xhigh');
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=low');
+    });
+
+    it("leaves effort unset for reasoning: 'provider-default'", async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      const res = await model.doGenerate({ prompt, reasoning: 'provider-default' });
+
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
+      expect(
+        res.warnings.filter((w) => w.type === 'unsupported' && w.feature === 'reasoning'),
+      ).toHaveLength(0);
+    });
+
+    it('warns and leaves effort unset for unmappable top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      // Runtime forward-compat: a future reasoning level outside the v4 union.
+      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
+
+      expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
+      const warning = res.warnings.find(
+        (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
+          w.type === 'unsupported' && w.feature === 'reasoning',
+      );
+      expect(warning).toBeDefined();
+      expect(warning?.details).toContain("'ultra'");
+    });
+
+    it('warns and keeps configured effort for unmappable top-level reasoning', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'medium' },
+      });
+      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=medium');
+      const warning = res.warnings.find(
+        (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
+          w.type === 'unsupported' && w.feature === 'reasoning',
+      );
+      expect(warning?.details).toContain("'ultra'; it will be ignored");
     });
   });
 

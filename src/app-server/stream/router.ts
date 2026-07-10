@@ -1,4 +1,4 @@
-import type { LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4Usage } from '@ai-sdk/provider';
 import type { Turn } from '../protocol/types.js';
 import { AppServerRpcClient } from '../rpc/client.js';
 import { AppServerStreamEmitter } from './emitter.js';
@@ -16,7 +16,7 @@ export interface AppServerNotificationRouterOptions {
   client: AppServerRpcClient;
   emitter: AppServerStreamEmitter;
   threadId: string;
-  onUsage: (usage: LanguageModelV3Usage) => void;
+  onUsage: (usage: LanguageModelV4Usage) => void;
   onThreadTurnCompleted?: (turn: Turn) => void;
   onTurnCompleted: (turn: Turn) => void;
   onError: (error: Error) => void;
@@ -35,7 +35,7 @@ export class AppServerNotificationRouter {
   private readonly client: AppServerRpcClient;
   private readonly emitter: AppServerStreamEmitter;
   private readonly threadId: string;
-  private readonly onUsage: (usage: LanguageModelV3Usage) => void;
+  private readonly onUsage: (usage: LanguageModelV4Usage) => void;
   private readonly onThreadTurnCompleted?: (turn: Turn) => void;
   private readonly onTurnCompleted: (turn: Turn) => void;
   private readonly onError: (error: Error) => void;

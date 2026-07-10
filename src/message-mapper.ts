@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai';
-import type { SharedV3Warning } from '@ai-sdk/provider';
+import type { SharedV4Warning } from '@ai-sdk/provider';
 import { convertPromptToCodexInput, type PromptMessage } from './converters/index.js';
 import type { ImageData } from './image-utils.js';
 
@@ -8,7 +8,7 @@ export type { ImageData };
 export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
   promptText: string;
   images: ImageData[];
-  warnings?: SharedV3Warning[];
+  warnings?: SharedV4Warning[];
 } {
   const converted = convertPromptToCodexInput({
     prompt: prompt as unknown as readonly PromptMessage[],
@@ -16,7 +16,7 @@ export function mapMessagesToPrompt(prompt: readonly ModelMessage[]): {
     includeRemoteImagesInMarkers: false,
   });
 
-  const warnings: SharedV3Warning[] = converted.warnings.map((warning) =>
+  const warnings: SharedV4Warning[] = converted.warnings.map((warning) =>
     warning.type === 'unsupported'
       ? {
           type: 'unsupported',

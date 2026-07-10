@@ -7,7 +7,7 @@ These examples use `createCodexAppServer` and a persistent `codex app-server` JS
 - Best for higher-throughput or stateful workflows.
 - Stateful continuation starts from a persistent thread and then uses `providerOptions['codex-app-server'].threadId`.
 - Server-initiated JSON-RPC requests can be handled with `serverRequests`.
-- Requires Codex CLI `>= 0.130.0`.
+- Requires Codex CLI `>= 0.142.5`.
 
 ## Thread Lifecycle
 

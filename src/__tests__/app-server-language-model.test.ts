@@ -174,6 +174,91 @@ describe('AppServerLanguageModel', () => {
     });
   });
 
+  it('maps top-level reasoning option to turn effort', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'high',
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('high');
+  });
+
+  it('prefers providerOptions effort over top-level reasoning', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'low',
+      providerOptions: { 'codex-app-server': { effort: 'xhigh' } },
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('xhigh');
+  });
+
+  it('leaves configured effort untouched for provider-default reasoning', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'medium' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'provider-default',
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
+  });
+
+  it('leaves configured effort untouched when reasoning is undefined', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'minimal' },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('minimal');
+  });
+
+  it('warns and keeps configured effort for unmappable reasoning values', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { effort: 'medium' },
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Say hello' }] as never,
+      reasoning: 'ultra' as never,
+    });
+
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        type: 'unsupported',
+        feature: 'reasoning',
+        details: expect.stringContaining("'ultra'; it will be ignored"),
+      }),
+    );
+  });
+
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
     const client = new FakeClient();
     client.turnStartImpl = async (params) => {
@@ -491,7 +576,7 @@ describe('AppServerLanguageModel', () => {
 
     const result = await model.doGenerate({
       prompt: [
-        { role: 'system', content: 'ignored' },
+        { role: 'system', content: 'Resume system guidance' },
         { role: 'user', content: 'First' },
         { role: 'assistant', content: 'ignored assistant history' },
         { role: 'user', content: 'Second' },
@@ -500,7 +585,12 @@ describe('AppServerLanguageModel', () => {
     });
 
     expect(client.threadResumeCalls).toHaveLength(1);
-    expect((client.threadResumeCalls[0] as { threadId: string }).threadId).toBe('thr_existing');
+    const resumeCall = client.threadResumeCalls[0] as {
+      threadId: string;
+      developerInstructions?: string;
+    };
+    expect(resumeCall.threadId).toBe('thr_existing');
+    expect(resumeCall.developerInstructions).toBe('Resume system guidance');
     const firstInput = ((client.turnStartCalls[0] as TurnStartParams).input[0] as { text?: string })
       .text;
     expect(firstInput).toBe('Second');
@@ -1059,7 +1149,11 @@ describe('AppServerLanguageModel', () => {
     });
     await flush(1);
     const secondPromise = model.doGenerate({
-      prompt: [{ role: 'user', content: 'Second concurrent' }] as never,
+      prompt: [
+        { role: 'user', content: 'Older concurrent history' },
+        { role: 'assistant', content: 'Assistant history' },
+        { role: 'user', content: 'Second concurrent' },
+      ] as never,
       providerOptions: {
         'codex-app-server': {
           configOverrides: { race_token: 'second-call' },
@@ -1091,6 +1185,13 @@ describe('AppServerLanguageModel', () => {
     expect(firstThreadId).toBe('thr_created_1');
     expect(secondThreadId).toBe('thr_created_1');
     expect(client.withThreadLockCalls).toEqual(['thr_created_1', 'thr_created_1']);
+
+    const secondTurnInput = (
+      (client.turnStartCalls[1] as TurnStartParams).input[0] as {
+        text?: string;
+      }
+    ).text;
+    expect(secondTurnInput).toBe('Second concurrent');
   });
 
   it('throws clear stale-thread error when persistent thread resume fails', async () => {
@@ -1381,6 +1482,128 @@ describe('AppServerLanguageModel', () => {
 
     expect(
       result.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(true);
+  });
+
+  it('preserves raw-event negotiation when explicitly resuming the known persistent thread', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+      settings: { threadMode: 'persistent', includeRawChunks: true },
+    });
+
+    await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First' }] as never,
+    });
+
+    const explicitResume = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second' }] as never,
+      providerOptions: { 'codex-app-server': { threadId: 'thr_new' } },
+    });
+
+    const continuedPersistent = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Third' }] as never,
+    });
+
+    expect(
+      explicitResume.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+    expect(
+      continuedPersistent.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not warn when stateless thread resume uses known raw-event negotiation', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First raw stateless turn' }] as never,
+      includeRawChunks: true,
+    });
+    const threadId = (first.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+
+    const resumed = await model.doGenerate({
+      prompt: [
+        { role: 'user', content: 'Older stateless turn' },
+        { role: 'assistant', content: 'Earlier answer' },
+        { role: 'user', content: 'Second raw stateless turn' },
+      ] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId } },
+    });
+
+    expect(client.threadResumeCalls).toHaveLength(1);
+    expect((client.threadResumeCalls[0] as { threadId?: string }).threadId).toBe(threadId);
+    expect(
+      resumed.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(false);
+  });
+
+  it('warns when raw chunks are requested while resuming an unknown external thread', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Resume unknown raw thread' }] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId: 'thr_external_raw' } },
+    });
+
+    expect(
+      result.warnings.some(
+        (warning) =>
+          warning.type === 'other' &&
+          warning.message.includes('includeRawChunks was requested while resuming an existing'),
+      ),
+    ).toBe(true);
+  });
+
+  it('warns when a stateless thread without raw-event negotiation resumes with raw chunks', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-5.3-codex',
+      client: client as never,
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'First non-raw stateless turn' }] as never,
+    });
+    const threadId = (first.providerMetadata?.['codex-app-server'] as { threadId?: string })
+      ?.threadId;
+
+    const resumed = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Second raw stateless turn' }] as never,
+      includeRawChunks: true,
+      providerOptions: { 'codex-app-server': { threadId } },
+    });
+
+    expect(
+      resumed.warnings.some(
         (warning) =>
           warning.type === 'other' &&
           warning.message.includes('includeRawChunks was requested while resuming an existing'),

@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const appServer = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     idleTimeoutMs: 30000,
     cwd: __dirname,
   },
@@ -39,8 +39,9 @@ try {
 
     const toolCalls = [];
     const textParts = [];
+    let threadId;
 
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       switch (part.type) {
         case 'response-metadata':
           break;
@@ -68,10 +69,13 @@ try {
         }
 
         case 'tool-result': {
-          const output =
-            part.result && typeof part.result === 'object' && part.result.type === 'tool-result'
-              ? part.result.output
-              : part.result;
+          // Preliminary output-delta parts can arrive before the final tool result;
+          // skip them so summary/completion counting stays correct.
+          if (part.preliminary === true) {
+            break;
+          }
+
+          const output = part.output;
           const tool = toolCalls.find((t) => t.id === part.toolCallId);
 
           if (tool) {
@@ -110,6 +114,11 @@ try {
           break;
         }
 
+        case 'finish-step': {
+          threadId = part.providerMetadata?.['codex-app-server']?.threadId ?? threadId;
+          break;
+        }
+
         case 'finish': {
           // Display final text response
           if (textParts.length > 0) {
@@ -119,11 +128,10 @@ try {
             console.log(''.repeat(60));
           }
 
-          // Usage stats - AI SDK v6 stable uses nested structure
-          const usage = part.totalUsage || part.usage;
-          const inputTotal = usage?.inputTokens?.total ?? 0;
-          const outputTotal = usage?.outputTokens?.total ?? 0;
-          const threadId = part.providerMetadata?.['codex-app-server']?.threadId;
+          // Usage stats - AI SDK v7 uses flat token totals
+          const usage = part.totalUsage;
+          const inputTotal = usage?.inputTokens ?? 0;
+          const outputTotal = usage?.outputTokens ?? 0;
           if (threadId) {
             console.log(`\n Thread: ${threadId}`);
           }

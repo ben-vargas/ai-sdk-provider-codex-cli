@@ -208,6 +208,23 @@ describe('shared-utils', () => {
     expect(features).toContain('toolChoice');
   });
 
+  it("does not warn for toolChoice { type: 'auto' } (ai@7 default normalization)", () => {
+    const warnings = mapUnsupportedSettingsWarnings({ toolChoice: { type: 'auto' } });
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('still warns for meaningful toolChoice values', () => {
+    for (const toolChoice of [
+      { type: 'required' },
+      { type: 'none' },
+      { type: 'tool', toolName: 'x' },
+    ]) {
+      const warnings = mapUnsupportedSettingsWarnings({ toolChoice });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ type: 'unsupported', feature: 'toolChoice' });
+    }
+  });
+
   it('converts MCP settings into config override keys', () => {
     const overrides = mcpServersToConfigOverrides(
       {

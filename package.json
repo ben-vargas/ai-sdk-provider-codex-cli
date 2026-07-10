@@ -1,17 +1,14 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "1.2.2",
-  "description": "AI SDK v6 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
+  "version": "2.0.0",
+  "description": "AI SDK v7 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
   "keywords": [
     "ai-sdk",
     "codex",
     "openai",
     "cli",
     "language-model",
-    "gpt-5",
-    "gpt-5.1",
     "gpt-5.5",
-    "gpt-5.2-codex-max",
     "provider"
   ],
   "homepage": "https://github.com/ben-vargas/ai-sdk-provider-codex-cli",
@@ -26,15 +23,12 @@
   "author": "Ben Vargas",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.js"
     }
   },
   "files": [
@@ -62,18 +56,18 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.0",
-    "@ai-sdk/provider-utils": "^4.0.1",
+    "@ai-sdk/provider": "^4.0.0",
+    "@ai-sdk/provider-utils": "^5.0.0",
     "jsonc-parser": "^3.3.1"
   },
   "optionalDependencies": {
-    "@openai/codex": "^0.130.0"
+    "@openai/codex": "^0.142.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
-    "@types/node": "20.19.41",
+    "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^3.2.4",
-    "ai": "^6.0.3",
+    "ai": "^7.0.0",
     "eslint": "^9.14.0",
     "prettier": "^3.3.3",
     "tsup": "8.5.1",
@@ -83,10 +77,10 @@
     "zod": "^4.1.8"
   },
   "peerDependencies": {
-    "zod": "^3.0.0 || ^4.0.0"
+    "zod": "^4.1.8"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

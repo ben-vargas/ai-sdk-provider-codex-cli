@@ -18,7 +18,7 @@ const mathServer = createSdkMcpServer({
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     idleTimeoutMs: 30000,
     mcpServers: {
       math: mathServer,

@@ -18,6 +18,11 @@ const markdownFiles = [
   'docs/ai-sdk-v5/troubleshooting.md',
   'docs/ai-sdk-v5/limitations.md',
   'docs/ai-sdk-v5/migration-app-server-v2.md',
+  'docs/ai-sdk-v7/guide.md',
+  'docs/ai-sdk-v7/configuration.md',
+  'docs/ai-sdk-v7/troubleshooting.md',
+  'docs/ai-sdk-v7/limitations.md',
+  'docs/ai-sdk-v7/migration-v6-to-v7.md',
 ].filter((file) => existsSync(join(repoRoot, file)));
 
 const failures = [];

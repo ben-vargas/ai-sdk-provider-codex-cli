@@ -77,7 +77,7 @@ function createMockProcess(
           `${JSON.stringify({
             id: message.id,
             result: {
-              userAgent: options.userAgent ?? 'codex-cli 0.130.0',
+              userAgent: options.userAgent ?? 'codex-cli 0.142.5',
               capabilities: options.initializeCapabilities ?? null,
             },
           })}\n`,
@@ -863,21 +863,21 @@ describe('AppServerRpcClient', () => {
   });
 
   it('enforces min version against prerelease builds', async () => {
-    const { child } = createMockProcess({ userAgent: 'codex-cli 0.130.0-alpha.17' });
+    const { child } = createMockProcess({ userAgent: 'codex-cli 0.142.5-alpha.17' });
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient({
-      settings: { minCodexVersion: '0.130.0' },
+      settings: { minCodexVersion: '0.142.5' },
     });
 
     await expect(client.ensureReady()).rejects.toThrow(
-      "codex app-server version '0.130.0-alpha.17' is below required minimum '0.130.0'.",
+      "codex app-server version '0.142.5-alpha.17' is below required minimum '0.142.5'.",
     );
   });
 
   it('kills spawned process and recovers cleanly after initialization failure', async () => {
     const first = createMockProcess({ userAgent: 'codex-cli 0.104.9' });
-    const second = createMockProcess({ userAgent: 'codex-cli 0.130.0' });
+    const second = createMockProcess({ userAgent: 'codex-cli 0.142.5' });
     let spawns = 0;
     setSpawnMock(() => {
       spawns += 1;
@@ -885,11 +885,11 @@ describe('AppServerRpcClient', () => {
     });
 
     const client = new AppServerRpcClient({
-      settings: { minCodexVersion: '0.130.0' },
+      settings: { minCodexVersion: '0.142.5' },
     });
 
     await expect(client.ensureReady()).rejects.toThrow(
-      "codex app-server version '0.104.9' is below required minimum '0.130.0'.",
+      "codex app-server version '0.104.9' is below required minimum '0.142.5'.",
     );
     expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
 

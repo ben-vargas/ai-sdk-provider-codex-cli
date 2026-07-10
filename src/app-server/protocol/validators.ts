@@ -48,6 +48,8 @@ const userInputTextSchema = z
   })
   .passthrough();
 
+// Codex 0.142.5 always emits `url`; the refine keeps tolerance for pre-0.142
+// servers that emitted `imageUrl` instead.
 const userInputImageSchema = z
   .object({
     type: z.literal('image'),
@@ -215,7 +217,75 @@ const contextCompactionItemSchema = z
   })
   .passthrough();
 
-export const threadItemSchema = z.discriminatedUnion('type', [
+// codex >= 0.142
+const hookPromptItemSchema = z
+  .object({
+    type: z.literal('hookPrompt'),
+    id: z.string(),
+    fragments: z.array(z.unknown()),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const dynamicToolCallItemSchema = z
+  .object({
+    type: z.literal('dynamicToolCall'),
+    id: z.string(),
+    namespace: z.string().nullable(),
+    tool: z.string(),
+    arguments: z.unknown(),
+    status: z.string(),
+    contentItems: z.array(z.unknown()).nullable(),
+    success: z.boolean().nullable(),
+    durationMs: z.number().nullable(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const subAgentActivityItemSchema = z
+  .object({
+    type: z.literal('subAgentActivity'),
+    id: z.string(),
+    kind: z.string(),
+    agentThreadId: z.string(),
+    agentPath: z.string(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const sleepItemSchema = z
+  .object({
+    type: z.literal('sleep'),
+    id: z.string(),
+    durationMs: z.number(),
+  })
+  .passthrough();
+
+// codex >= 0.142
+const imageGenerationItemSchema = z
+  .object({
+    type: z.literal('imageGeneration'),
+    id: z.string(),
+    status: z.string(),
+    revisedPrompt: z.string().nullable(),
+    result: z.string(),
+    savedPath: z.string().optional(),
+  })
+  .passthrough();
+
+// Forward-compat: codex regularly ships new thread item types (0.142 alone
+// added five). Unknown variants must still validate — the RPC client drops
+// notifications that fail schema validation, and dropping `turn/completed`
+// would hang the stream forever. Routing requires only a string `type`
+// (every other item field is typeof-guarded at the consumer); unknown items
+// flow through as raw chunks and are ignored by tool mapping.
+const unknownThreadItemSchema = z
+  .object({
+    type: z.string(),
+  })
+  .passthrough();
+
+const knownThreadItemSchema = z.discriminatedUnion('type', [
   userMessageItemSchema,
   agentMessageItemSchema,
   planItemSchema,
@@ -223,13 +293,20 @@ export const threadItemSchema = z.discriminatedUnion('type', [
   commandExecutionItemSchema,
   fileChangeItemSchema,
   mcpToolCallItemSchema,
+  dynamicToolCallItemSchema,
   collabAgentToolCallItemSchema,
+  hookPromptItemSchema,
+  subAgentActivityItemSchema,
+  sleepItemSchema,
+  imageGenerationItemSchema,
   webSearchItemSchema,
   imageViewItemSchema,
   enteredReviewModeItemSchema,
   exitedReviewModeItemSchema,
   contextCompactionItemSchema,
 ]);
+
+export const threadItemSchema = knownThreadItemSchema.or(unknownThreadItemSchema);
 
 const codexHttpStatusCodeSchema = z
   .object({
@@ -242,6 +319,7 @@ const codexErrorInfoSchema = z.union([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
+    'cyberPolicy',
     'internalServerError',
     'unauthorized',
     'badRequest',
@@ -253,20 +331,28 @@ const codexErrorInfoSchema = z.union([
   z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
+  z
+    .object({ activeTurnNotSteerable: z.object({ turnKind: z.string() }).passthrough() })
+    .passthrough(),
+  // Forward-compat catch-alls: consumers only compare against the known string
+  // codes above (unknown codes fall back to the generic error path), so a new
+  // errorInfo variant must never fail validation and drop the notification.
+  z.string(),
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const turnSchema = z
   .object({
     id: z.string(),
     items: z.array(threadItemSchema),
-    status: z.enum(['completed', 'interrupted', 'failed', 'inProgress']),
+    status: z.string(),
     error: z
       .object({
         message: z.string(),
-        codexErrorInfo: codexErrorInfoSchema.nullable(),
-        additionalDetails: z.string().nullable(),
+        codexErrorInfo: codexErrorInfoSchema.nullish(),
+        additionalDetails: z.string().nullish(),
       })
-      .nullable(),
+      .nullish(),
   })
   .passthrough();
 
@@ -424,6 +510,8 @@ const toolRequestUserInputParamsSchema = z
   })
   .passthrough();
 
+// External contract: `skill/requestApproval` was removed from the codex
+// 0.142.5 server-request surface; kept for pre-0.142 servers.
 const skillRequestApprovalParamsSchema = z
   .object({
     itemId: z.string(),

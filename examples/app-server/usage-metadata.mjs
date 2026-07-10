@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -23,7 +23,7 @@ try {
     totalTokens: result.usage?.totalTokens ?? 0,
   });
 
-  const metadata = result.providerMetadata?.['codex-app-server'] ?? {};
+  const metadata = result.finalStep.providerMetadata?.['codex-app-server'] ?? {};
   console.log('Provider metadata keys:', Object.keys(metadata));
   console.log('Usage metadata example complete.');
 } finally {

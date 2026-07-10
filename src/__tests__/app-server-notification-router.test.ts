@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import type { LanguageModelV3StreamPart, LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4StreamPart, LanguageModelV4Usage } from '@ai-sdk/provider';
 import { AppServerStreamEmitter } from '../app-server/stream/emitter.js';
 import { AppServerNotificationRouter } from '../app-server/stream/router.js';
 
 class FakeClient extends EventEmitter {}
 
 function createCapture() {
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
   const controller = {
-    enqueue: (part: LanguageModelV3StreamPart) => parts.push(part),
+    enqueue: (part: LanguageModelV4StreamPart) => parts.push(part),
     close: vi.fn(),
     error: vi.fn(),
-  } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as ReadableStreamDefaultController<LanguageModelV4StreamPart>;
 
   return { parts, controller };
 }
@@ -27,7 +27,7 @@ describe('AppServerNotificationRouter', () => {
       includeRawChunks: true,
     });
 
-    let usage: LanguageModelV3Usage | undefined;
+    let usage: LanguageModelV4Usage | undefined;
     let completedTurnId: string | undefined;
     const router = new AppServerNotificationRouter({
       client: client as never,
@@ -374,7 +374,7 @@ describe('AppServerNotificationRouter', () => {
       threadId: 'thr_usage',
     });
 
-    let usage: LanguageModelV3Usage | undefined;
+    let usage: LanguageModelV4Usage | undefined;
     const router = new AppServerNotificationRouter({
       client: client as never,
       emitter,
@@ -594,5 +594,214 @@ describe('AppServerNotificationRouter', () => {
     expect(Object.keys(internals.serverRequestHandlers).sort()).toEqual(
       ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].sort(),
     );
+  });
+
+  it('maps dynamicToolCall items to provider-executed dynamic tool parts like mcpToolCall', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_dynamic',
+    });
+
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_dynamic',
+      onUsage: () => undefined,
+      onTurnCompleted: () => undefined,
+      onError: () => undefined,
+    });
+
+    router.setTurnId('turn_dynamic_1');
+    router.subscribe();
+
+    client.emit('notification', 'item/started', {
+      threadId: 'thr_dynamic',
+      turnId: 'turn_dynamic_1',
+      item: {
+        type: 'dynamicToolCall',
+        id: 'item_dyn_1',
+        namespace: 'search',
+        tool: 'lookup',
+        arguments: { q: 'hello' },
+        status: 'inProgress',
+        contentItems: null,
+        success: null,
+        durationMs: null,
+      },
+    });
+    client.emit('notification', 'item/completed', {
+      threadId: 'thr_dynamic',
+      turnId: 'turn_dynamic_1',
+      item: {
+        type: 'dynamicToolCall',
+        id: 'item_dyn_1',
+        namespace: 'search',
+        tool: 'lookup',
+        arguments: { q: 'hello' },
+        status: 'completed',
+        contentItems: [],
+        success: true,
+        durationMs: 8,
+      },
+    });
+
+    router.unsubscribe();
+
+    expect(parts.map((part) => part.type)).toEqual([
+      'tool-input-start',
+      'tool-input-delta',
+      'tool-input-end',
+      'tool-call',
+      'tool-result',
+    ]);
+
+    const toolCall = parts.find((part) => part.type === 'tool-call');
+    expect(toolCall).toMatchObject({
+      toolCallId: 'item_dyn_1',
+      toolName: 'search__lookup',
+      providerExecuted: true,
+      dynamic: true,
+    });
+
+    const toolResult = parts.find((part) => part.type === 'tool-result');
+    expect(toolResult).toMatchObject({
+      toolCallId: 'item_dyn_1',
+      toolName: 'search__lookup',
+      dynamic: true,
+    });
+    expect(toolResult).not.toMatchObject({ isError: true });
+  });
+
+  it('marks failed dynamicToolCall results as errors and uses bare tool name without namespace', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_dynamic_fail',
+    });
+
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_dynamic_fail',
+      onUsage: () => undefined,
+      onTurnCompleted: () => undefined,
+      onError: () => undefined,
+    });
+
+    router.setTurnId('turn_dynamic_fail_1');
+    router.subscribe();
+
+    client.emit('notification', 'item/started', {
+      threadId: 'thr_dynamic_fail',
+      turnId: 'turn_dynamic_fail_1',
+      item: {
+        type: 'dynamicToolCall',
+        id: 'item_dyn_fail_1',
+        namespace: null,
+        tool: 'lookup',
+        arguments: {},
+        status: 'inProgress',
+        contentItems: null,
+        success: null,
+        durationMs: null,
+      },
+    });
+    client.emit('notification', 'item/completed', {
+      threadId: 'thr_dynamic_fail',
+      turnId: 'turn_dynamic_fail_1',
+      item: {
+        type: 'dynamicToolCall',
+        id: 'item_dyn_fail_1',
+        namespace: null,
+        tool: 'lookup',
+        arguments: {},
+        status: 'failed',
+        contentItems: null,
+        success: false,
+        durationMs: 3,
+      },
+    });
+
+    router.unsubscribe();
+
+    const toolCall = parts.find((part) => part.type === 'tool-call');
+    expect(toolCall).toMatchObject({
+      toolCallId: 'item_dyn_fail_1',
+      toolName: 'lookup',
+      providerExecuted: true,
+      dynamic: true,
+    });
+
+    const toolResult = parts.find((part) => part.type === 'tool-result');
+    expect(toolResult).toMatchObject({
+      toolCallId: 'item_dyn_fail_1',
+      toolName: 'lookup',
+      dynamic: true,
+      isError: true,
+    });
+  });
+
+  it('ignores unknown item types but still completes the turn', () => {
+    const client = new FakeClient();
+    const { parts, controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_future',
+    });
+
+    let completedTurnId: string | undefined;
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_future',
+      onUsage: () => undefined,
+      onTurnCompleted: (turn) => {
+        completedTurnId = turn.id;
+      },
+      onError: () => {
+        throw new Error('unexpected error callback');
+      },
+    });
+
+    router.setTurnId('turn_future_1');
+    router.subscribe();
+
+    const futureWidget = {
+      type: 'futureWidget',
+      id: 'item_future_1',
+      widgetPayload: { nested: true },
+    };
+
+    client.emit('notification', 'item/started', {
+      threadId: 'thr_future',
+      turnId: 'turn_future_1',
+      item: futureWidget,
+    });
+    client.emit('notification', 'item/completed', {
+      threadId: 'thr_future',
+      turnId: 'turn_future_1',
+      item: futureWidget,
+    });
+    client.emit('notification', 'turn/completed', {
+      threadId: 'thr_future',
+      turn: {
+        id: 'turn_future_1',
+        items: [futureWidget],
+        status: 'failed',
+        error: {
+          message: 'future failure',
+          codexErrorInfo: { futureVariant: { detail: 'x' } },
+          additionalDetails: null,
+        },
+      },
+    });
+
+    router.unsubscribe();
+
+    expect(parts.filter((part) => part.type !== 'raw')).toHaveLength(0);
+    expect(completedTurnId).toBe('turn_future_1');
   });
 });

@@ -1,24 +1,28 @@
 import type {
-  LanguageModelV3,
-  LanguageModelV3Content,
-  LanguageModelV3File,
-  LanguageModelV3FinishReason,
-  LanguageModelV3Reasoning,
-  LanguageModelV3Source,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Text,
-  LanguageModelV3ToolApprovalRequest,
-  LanguageModelV3ToolCall,
-  LanguageModelV3ToolResult,
-  LanguageModelV3Usage,
-  LanguageModelV3ResponseMetadata,
-  SharedV3ProviderMetadata,
-  SharedV3Warning,
+  LanguageModelV4,
+  LanguageModelV4Content,
+  LanguageModelV4File,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Reasoning,
+  LanguageModelV4Source,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Text,
+  LanguageModelV4ToolApprovalRequest,
+  LanguageModelV4ToolCall,
+  LanguageModelV4ToolResult,
+  LanguageModelV4Usage,
+  LanguageModelV4ResponseMetadata,
+  SharedV4ProviderMetadata,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { createVerboseLogger, getLogger } from '../logger.js';
-import { convertPromptToCodexInput, type PromptMessage } from '../converters/index.js';
+import {
+  collectSystemInstruction,
+  convertPromptToCodexInput,
+  type PromptMessage,
+} from '../converters/index.js';
 import { cleanupTempImages, type ImageData, writeImageToTempFile } from '../image-utils.js';
 import {
   createEmptyCodexUsage,
@@ -34,7 +38,7 @@ import type {
   CodexAppServerRequestHandlers,
   CodexAppServerSettings,
 } from './types.js';
-import type { CodexModelId, Logger, McpServerConfig } from '../types-shared.js';
+import type { CodexModelId, Logger, McpServerConfig, ReasoningEffort } from '../types-shared.js';
 import type { UserInput } from './protocol/types.js';
 import { AppServerRpcClient } from './rpc/client.js';
 import { AppServerSession } from './session.js';
@@ -51,6 +55,45 @@ type PromptImage =
       type: 'remote';
       url: string;
     };
+
+const CODEX_REASONING_EFFORTS: Record<string, true> = {
+  none: true,
+  minimal: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+};
+
+function resolveReasoningEffort(args: {
+  reasoning: string | undefined;
+  providerEffort: ReasoningEffort | undefined;
+  defaultEffort: ReasoningEffort | undefined;
+}): { effort: ReasoningEffort | undefined; warning?: SharedV4Warning } {
+  if (args.providerEffort !== undefined) {
+    return { effort: args.providerEffort };
+  }
+
+  const { reasoning } = args;
+  if (reasoning === undefined || reasoning === 'provider-default') {
+    return { effort: args.defaultEffort };
+  }
+
+  if (Object.hasOwn(CODEX_REASONING_EFFORTS, reasoning)) {
+    return { effort: reasoning as ReasoningEffort };
+  }
+
+  // Align with the exec provider: ignore the unmappable value and fall back
+  // to the otherwise-configured effort (providerOptions > settings default).
+  return {
+    effort: args.defaultEffort,
+    warning: {
+      type: 'unsupported',
+      feature: 'reasoning',
+      details: `Codex app-server does not support reasoning effort '${reasoning}'; it will be ignored.`,
+    },
+  };
+}
 
 function isThreadNotFoundError(error: unknown): boolean {
   const message = String((error as Error)?.message ?? error);
@@ -150,13 +193,10 @@ export interface AppServerLanguageModelOptions {
   onSdkMcpServerReleased?: (server: SdkMcpServer) => void;
 }
 
-export class AppServerLanguageModel implements LanguageModelV3 {
-  readonly specificationVersion = 'v3' as const;
+export class AppServerLanguageModel implements LanguageModelV4 {
+  readonly specificationVersion = 'v4' as const;
   readonly provider = 'codex-app-server';
-  readonly defaultObjectGenerationMode = 'json' as const;
-  readonly supportsImageUrls = true;
   readonly supportedUrls = {};
-  readonly supportsStructuredOutputs = true;
 
   readonly modelId: string;
   readonly settings: CodexAppServerSettings;
@@ -171,6 +211,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
   private persistentThreadId?: string;
   private persistentThreadRawEventsEnabled?: boolean;
+  private readonly rawEventsByThreadId = new Map<string, boolean>();
   private persistentSession?: AppServerSession;
   private persistentBootstrapLock = Promise.resolve();
 
@@ -352,7 +393,8 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     settings: CodexAppServerSettings;
     providerOptions?: CodexAppServerProviderOptions;
     configOverrides?: Record<string, unknown>;
-    developerInstructions?: string;
+    developerInstructionsOverride?: string;
+    systemInstruction?: string;
     includeRawChunks: boolean;
   }): Promise<{
     threadId: string;
@@ -361,8 +403,14 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     resumed: boolean;
     rawEventsNegotiated?: boolean;
   }> {
-    const { settings, providerOptions, configOverrides, developerInstructions, includeRawChunks } =
-      args;
+    const {
+      settings,
+      providerOptions,
+      configOverrides,
+      developerInstructionsOverride,
+      systemInstruction,
+      includeRawChunks,
+    } = args;
     const threadState = this.resolveTargetThreadId(settings, providerOptions);
 
     const startThread = async (ephemeral: boolean) => {
@@ -373,7 +421,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         sandbox: mapSandboxToThreadSandboxMode(settings),
         config: configOverrides,
         baseInstructions: settings.baseInstructions,
-        developerInstructions,
+        developerInstructions: developerInstructionsOverride ?? systemInstruction,
         personality: settings.personality,
         ephemeral,
         experimentalRawEvents: includeRawChunks,
@@ -409,20 +457,23 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             sandbox: mapSandboxToThreadSandboxMode(settings),
             config: configOverrides,
             baseInstructions: settings.baseInstructions,
-            developerInstructions,
+            developerInstructions: developerInstructionsOverride ?? systemInstruction,
             personality: settings.personality,
             persistExtendedHistory: settings.persistExtendedHistory ?? false,
           });
 
+          const cachedRawEvents = this.rawEventsByThreadId.get(target.threadId);
           const knownRawEvents =
-            target.persistent && this.persistentThreadId === target.threadId
+            cachedRawEvents ??
+            (target.persistent && this.persistentThreadId === target.threadId
               ? this.persistentThreadRawEventsEnabled
-              : undefined;
+              : undefined);
+          if (cachedRawEvents !== undefined) {
+            this.rememberThreadRawEvents(target.threadId, cachedRawEvents);
+          }
           if (target.persistent) {
             this.persistentThreadId = target.threadId;
-            if (target.explicit) {
-              this.persistentThreadRawEventsEnabled = undefined;
-            }
+            this.persistentThreadRawEventsEnabled = knownRawEvents;
           }
 
           return {
@@ -453,6 +504,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         }
 
         const newThreadId = await startThread(false);
+        this.rememberThreadRawEvents(newThreadId, includeRawChunks);
         this.persistentThreadId = newThreadId;
         this.persistentThreadRawEventsEnabled = includeRawChunks;
         return {
@@ -466,6 +518,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
       if (!threadState.threadId) {
         const newThreadId = await startThread(!threadState.persistent);
+        this.rememberThreadRawEvents(newThreadId, includeRawChunks);
         if (threadState.persistent) {
           this.persistentThreadId = newThreadId;
           this.persistentThreadRawEventsEnabled = includeRawChunks;
@@ -515,6 +568,20 @@ export class AppServerLanguageModel implements LanguageModelV3 {
     }
   }
 
+  private rememberThreadRawEvents(threadId: string, enabled: boolean): void {
+    this.rawEventsByThreadId.delete(threadId);
+    this.rawEventsByThreadId.set(threadId, enabled);
+
+    if (this.rawEventsByThreadId.size <= 256) {
+      return;
+    }
+
+    const oldestThreadId = this.rawEventsByThreadId.keys().next().value;
+    if (typeof oldestThreadId === 'string') {
+      this.rawEventsByThreadId.delete(oldestThreadId);
+    }
+  }
+
   private clearPersistentThreadState(threadId?: string): void {
     if (threadId && this.persistentThreadId && this.persistentThreadId !== threadId) {
       return;
@@ -522,6 +589,9 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     this.persistentThreadId = undefined;
     this.persistentThreadRawEventsEnabled = undefined;
+    if (threadId) {
+      this.rawEventsByThreadId.delete(threadId);
+    }
 
     if (!threadId || this.persistentSession?.threadId === threadId) {
       this.persistentSession = undefined;
@@ -574,7 +644,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   ): {
     promptText: string;
     images: PromptImage[];
-    warnings: SharedV3Warning[];
+    warnings: SharedV4Warning[];
     systemInstruction?: string;
   } {
     const converted = convertPromptToCodexInput({
@@ -605,38 +675,38 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV3['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
+    options: Parameters<LanguageModelV4['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doGenerate']>>> {
     const { stream, request } = await this.doStream(
-      options as Parameters<LanguageModelV3['doStream']>[0],
+      options as Parameters<LanguageModelV4['doStream']>[0],
     );
 
-    const content: LanguageModelV3Content[] = [];
-    const textPartsById = new Map<string, LanguageModelV3Text>();
-    const reasoningPartsById = new Map<string, LanguageModelV3Reasoning>();
+    const content: LanguageModelV4Content[] = [];
+    const textPartsById = new Map<string, LanguageModelV4Text>();
+    const reasoningPartsById = new Map<string, LanguageModelV4Reasoning>();
     let activeTextBlockId: string | undefined;
     let activeReasoningBlockId: string | undefined;
-    let responseMetadata: LanguageModelV3ResponseMetadata = {
+    let responseMetadata: LanguageModelV4ResponseMetadata = {
       id: generateId(),
       timestamp: new Date(),
       modelId: this.modelId,
     };
-    let usage: LanguageModelV3Usage = createEmptyCodexUsage();
-    let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined };
-    let warnings: SharedV3Warning[] = [];
-    let providerMetadata: SharedV3ProviderMetadata | undefined;
+    let usage: LanguageModelV4Usage = createEmptyCodexUsage();
+    let finishReason: LanguageModelV4FinishReason = { unified: 'other', raw: undefined };
+    let warnings: SharedV4Warning[] = [];
+    let providerMetadata: SharedV4ProviderMetadata | undefined;
 
     const ensureTextPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Text => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Text => {
       const existing = textPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Text = {
+      const part: LanguageModelV4Text = {
         type: 'text',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -648,15 +718,15 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     const ensureReasoningPart = (
       id: string,
-      metadata?: SharedV3ProviderMetadata,
-    ): LanguageModelV3Reasoning => {
+      metadata?: SharedV4ProviderMetadata,
+    ): LanguageModelV4Reasoning => {
       const existing = reasoningPartsById.get(id);
       if (existing) {
         if (metadata) existing.providerMetadata = metadata;
         return existing;
       }
 
-      const part: LanguageModelV3Reasoning = {
+      const part: LanguageModelV4Reasoning = {
         type: 'reasoning',
         text: '',
         ...(metadata ? { providerMetadata: metadata } : {}),
@@ -668,16 +738,16 @@ export class AppServerLanguageModel implements LanguageModelV3 {
 
     const pushContentPart = (
       part:
-        | LanguageModelV3File
-        | LanguageModelV3Source
-        | LanguageModelV3ToolApprovalRequest
-        | LanguageModelV3ToolCall
-        | LanguageModelV3ToolResult,
+        | LanguageModelV4File
+        | LanguageModelV4Source
+        | LanguageModelV4ToolApprovalRequest
+        | LanguageModelV4ToolCall
+        | LanguageModelV4ToolResult,
     ): void => {
       content.push(part);
     };
 
-    for await (const part of stream as AsyncIterable<LanguageModelV3StreamPart>) {
+    for await (const part of stream as AsyncIterable<LanguageModelV4StreamPart>) {
       if (part.type === 'stream-start') {
         warnings = part.warnings;
         continue;
@@ -802,15 +872,24 @@ export class AppServerLanguageModel implements LanguageModelV3 {
   }
 
   async doStream(
-    options: Parameters<LanguageModelV3['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV3['doStream']>>> {
+    options: Parameters<LanguageModelV4['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV4['doStream']>>> {
     const providerOptions = await parseProviderOptions<CodexAppServerProviderOptions>({
       provider: this.provider,
       providerOptions: options.providerOptions,
       schema: appServerProviderOptionsSchema as never,
     });
 
-    const settings = this.mergeSettings(providerOptions);
+    const mergedSettings = this.mergeSettings(providerOptions);
+    const resolvedReasoning = resolveReasoningEffort({
+      reasoning: options.reasoning,
+      providerEffort: providerOptions?.effort,
+      defaultEffort: mergedSettings.effort,
+    });
+    const settings: CodexAppServerSettings =
+      resolvedReasoning.effort === mergedSettings.effort
+        ? mergedSettings
+        : { ...mergedSettings, effort: resolvedReasoning.effort };
     const sdkServerLifecycle: 'provider' | 'request' =
       this.resolveThreadMode(settings, providerOptions) === 'persistent' ? 'provider' : 'request';
     const includeRawChunks = this.resolveIncludeRawChunks(
@@ -819,7 +898,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       providerOptions,
     );
 
-    const warnings: SharedV3Warning[] = [
+    const warnings: SharedV4Warning[] = [
       ...mapUnsupportedSettingsWarnings({
         temperature: options.temperature,
         topP: options.topP,
@@ -834,18 +913,14 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       }),
     ];
 
+    if (resolvedReasoning.warning) {
+      warnings.push(resolvedReasoning.warning);
+    }
+
     const developerInstructionsOverride =
       providerOptions?.developerInstructions ?? settings.developerInstructions;
 
-    const threadState = this.resolveTargetThreadId(settings, providerOptions);
-    const prompt = this.preparePrompt(options.prompt as unknown[], Boolean(threadState.threadId));
-
-    warnings.push(...prompt.warnings);
-
-    const effectiveDeveloperInstructions =
-      developerInstructionsOverride ??
-      (!threadState.threadId ? prompt.systemInstruction : undefined);
-
+    const systemInstruction = collectSystemInstruction(options.prompt as readonly PromptMessage[]);
     const resolvedConfig = await this.resolveConfig(settings, sdkServerLifecycle);
     let releasedSdkServers = false;
     const releaseUsedSdkMcpServers = () => {
@@ -864,7 +939,8 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         settings,
         providerOptions,
         configOverrides: resolvedConfig.configOverrides,
-        developerInstructions: effectiveDeveloperInstructions,
+        developerInstructionsOverride,
+        systemInstruction,
         includeRawChunks,
       });
     } catch (error) {
@@ -885,6 +961,10 @@ export class AppServerLanguageModel implements LanguageModelV3 {
           'includeRawChunks was requested while resuming an existing thread that may not emit raw events. Start a new thread to guarantee raw chunk events.',
       });
     }
+
+    const prompt = this.preparePrompt(options.prompt as unknown[], threadResolution.resumed);
+
+    warnings.push(...prompt.warnings);
 
     let input: UserInput[] = [];
     let tempImagePaths: string[] = [];
@@ -928,7 +1008,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       session,
       abortSignal: options.abortSignal,
       shouldSerializeTurnStart: threadResolution.persistent || threadResolution.explicit,
-      hadInitialThreadId: Boolean(threadState.threadId),
+      hadInitialThreadId: threadResolution.resumed,
       threadResolution: {
         persistent: threadResolution.persistent,
         explicit: threadResolution.explicit,
@@ -942,7 +1022,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       },
     });
 
-    const stream = new ReadableStream<LanguageModelV3StreamPart>({
+    const stream = new ReadableStream<LanguageModelV4StreamPart>({
       start: async (controller) => {
         await turnStreamController.start(controller);
       },

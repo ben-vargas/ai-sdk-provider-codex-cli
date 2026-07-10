@@ -1,6 +1,8 @@
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { SharedV4FileData } from '@ai-sdk/provider';
+import { detectMediaType, getTopLevelMediaType, isFullMediaType } from '@ai-sdk/provider-utils';
 
 /**
  * Image data extracted from AI SDK image parts.
@@ -30,13 +32,54 @@ export interface ImagePart {
 }
 
 /**
- * AI SDK v6 file part structure used for binary/image inputs.
+ * AI SDK file part structure used for binary/image inputs.
+ * `data` accepts both the v4 tagged union and legacy untagged values.
  */
 export interface FilePart {
   type: 'file';
-  data?: string | URL | Buffer | ArrayBuffer | Uint8Array;
+  data?: string | URL | Buffer | ArrayBuffer | Uint8Array | SharedV4FileData;
   mediaType?: string;
   url?: string;
+}
+
+/**
+ * Narrow a value to the v4 tagged file-data union
+ * ({ type: 'data' | 'url' | 'reference' | 'text', ... }).
+ */
+function isTaggedFileData(value: unknown): value is SharedV4FileData {
+  if (typeof value !== 'object' || value === null || !('type' in value)) return false;
+  return (
+    value.type === 'data' ||
+    value.type === 'url' ||
+    value.type === 'reference' ||
+    value.type === 'text'
+  );
+}
+
+/**
+ * Resolve a full image MIME type from a declared media type that may be a
+ * top-level segment (e.g. `image`) or a wildcard (e.g. `image/*`), sniffing
+ * the data when possible.
+ */
+function resolveImageMimeType(declaredType: string, data: unknown): string {
+  if (isFullMediaType(declaredType)) return declaredType;
+
+  const bytes =
+    typeof data === 'string' || data instanceof Uint8Array
+      ? data
+      : data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : undefined;
+
+  if (bytes !== undefined) {
+    const detected = detectMediaType({
+      data: bytes,
+      topLevelType: getTopLevelMediaType(declaredType),
+    });
+    if (detected) return detected;
+  }
+
+  return 'image/png';
 }
 
 /**
@@ -51,13 +94,27 @@ export function extractImageData(part: unknown): ImageData | null {
 
   const p = part as ImagePart | FilePart;
   const isFilePart = p.type === 'file';
-  const mimeType = isFilePart ? p.mediaType || 'image/png' : p.mimeType || 'image/png';
+  const declaredType = isFilePart ? p.mediaType || 'image/png' : p.mimeType || 'image/png';
 
-  if (isFilePart && !mimeType.toLowerCase().startsWith('image/')) {
+  if (isFilePart && getTopLevelMediaType(declaredType).toLowerCase() !== 'image') {
     return null;
   }
 
-  const primaryInput = isFilePart ? p.data : p.image;
+  let primaryInput = isFilePart ? p.data : p.image;
+
+  // Unwrap AI SDK v4 tagged file data.
+  if (isTaggedFileData(primaryInput)) {
+    if (primaryInput.type === 'data') {
+      primaryInput = primaryInput.data;
+    } else if (primaryInput.type === 'url') {
+      primaryInput = primaryInput.url;
+    } else {
+      // 'reference' and 'text' file data carry no image bytes.
+      return null;
+    }
+  }
+
+  const mimeType = resolveImageMimeType(declaredType, primaryInput);
 
   // Case 1: Primary image/file field is a string
   if (typeof primaryInput === 'string') {

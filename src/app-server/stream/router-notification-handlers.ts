@@ -1,5 +1,5 @@
 import { generateId } from '@ai-sdk/provider-utils';
-import type { LanguageModelV3Usage } from '@ai-sdk/provider';
+import type { LanguageModelV4Usage } from '@ai-sdk/provider';
 import type { ThreadItem, ThreadTokenUsageUpdatedNotification, Turn } from '../protocol/types.js';
 import { safeStringify } from '../../shared-utils.js';
 import type { AppServerStreamEmitter } from './emitter.js';
@@ -35,10 +35,24 @@ function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | un
     };
   }
 
+  if (type === 'dynamictoolcall') {
+    const tool = 'tool' in item && typeof item.tool === 'string' && item.tool ? item.tool : 'tool';
+    const namespace =
+      'namespace' in item && typeof item.namespace === 'string' && item.namespace
+        ? item.namespace
+        : undefined;
+    return {
+      toolName: namespace ? `${namespace}__${tool}` : tool,
+      dynamic: true,
+    };
+  }
+
   if (type === 'websearch') {
     return { toolName: 'web_search', dynamic: true };
   }
 
+  // hookPrompt, subAgentActivity, sleep, and imageGeneration items (plus any
+  // unknown future item types) are intentionally unmapped: raw chunks only for now.
   return undefined;
 }
 
@@ -47,7 +61,7 @@ export interface NotificationHandlerContext {
   toolTracker: ToolTracker;
   textItemIdsWithDelta: Set<string>;
   reasoningItemIdsWithDelta: Set<string>;
-  onUsage: (usage: LanguageModelV3Usage) => void;
+  onUsage: (usage: LanguageModelV4Usage) => void;
   onTurnCompleted: (turn: Turn) => void;
   onError: (error: Error) => void;
   isSameTurn: (params: Record<string, unknown>) => boolean;

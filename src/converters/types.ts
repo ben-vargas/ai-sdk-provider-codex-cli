@@ -1,11 +1,11 @@
 import type {
-  LanguageModelV3DataContent,
-  LanguageModelV3FilePart,
-  LanguageModelV3Message,
-  LanguageModelV3ToolApprovalResponsePart,
-  LanguageModelV3ToolCallPart,
-  LanguageModelV3ToolResultOutput,
-  LanguageModelV3ToolResultPart,
+  LanguageModelV4FilePart,
+  LanguageModelV4Message,
+  LanguageModelV4ToolApprovalResponsePart,
+  LanguageModelV4ToolCallPart,
+  LanguageModelV4ToolResultOutput,
+  LanguageModelV4ToolResultPart,
+  SharedV4FileData,
 } from '@ai-sdk/provider';
 import type { ImageData } from '../image-utils.js';
 
@@ -21,15 +21,15 @@ export interface CompatImagePart {
 
 export type PromptContentPart =
   | { type: 'text'; text: string }
-  | LanguageModelV3FilePart
+  | LanguageModelV4FilePart
   | CompatImagePart
   | { type: 'reasoning'; text: string }
-  | LanguageModelV3ToolCallPart
-  | LanguageModelV3ToolResultPart
-  | LanguageModelV3ToolApprovalResponsePart
+  | LanguageModelV4ToolCallPart
+  | LanguageModelV4ToolResultPart
+  | LanguageModelV4ToolApprovalResponsePart
   | { type: string; [key: string]: unknown };
 
-export type PromptMessage = Omit<LanguageModelV3Message, 'content'> & {
+export type PromptMessage = Omit<LanguageModelV4Message, 'content'> & {
   content: string | PromptContentPart[];
 };
 
@@ -57,6 +57,6 @@ export interface ConvertedToolResult {
   warnings: ConvertedWarning[];
 }
 
-export type NormalizedToolOutput = LanguageModelV3ToolResultOutput;
+export type NormalizedToolOutput = LanguageModelV4ToolResultOutput;
 
-export type FileData = LanguageModelV3DataContent;
+export type FileData = SharedV4FileData;

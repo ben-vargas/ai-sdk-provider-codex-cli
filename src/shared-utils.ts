@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3FinishReason,
-  LanguageModelV3Usage,
-  SharedV3Warning,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Usage,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import type {
   CodexConfigOverrideValue,
@@ -11,7 +11,7 @@ import type {
 } from './types-shared.js';
 import { assertValidConfigOverrideKey, assertValidMcpServerName } from './config-key-utils.js';
 
-export function createEmptyCodexUsage(): LanguageModelV3Usage {
+export function createEmptyCodexUsage(): LanguageModelV4Usage {
   return {
     inputTokens: {
       total: undefined,
@@ -28,7 +28,7 @@ export function createEmptyCodexUsage(): LanguageModelV3Usage {
   };
 }
 
-export function mapCodexCliFinishReason(reason?: string): LanguageModelV3FinishReason {
+export function mapCodexCliFinishReason(reason?: string): LanguageModelV4FinishReason {
   switch (reason) {
     case 'stop':
     case 'end_turn':
@@ -236,8 +236,8 @@ export function mapUnsupportedSettingsWarnings(options: {
   seed?: unknown;
   tools?: unknown;
   toolChoice?: unknown;
-}): SharedV3Warning[] {
-  const unsupported: SharedV3Warning[] = [];
+}): SharedV4Warning[] {
+  const unsupported: SharedV4Warning[] = [];
   const add = (setting: unknown, name: string) => {
     if (setting !== undefined) {
       unsupported.push({
@@ -257,7 +257,14 @@ export function mapUnsupportedSettingsWarnings(options: {
   add(options.stopSequences?.length ? options.stopSequences : undefined, 'stopSequences');
   add(options.seed, 'seed');
   add(options.tools, 'tools');
-  add(options.toolChoice, 'toolChoice');
+  // ai@7 normalizes an unset toolChoice to { type: 'auto' } before calling the
+  // provider, so a bare 'auto' carries no user intent — warn only for
+  // meaningful choices ('required' | 'none' | 'tool').
+  const toolChoice = options.toolChoice as { type?: unknown } | undefined;
+  add(
+    toolChoice !== undefined && toolChoice.type === 'auto' ? undefined : toolChoice,
+    'toolChoice',
+  );
 
   return unsupported;
 }

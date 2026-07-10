@@ -5,7 +5,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.142.5',
     idleTimeoutMs: 30000,
     threadMode: 'persistent',
     effort: 'medium',
@@ -17,14 +17,14 @@ try {
   const result = streamText({
     model: provider('gpt-5.5'),
     prompt:
-      'Write a tiny Node.js function named parseCsvLine that parses one CSV line with no dependencies. Return one markdown code block only. Do not include explanations, usage examples, commands, or file writes.',
+      'Write a tiny Node.js function named parseCsvLine that parses one CSV line with no dependencies. Start with one markdown code block. If you receive follow-up guidance while writing, append a second revised markdown code block rather than trying to erase earlier streamed text.',
     providerOptions: {
       'codex-app-server': {
         onSessionCreated: (session) => {
           // Demonstrates mid-execution guidance while the turn is in-flight.
           setTimeout(() => {
             void session.injectMessage(
-              'Update the code block to include basic input validation only. Keep exactly one markdown code block and no explanatory text.',
+              'Append a second revised markdown code block that includes basic input validation. Prefix it with "Revised version:" and do not erase the original streamed block.',
             );
           }, 500);
         },

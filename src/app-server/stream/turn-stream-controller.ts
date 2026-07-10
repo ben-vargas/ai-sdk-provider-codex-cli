@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
-  SharedV3Warning,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
+  SharedV4Warning,
 } from '@ai-sdk/provider';
 import { createEmptyCodexUsage, sanitizeJsonSchema } from '../../shared-utils.js';
 import type { Turn, TurnStartParams } from '../protocol/types.js';
@@ -87,7 +87,7 @@ export interface TurnStreamControllerOptions {
   client: AppServerRpcClient;
   modelId: string;
   threadId: string;
-  warnings: SharedV3Warning[];
+  warnings: SharedV4Warning[];
   includeRawChunks: boolean;
   jsonModeLastTextBlockOnly: boolean;
   turnStartParams: TurnStartParams;
@@ -107,7 +107,7 @@ export interface TurnStreamControllerOptions {
 
 export class TurnStreamController {
   private state: TurnStreamState = 'created';
-  private usage: LanguageModelV3Usage = createEmptyCodexUsage();
+  private usage: LanguageModelV4Usage = createEmptyCodexUsage();
   private turnId?: string;
   private requestContextId?: string;
   private cleanedUp = false;
@@ -139,7 +139,7 @@ export class TurnStreamController {
   }
 
   async start(
-    controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: ReadableStreamDefaultController<LanguageModelV4StreamPart>,
   ): Promise<void> {
     if (this.state !== 'created') {
       return;

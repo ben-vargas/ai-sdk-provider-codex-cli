@@ -85,7 +85,7 @@ async function main() {
 
   const codex = createCodexAppServer({
     defaultSettings: {
-      minCodexVersion: '0.130.0',
+      minCodexVersion: '0.142.5',
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
       approvalPolicy: 'on-failure',
@@ -99,7 +99,7 @@ async function main() {
 
     const result = await generateText({
       model: codex('gpt-5.5'),
-      system: FRONTEND_PROMPT,
+      instructions: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });
 

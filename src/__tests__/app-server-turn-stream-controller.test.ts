@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
+import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import { TurnStreamController } from '../app-server/stream/turn-stream-controller.js';
 import type { TurnStartParams } from '../app-server/protocol/types.js';
 
@@ -73,12 +73,12 @@ class FakeClient extends EventEmitter {
 }
 
 function createCapture() {
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
   const controller = {
-    enqueue: (part: LanguageModelV3StreamPart) => parts.push(part),
+    enqueue: (part: LanguageModelV4StreamPart) => parts.push(part),
     close: vi.fn(),
     error: vi.fn(),
-  } as unknown as ReadableStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as ReadableStreamDefaultController<LanguageModelV4StreamPart>;
 
   return { parts, controller };
 }

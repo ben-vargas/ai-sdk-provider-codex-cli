@@ -13,7 +13,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 try {

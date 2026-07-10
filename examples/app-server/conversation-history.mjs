@@ -10,7 +10,7 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -26,7 +26,7 @@ try {
   });
   console.log('Turn 1:', first.text);
 
-  const threadId = first.providerMetadata?.['codex-app-server']?.threadId;
+  const threadId = first.finalStep.providerMetadata?.['codex-app-server']?.threadId;
   if (!threadId) {
     throw new Error('No threadId returned from app-server provider.');
   }

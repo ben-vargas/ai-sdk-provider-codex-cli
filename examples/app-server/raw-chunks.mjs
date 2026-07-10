@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -14,14 +14,14 @@ try {
 
   const result = streamText({
     model,
-    includeRawChunks: true,
+    include: { rawChunks: true },
     prompt: 'Give a short two-sentence summary of why tests matter.',
   });
 
   let text = '';
   let rawChunkCount = 0;
 
-  for await (const part of result.fullStream) {
+  for await (const part of result.stream) {
     if (part.type === 'text-delta') {
       text += part.text ?? part.delta ?? '';
     }

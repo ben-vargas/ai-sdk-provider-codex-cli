@@ -17,7 +17,7 @@ Provider-specific notes:
   - `npm i -g @openai/codex`
   - `codex login` (or set `OPENAI_API_KEY`)
 - Build this package before running examples: `npm run build`
-- App-server examples require Codex CLI `>= 0.130.0`.
+- App-server examples require Codex CLI `>= 0.142.5`.
 
 ## Run
 
@@ -78,7 +78,7 @@ These demonstrate features that only exist in `codex app-server` mode:
 - `examples/app-server/session-injection.mjs` - uses `onSessionCreated` + `session.injectMessage()`
 - `examples/app-server/local-mcp-tool.mjs` - registers in-process tools with `createSdkMcpServer()` (loopback-bound + bearer-auth local MCP transport)
 - `examples/app-server/abort.mjs` - demonstrates aborting an in-flight stream with `AbortController`
-- `examples/app-server/raw-chunks.mjs` - enables `includeRawChunks` and inspects raw protocol events
+- `examples/app-server/raw-chunks.mjs` - enables `include: { rawChunks: true }` and inspects raw protocol events
 - `examples/app-server/usage-metadata.mjs` - prints token usage and provider metadata from a generation
 
 ## Troubleshooting

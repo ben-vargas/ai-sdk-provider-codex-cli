@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -30,8 +30,9 @@ try {
     });
 
     const textBuffer = [];
+    let threadId;
 
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       switch (part.type) {
         case 'response-metadata':
           break;
@@ -57,17 +58,16 @@ try {
           console.log(` Executing tool: ${part.toolName} (${part.toolCallId})`);
           break;
         case 'tool-result': {
-          const result = part.result;
+          const output = part.output;
 
-          if (result && typeof result === 'object' && result.type === 'output-delta') {
-            const streamLabel = result.stream ?? 'stdout';
-            if (typeof result.output === 'string' && result.output.length > 0) {
-              console.log(` ${streamLabel}:\n${result.output}`);
+          if (output && typeof output === 'object' && output.type === 'output-delta') {
+            if (typeof output.delta === 'string' && output.delta.length > 0) {
+              console.log(` stdout:\n${output.delta}`);
             }
             break;
           }
 
-          const payload = result ?? part.providerMetadata?.['codex-app-server'];
+          const payload = output ?? part.providerMetadata?.['codex-app-server'];
           if (payload) {
             console.log(` Tool result (${part.toolCallId}):\n${JSON.stringify(payload, null, 2)}`);
           } else {
@@ -77,7 +77,7 @@ try {
           break;
         }
         case 'text-delta': {
-          // AI SDK fullStream uses .text for text-delta events
+          // AI SDK stream uses .text for text-delta events
           const textDelta = part.text ?? part.delta;
           if (typeof textDelta === 'string') {
             textBuffer.push(textDelta);
@@ -85,12 +85,15 @@ try {
           }
           break;
         }
+        case 'finish-step': {
+          threadId = part.providerMetadata?.['codex-app-server']?.threadId ?? threadId;
+          break;
+        }
         case 'finish': {
-          // AI SDK v6 stable uses nested usage structure with inputTokens.total, outputTokens.total
-          const usage = part.totalUsage || part.usage;
-          const inputTotal = usage?.inputTokens?.total ?? 0;
-          const outputTotal = usage?.outputTokens?.total ?? 0;
-          const threadId = part.providerMetadata?.['codex-app-server']?.threadId;
+          // AI SDK v7 usage exposes flat token totals
+          const usage = part.totalUsage;
+          const inputTotal = usage?.inputTokens ?? 0;
+          const outputTotal = usage?.outputTokens ?? 0;
           if (threadId) {
             console.log(`\n Thread: ${threadId}`);
           }

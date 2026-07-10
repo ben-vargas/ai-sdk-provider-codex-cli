@@ -12,7 +12,7 @@ describe('prompt-converter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'User text' },
-            { type: 'file', mediaType: 'image/png', data: 'data:image/png;base64,AAAA' },
+            { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AAAA' } },
           ],
         },
         {
@@ -70,7 +70,7 @@ describe('prompt-converter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'newer' },
-            { type: 'file', mediaType: 'image/png', data: 'data:image/png;base64,BBBB' },
+            { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'BBBB' } },
           ],
         },
       ] as never,
@@ -94,7 +94,11 @@ describe('prompt-converter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'look' },
-            { type: 'file', mediaType: 'image/webp', data: 'https://example.com/cat.webp' },
+            {
+              type: 'file',
+              mediaType: 'image/webp',
+              data: { type: 'url', url: new URL('https://example.com/cat.webp') },
+            },
             { type: 'image', image: 'https://example.com/dog.png' },
           ],
         },
@@ -118,7 +122,7 @@ describe('prompt-converter', () => {
             {
               type: 'file',
               mediaType: 'application/pdf',
-              data: 'data:application/pdf;base64,QQ==',
+              data: { type: 'data', data: 'QQ==' },
             },
           ],
         },
@@ -235,7 +239,7 @@ describe('prompt-converter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Please inspect' },
-            { type: 'file', mediaType: 'image/png', data: 'data:image/png;base64,AAAA' },
+            { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AAAA' } },
             { type: 'image', image: 'https://example.com/remote.jpg' },
           ],
         },
@@ -288,5 +292,134 @@ describe('prompt-converter', () => {
     });
 
     expect(converted.text).toBe('');
+  });
+
+  it('handles all four tagged file data variants in user content', () => {
+    const converted = convertPromptToCodexInput({
+      mode: 'stateless',
+      prompt: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'variants' },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              data: { type: 'data', data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]) },
+            },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              data: { type: 'url', url: new URL('https://example.com/a.png') },
+            },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              data: { type: 'reference', reference: { openai: 'file-123' } },
+            },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              data: { type: 'text', text: 'inline document' },
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(converted.localImages).toHaveLength(1);
+    expect(converted.localImages[0]?.data.startsWith('data:image/png;base64,')).toBe(true);
+    expect(converted.remoteImageUrls).toEqual(['https://example.com/a.png']);
+    expect(
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.feature === 'prompt.user.file' &&
+          warning.details.includes('reference'),
+      ),
+    ).toBe(true);
+    expect(
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.feature === 'prompt.user.file' &&
+          warning.details.includes('Inline text file data'),
+      ),
+    ).toBe(true);
+  });
+
+  it('resolves top-level segment mediaType by sniffing tagged image bytes', () => {
+    const converted = convertPromptToCodexInput({
+      mode: 'stateless',
+      prompt: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              mediaType: 'image',
+              data: { type: 'data', data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]) },
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(converted.localImages).toHaveLength(1);
+    expect(converted.localImages[0]?.mimeType).toBe('image/png');
+    expect(converted.localImages[0]?.data.startsWith('data:image/png;base64,')).toBe(true);
+    expect(converted.warnings).toEqual([]);
+  });
+
+  it('warns and skips assistant custom parts', () => {
+    const converted = convertPromptToCodexInput({
+      mode: 'stateless',
+      prompt: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'hello' },
+            { type: 'custom', kind: 'acme.widget' },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(converted.text).toBe('Assistant: hello');
+    expect(
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' &&
+          warning.feature === 'prompt.assistant.custom' &&
+          warning.details.includes('acme.widget'),
+      ),
+    ).toBe(true);
+  });
+
+  it('warns and skips assistant reasoning-file parts', () => {
+    const converted = convertPromptToCodexInput({
+      mode: 'stateless',
+      prompt: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'answer' },
+            {
+              type: 'reasoning-file',
+              mediaType: 'application/json',
+              data: { type: 'data', data: 'e30=' },
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(converted.text).toBe('Assistant: answer');
+    expect(
+      converted.warnings.some(
+        (warning) =>
+          warning.type === 'unsupported' && warning.feature === 'prompt.assistant.reasoning-file',
+      ),
+    ).toBe(true);
   });
 });

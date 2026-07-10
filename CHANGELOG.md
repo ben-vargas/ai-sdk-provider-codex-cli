@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-07-06
+
+### Breaking Changes
+
+- **AI SDK v7 migration** - This release requires AI SDK v7 and is incompatible with AI SDK v6
+- **Provider interface**: `LanguageModelV3` → `LanguageModelV4`, `ProviderV3` → `ProviderV4` (native implementation, no compatibility layer)
+- **Specification version**: `specificationVersion` changed from `'v3'` to `'v4'` on both providers and models
+- **Node.js >= 22 required**: the supported `engines` floor moves from Node 18 to Node 22
+- **ESM-only package**: the CJS build, the `require` export condition, and the `main`/`module` fields are removed; consume via `import` (or dynamic `import()` from CommonJS)
+- **Legacy model properties removed**: v6-era model properties are gone in favor of the v4 model surface; models now expose the v4 `supportedUrls` map (currently `{}`)
+- **`zod` peer dependency is Zod 4 only**: `^4.1.8` (Zod 3 is not supported). Importing under Zod 3 throws because `.refine().passthrough()` is unavailable on Zod 3's `ZodEffects`. 1.x allowed `zod@^3.0.0 || ^4.0.0`.
+
+### Added
+
+- **Top-level `reasoning` call option**: AI SDK v7's `reasoning` option (`'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'`) maps to Codex reasoning effort in both provider modes. Provider-specific options keep precedence (`providerOptions['codex-cli'].reasoningEffort` / `providerOptions['codex-app-server'].effort` win when set), `'provider-default'` leaves configured defaults untouched, and unsupported values emit an `unsupported` warning instead of failing
+- **v4 content handling**:
+  - v4 tagged file data (`{ type: 'data' | 'url' | 'reference' | 'text' }`) is accepted for file/image message parts, with legacy untagged data shapes still supported for compatibility
+  - canonical v4 tool-result file content is rendered into prompt text across its `data`/`url`/`reference`/`text` variants, with warnings for unrecognized data types
+  - `custom` content parts (in prompts and tool results) and assistant `reasoning-file` parts are skipped with explicit `unsupported` warnings
+
+### Changed
+
+- Dependencies updated for AI SDK v7:
+  - `@ai-sdk/provider`: ^4.0.0
+  - `@ai-sdk/provider-utils`: ^5.0.0
+  - `ai` (dev): ^7.0.0
+- `zod` peer dependency narrowed to `^4.1.8` (Zod 4 only; see Breaking Changes)
+- Model discovery guidance: documentation no longer maintains a static model catalog; use `listModels()` / `provider.listModels()` — available slugs follow your installed Codex CLI
+- Optional `@openai/codex` dependency: `^0.130.0` → `^0.142.5`; app-server protocol types synced with and release-tested against Codex CLI 0.142.5
+
+### Migration from AI SDK v6
+
+AI SDK v6 users should stay on the 1.x package line via the `ai-sdk-v6` dist-tag:
+
+```bash
+npm i ai@^6 ai-sdk-provider-codex-cli@ai-sdk-v6
+```
+
+See [docs/ai-sdk-v7/migration-v6-to-v7.md](docs/ai-sdk-v7/migration-v6-to-v7.md) for the full migration guide.
+
+### Version Compatibility
+
+| Package line      | AI SDK | npm tag               | Git branch  | Status                       |
+| ----------------- | ------ | --------------------- | ----------- | ---------------------------- |
+| 2.x               | v7     | `latest`, `ai-sdk-v7` | `main`      | Active development           |
+| 1.x               | v6     | `ai-sdk-v6`           | `ai-sdk-v6` | Maintenance                  |
+| 0.7.x             | v5     | `ai-sdk-v5`           | `ai-sdk-v5` | Maintenance / critical fixes |
+| `0.1.0-ai-sdk-v4` | v4     | `ai-sdk-v4`           | `ai-sdk-v4` | Frozen                       |
+
 ## [1.2.2] - 2026-06-11
 
 ### Fixed

@@ -14,7 +14,7 @@ import { z } from 'zod';
 console.log(' Codex CLI - Advanced Object Generation\n');
 
 // Use the Codex flagship model to exercise extra-high reasoning effort.
-// Requires the validated Codex CLI 0.130.x line for gpt-5.5 + xhigh.
+// Requires the validated Codex CLI 0.142.x line for gpt-5.5 + xhigh.
 const model = codexExec('gpt-5.5', {
   allowNpx: true,
   skipGitRepoCheck: true,

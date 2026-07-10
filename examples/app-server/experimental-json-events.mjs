@@ -15,19 +15,14 @@ import { generateText, streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.130.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
 });
 
 function getUsageTotals(usage) {
-  const inputTokens =
-    typeof usage.inputTokens === 'number' ? usage.inputTokens : (usage.inputTokens?.total ?? 0);
-  const outputTokens =
-    typeof usage.outputTokens === 'number' ? usage.outputTokens : (usage.outputTokens?.total ?? 0);
+  const inputTokens = usage.inputTokens ?? 0;
+  const outputTokens = usage.outputTokens ?? 0;
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
-  const cacheRead =
-    usage.cachedInputTokens ??
-    usage.inputTokenDetails?.cacheReadTokens ??
-    usage.inputTokens?.cacheRead;
+  const cacheRead = usage.inputTokenDetails?.cacheReadTokens;
 
   return { inputTokens, outputTokens, totalTokens, cacheRead };
 }
@@ -43,10 +38,11 @@ try {
   async function example1_basicWithUsage() {
     console.log('1  Basic Generation with Usage Tracking\n');
 
-    const { text, usage, response } = await generateText({
+    const { text, usage, finalStep } = await generateText({
       model,
       prompt: 'Explain the concept of native JSON schema support in 2 sentences.',
     });
+    const response = finalStep.response;
 
     console.log(' Response:');
     console.log(text);
