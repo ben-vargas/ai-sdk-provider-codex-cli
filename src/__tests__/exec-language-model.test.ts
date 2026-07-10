@@ -274,6 +274,131 @@ describe('ExecLanguageModel', () => {
     expect(finish?.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
+  it('reassembles a JSONL event split across two stdout data chunks', async () => {
+    const threadLine = JSON.stringify({ type: 'thread.started', thread_id: 'thread-split' }) + '\n';
+    const itemLine =
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'Hello Split' },
+      }) + '\n';
+    const turnLine =
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }) +
+      '\n';
+    // Split mid-JSON so neither fragment alone is valid JSON
+    const splitAt = 40;
+    const itemPart1 = itemLine.slice(0, splitAt);
+    const itemPart2 = itemLine.slice(splitAt);
+
+    (childProc as any).__setSpawnMock((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as any;
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new PassThrough();
+      child.kill = vi.fn();
+
+      // Force distinct stdout 'data' events with macrotask gaps between partial writes
+      setTimeout(() => {
+        child.stdout.write(threadLine);
+        setTimeout(() => {
+          child.stdout.write(itemPart1);
+          setTimeout(() => {
+            child.stdout.write(itemPart2);
+            setTimeout(() => {
+              child.stdout.write(turnLine);
+              child.stdout.end();
+              child.emit('close', 0);
+            }, 0);
+          }, 0);
+        }, 0);
+      }, 5);
+
+      return child;
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'Say hi' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    const it = (rs as any)[Symbol.asyncIterator]();
+    for await (const part of it) received.push(part);
+
+    const types = received.map((p) => p.type);
+    expect(types).toContain('response-metadata');
+    expect(types).toContain('text-delta');
+    expect(types).toContain('finish');
+    const deltaPayload = received.find((p) => p.type === 'text-delta');
+    expect(deltaPayload?.delta).toBe('Hello Split');
+    const finish = received.find((p) => p.type === 'finish');
+    expect(finish?.usage).toMatchObject({
+      inputTokens: { total: 1 },
+      outputTokens: { total: 1 },
+    });
+  });
+
+  it('flushes a final JSONL line delivered without a trailing newline before close', async () => {
+    // The final item.completed event is split mid-JSON across two data chunks, and the
+    // completing fragment has no trailing newline. Neither fragment alone is valid JSON,
+    // and there is no later data event or newline to trigger processing — so the event
+    // can only be parsed via the close-time stdoutBuffer flush path.
+    const threadLine = JSON.stringify({ type: 'thread.started', thread_id: 'thread-noeol' }) + '\n';
+    const itemLine = JSON.stringify({
+      type: 'item.completed',
+      item: { item_type: 'assistant_message', text: 'Flushed Split' },
+    }); // intentionally no trailing \n
+    // Split mid-JSON so neither fragment alone is valid JSON
+    const splitAt = 40;
+    const itemPart1 = itemLine.slice(0, splitAt);
+    const itemPart2 = itemLine.slice(splitAt);
+
+    (childProc as any).__setSpawnMock((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as any;
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new PassThrough();
+      child.kill = vi.fn();
+
+      // Force distinct stdout 'data' events; final fragment has no \n and close follows immediately
+      setTimeout(() => {
+        child.stdout.write(threadLine);
+        setTimeout(() => {
+          child.stdout.write(itemPart1);
+          setTimeout(() => {
+            child.stdout.write(itemPart2);
+            child.stdout.end();
+            child.emit('close', 0);
+          }, 0);
+        }, 0);
+      }, 5);
+
+      return child;
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: 'Say hi' }] as any,
+    });
+
+    const received: any[] = [];
+    const rs = stream as ReadableStream<any>;
+    const it = (rs as any)[Symbol.asyncIterator]();
+    for await (const part of it) received.push(part);
+
+    const types = received.map((p) => p.type);
+    expect(types).toContain('text-delta');
+    expect(types).toContain('finish');
+    const deltaPayload = received.find((p) => p.type === 'text-delta');
+    expect(deltaPayload?.delta).toBe('Flushed Split');
+  });
+
   it('marks provider-executed exec tools dynamic for AI SDK UI streams', async () => {
     const lines = [
       JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools-ui' }),

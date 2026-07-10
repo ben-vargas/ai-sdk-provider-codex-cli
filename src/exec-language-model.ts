@@ -1012,6 +1012,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
         let stderr = '';
         let accumulatedText = '';
+        let stdoutBuffer = '';
         const activeTools = new Map<string, ActiveToolItem>();
         let responseMetadataSent = false;
         let lastUsage: LanguageModelV4Usage | undefined;
@@ -1196,66 +1197,74 @@ export class ExecLanguageModel implements LanguageModelV4 {
           controller.close();
         };
 
+        const processLine = (line: string) => {
+          const event = this.parseExperimentalJsonEvent(line);
+          if (!event) return;
+
+          this.logger.debug(`[codex-cli] Stream event: ${event.type ?? 'unknown'}`);
+
+          if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
+            this.sessionId = event.thread_id;
+            this.logger.debug(`[codex-cli] Stream session started: ${this.sessionId}`);
+            if (!responseMetadataSent) {
+              responseMetadataSent = true;
+              sendMetadata();
+            }
+            return;
+          }
+
+          if (event.type === 'session.created' && typeof event.session_id === 'string') {
+            this.sessionId = event.session_id;
+            this.logger.debug(`[codex-cli] Stream session created: ${this.sessionId}`);
+            if (!responseMetadataSent) {
+              responseMetadataSent = true;
+              sendMetadata();
+            }
+            return;
+          }
+
+          if (event.type === 'turn.completed') {
+            const usageEvent = this.extractUsage(event);
+            if (usageEvent) {
+              lastUsage = usageEvent;
+            }
+            return;
+          }
+
+          if (event.type === 'turn.failed') {
+            const errorText =
+              (event.error && typeof event.error.message === 'string' && event.error.message) ||
+              (typeof event.message === 'string' ? event.message : undefined);
+            turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
+            this.logger.error(`[codex-cli] Stream turn failed: ${turnFailureMessage}`);
+            sendMetadata({ error: turnFailureMessage });
+            return;
+          }
+
+          if (event.type === 'error') {
+            const errorText = typeof event.message === 'string' ? event.message : undefined;
+            const effective = errorText ?? 'Codex error';
+            turnFailureMessage = turnFailureMessage ?? effective;
+            this.logger.error(`[codex-cli] Stream error event: ${effective}`);
+            sendMetadata({ error: effective });
+            return;
+          }
+
+          if (event.type && event.type.startsWith('item.')) {
+            handleItemEvent(event);
+          }
+        };
+
         child.stderr.on('data', (d) => (stderr += String(d)));
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', (chunk: string) => {
-          const lines = chunk.split(/\r?\n/).filter(Boolean);
-          for (const line of lines) {
-            const event = this.parseExperimentalJsonEvent(line);
-            if (!event) continue;
-
-            this.logger.debug(`[codex-cli] Stream event: ${event.type ?? 'unknown'}`);
-
-            if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
-              this.sessionId = event.thread_id;
-              this.logger.debug(`[codex-cli] Stream session started: ${this.sessionId}`);
-              if (!responseMetadataSent) {
-                responseMetadataSent = true;
-                sendMetadata();
-              }
-              continue;
-            }
-
-            if (event.type === 'session.created' && typeof event.session_id === 'string') {
-              this.sessionId = event.session_id;
-              this.logger.debug(`[codex-cli] Stream session created: ${this.sessionId}`);
-              if (!responseMetadataSent) {
-                responseMetadataSent = true;
-                sendMetadata();
-              }
-              continue;
-            }
-
-            if (event.type === 'turn.completed') {
-              const usageEvent = this.extractUsage(event);
-              if (usageEvent) {
-                lastUsage = usageEvent;
-              }
-              continue;
-            }
-
-            if (event.type === 'turn.failed') {
-              const errorText =
-                (event.error && typeof event.error.message === 'string' && event.error.message) ||
-                (typeof event.message === 'string' ? event.message : undefined);
-              turnFailureMessage = errorText ?? turnFailureMessage ?? 'Codex turn failed';
-              this.logger.error(`[codex-cli] Stream turn failed: ${turnFailureMessage}`);
-              sendMetadata({ error: turnFailureMessage });
-              continue;
-            }
-
-            if (event.type === 'error') {
-              const errorText = typeof event.message === 'string' ? event.message : undefined;
-              const effective = errorText ?? 'Codex error';
-              turnFailureMessage = turnFailureMessage ?? effective;
-              this.logger.error(`[codex-cli] Stream error event: ${effective}`);
-              sendMetadata({ error: effective });
-              continue;
-            }
-
-            if (event.type && event.type.startsWith('item.')) {
-              handleItemEvent(event);
-            }
+          // Carry incomplete trailing lines across data events so JSONL split
+          // across OS pipe chunks is reassembled before parse.
+          const pieces = (stdoutBuffer + chunk).split(/\r?\n/);
+          stdoutBuffer = pieces.pop() ?? '';
+          for (const line of pieces) {
+            if (!line) continue;
+            processLine(line);
           }
         });
 
@@ -1272,7 +1281,14 @@ export class ExecLanguageModel implements LanguageModelV4 {
           cleanupTempFiles();
 
           // Use setImmediate to ensure all stdout 'data' events are processed first
-          setImmediate(() => finishStream(code));
+          setImmediate(() => {
+            // Flush any final JSONL line that arrived without a trailing newline
+            if (stdoutBuffer) {
+              processLine(stdoutBuffer);
+              stdoutBuffer = '';
+            }
+            finishStream(code);
+          });
         });
       },
       cancel: () => {},
