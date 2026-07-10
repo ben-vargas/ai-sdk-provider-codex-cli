@@ -4,7 +4,7 @@ import { generateText } from 'ai';
 import { createCodexAppServer, isAuthenticationError } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.142.5', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
 });
 
 try {

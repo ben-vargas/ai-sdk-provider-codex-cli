@@ -77,7 +77,7 @@ function createMockProcess(
           `${JSON.stringify({
             id: message.id,
             result: {
-              userAgent: options.userAgent ?? 'codex-cli 0.142.5',
+              userAgent: options.userAgent ?? 'codex-cli 0.144.1',
               capabilities: options.initializeCapabilities ?? null,
             },
           })}\n`,
