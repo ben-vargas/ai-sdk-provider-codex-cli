@@ -178,7 +178,7 @@ console.log(object);
 - Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
-- **Image support** - Local binary images in both providers, plus remote HTTP/HTTPS image URLs in app-server mode
+- **Image support** - Local binary images in both providers; remote HTTP/HTTPS image URLs work via AI SDK download
 
 ### Image Support
 
@@ -215,8 +215,9 @@ console.log(text);
 
 **Remote image URLs:**
 
-- `codexExec` mode: HTTP/HTTPS image URLs are not supported (provide binary/image data)
-- `codexAppServer` mode: HTTP/HTTPS image URLs are supported and forwarded to app-server as remote image inputs
+- Pass remote images as `{ type: 'file', data: new URL('https://...'), mediaType: 'image/png' }` message parts in either mode
+- Both providers declare `supportedUrls = {}`, so the AI SDK downloads the URL itself and hands the provider the bytes, which flow through the same temp-file path as local images
+- Native URL passthrough (sending the URL for Codex to fetch server-side) is deferred until the Codex app-server verifiably accepts remote image URLs
 
 Local image data is written to temporary files and passed to Codex CLI via `--image` (or app-server `localImage`). Temp files are automatically cleaned up after each request.
 
