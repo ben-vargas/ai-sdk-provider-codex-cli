@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-07-10
+
+### Fixed
+
+- Surface a trimmed tail of captured stderr in app-server crash and initialization-failure messages (#39), making the root cause visible without inspecting `error.data.stderr`; report startup ENOENT failures with an installation-integrity hint instead of the misleading minimum-version hint; and apply the version hint when `unknown subcommand` appears only in stderr.
+
 ## [2.1.0] - 2026-07-10
 
 ### Changed

@@ -186,6 +186,7 @@ export class AppServerRpcClient extends EventEmitter {
   private activeRequestContextsByTurn = new Map<string, ActiveRequestContext>();
   private completedTurnIds = new Set<string>();
   private lastStderr = '';
+  private lastCrashHadStderr = false;
   private idleTimer?: NodeJS.Timeout;
   private serverCapabilities?: Record<string, unknown> | null;
   private expectedExitSignal?: NodeJS.Signals;
@@ -445,6 +446,7 @@ export class AppServerRpcClient extends EventEmitter {
     const args = [...base.args, 'app-server', '--listen', 'stdio://'];
 
     this.lastStderr = '';
+    this.lastCrashHadStderr = false;
     this.expectedExitSignal = undefined;
     this.child = spawn(base.cmd, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -456,20 +458,25 @@ export class AppServerRpcClient extends EventEmitter {
       cwd: this.settings.cwd,
     });
 
-    this.child.stderr.setEncoding('utf8');
-    this.child.stderr.on('data', (chunk) => {
-      this.lastStderr += String(chunk);
-      if (this.lastStderr.length > 4000) {
-        this.lastStderr = this.lastStderr.slice(-4000);
+    const child = this.child;
+    let stderrBuf = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      stderrBuf = (stderrBuf + String(chunk)).slice(-4000);
+      if (this.child === child) {
+        this.lastStderr = stderrBuf;
       }
     });
 
-    this.child.on('error', (error) => {
+    child.on('error', (error) => {
       this.logger.error(`[codex-app-server] process error: ${String(error)}`);
-      this.handleCrash(error);
+      const base = String(error);
+      const message = this.withStderrTail(base, stderrBuf);
+      this.lastCrashHadStderr = message !== base;
+      this.handleCrash(new Error(message));
     });
 
-    this.child.on('exit', (code, signal) => {
+    child.on('exit', (code, signal) => {
       const message = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
       const expected =
         this.state === 'closed' || (signal !== null && signal === this.expectedExitSignal);
@@ -479,12 +486,38 @@ export class AppServerRpcClient extends EventEmitter {
         return;
       }
 
-      this.logger.warn(`[codex-app-server] ${message}`);
-      this.handleCrash(new Error(message));
+      const crashedPending = this.markCrashed();
+      if (!crashedPending) return;
+
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        child.off('close', finish);
+        clearTimeout(timer);
+
+        const base = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
+        const crashMessage = this.withStderrTail(base, stderrBuf);
+
+        if (this.child === undefined) {
+          // No respawn has started yet for this instance; keep instance-level stderr
+          // state consistent (including any late chunks captured in stderrBuf) so a
+          // subsequent initialize-catch classification/message sees the same data.
+          this.lastStderr = stderrBuf;
+          this.lastCrashHadStderr = crashMessage !== base;
+        }
+
+        this.logger.warn(`[codex-app-server] ${crashMessage}`);
+        this.rejectCrashedPending(crashedPending, new Error(crashMessage));
+      };
+
+      child.once('close', finish);
+      const timer = setTimeout(finish, 120);
+      timer.unref?.();
     });
 
     this.stdoutReader = readline.createInterface({
-      input: this.child.stdout,
+      input: child.stdout,
       crlfDelay: Infinity,
     });
 
@@ -509,13 +542,23 @@ export class AppServerRpcClient extends EventEmitter {
         this.settings.connectionTimeoutMs ?? this.requestTimeoutMs,
       );
     } catch (error) {
-      const message = String((error as Error)?.message ?? error);
-      if (message.includes('ENOENT') || message.includes('unknown subcommand')) {
+      const raw = String((error as Error)?.message ?? error);
+      if (raw.includes('unknown subcommand') || this.lastStderr.includes('unknown subcommand')) {
         throw new Error(
-          "codex app-server requires codex CLI >= 0.144.0. Run 'codex --version' to check.",
+          this.withStderrTail(
+            "codex app-server requires codex CLI >= 0.144.0. Run 'codex --version' to check.",
+          ),
+        );
+      }
+      if (raw.includes('ENOENT') || this.lastStderr.includes('ENOENT')) {
+        throw new Error(
+          this.withStderrTail(
+            "codex app-server failed to start: codex executable not found (ENOENT). Check that the codex CLI is installed and its native binary is intact — a corrupted @openai/codex npm install can cause this. Run 'codex --version' to verify.",
+          ),
         );
       }
 
+      const message = this.lastCrashHadStderr ? raw : this.withStderrTail(raw);
       throw createAPICallError({
         message: `Failed to initialize codex app-server: ${message}`,
         stderr: this.lastStderr,
@@ -586,8 +629,8 @@ export class AppServerRpcClient extends EventEmitter {
     this.writeQueue = Promise.resolve();
   }
 
-  private handleCrash(error: unknown): void {
-    if (this.state === 'closed') return;
+  private markCrashed(): Map<JsonRpcId, PendingRequest> | undefined {
+    if (this.state === 'closed' || this.state === 'error') return undefined;
 
     this.state = 'error';
     this.clearIdleTimer();
@@ -599,13 +642,12 @@ export class AppServerRpcClient extends EventEmitter {
       this.child = undefined;
     }
 
-    for (const [id, pending] of this.pending.entries()) {
-      clearTimeout(pending.timer);
-      pending.reject(
-        new Error(`Request ${String(id)} failed after app-server crash: ${String(error)}`),
-      );
+    const pending = new Map(this.pending);
+    for (const [, entry] of pending) {
+      clearTimeout(entry.timer);
     }
     this.pending.clear();
+
     this.threadLocks.clear();
     this.pendingRequestContexts.clear();
     this.pendingRequestContextIdsByThread.clear();
@@ -613,6 +655,55 @@ export class AppServerRpcClient extends EventEmitter {
     this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
     this.writeQueue = Promise.resolve();
+
+    return pending;
+  }
+
+  private rejectCrashedPending(pending: Map<JsonRpcId, PendingRequest>, error: unknown): void {
+    for (const [id, entry] of pending) {
+      entry.reject(
+        new Error(`Request ${String(id)} failed after app-server crash: ${String(error)}`),
+      );
+    }
+  }
+
+  private handleCrash(error: unknown): void {
+    const pending = this.markCrashed();
+    if (!pending) return;
+    this.rejectCrashedPending(pending, error);
+  }
+
+  private stderrExcerpt(raw: string): string {
+    if (!raw) return '';
+
+    const escape = String.fromCharCode(27);
+    const ansiEscapeSequence = new RegExp(
+      `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u0007]*(?:\\u0007|${escape}\\\\))`,
+      'g',
+    );
+    const withoutAnsi = raw.replace(ansiEscapeSequence, '');
+    const withoutControls = Array.from(withoutAnsi)
+      .filter((character) => {
+        const code = character.charCodeAt(0);
+        return character === '\n' || (code >= 32 && (code < 127 || code > 159));
+      })
+      .join('');
+    const excerpt = withoutControls
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-5)
+      .join('; ');
+
+    if (excerpt.length > 600) {
+      return `…${excerpt.slice(-600)}`;
+    }
+    return excerpt;
+  }
+
+  private withStderrTail(message: string, raw: string = this.lastStderr): string {
+    const excerpt = this.stderrExcerpt(raw);
+    return excerpt ? `${message} | stderr (tail): ${excerpt}` : message;
   }
 
   private handleLine(line: string): void {
