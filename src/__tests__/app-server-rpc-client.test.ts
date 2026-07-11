@@ -1033,6 +1033,88 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('respawns immediately while the previous child is still draining stderr', async () => {
+    const first = createMockProcess();
+    const second = createMockProcess();
+    let spawns = 0;
+    setSpawnMock(() => {
+      spawns += 1;
+      return spawns === 1 ? first.child : second.child;
+    });
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    first.child.emit('exit', 1, null);
+    const reconnected = client.ensureReady();
+
+    expect(spawns).toBe(2);
+    await expect(reconnected).resolves.toBeUndefined();
+
+    const beforeClose = await client.threadStart({
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    });
+    expect(beforeClose.thread.id).toBe('thr_1');
+
+    first.child.emit('close', 1, null);
+    await flush();
+
+    const afterClose = await client.threadStart({
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    });
+    expect(afterClose.thread.id).toBe('thr_1');
+    expect(spawns).toBe(2);
+
+    await client.close();
+  });
+
+  it('rejects old pending requests with late stderr without polluting a respawn', async () => {
+    const first = createMockProcess();
+    const second = createMockProcess({ disableInitialize: true });
+    let spawns = 0;
+    setSpawnMock(() => {
+      spawns += 1;
+      return spawns === 1 ? first.child : second.child;
+    });
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const oldFailure = client.request('never/reply', {}).then(
+      () => new Error('Expected old request to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+
+    first.child.emit('exit', 1, null);
+    first.child.stderr.write('late stderr from old child\n');
+
+    const respawnFailure = client.ensureReady().then(
+      () => new Error('Expected respawn initialization to reject'),
+      (error: unknown) => error,
+    );
+    expect(spawns).toBe(2);
+
+    first.child.emit('close', 1, null);
+    const oldError = await oldFailure;
+    expect(oldError).toBeInstanceOf(Error);
+    expect((oldError as Error).message).toContain('stderr (tail): late stderr from old child');
+
+    second.child.emit('exit', 2, null);
+    second.child.emit('close', 2, null);
+
+    const respawnError = await respawnFailure;
+    expect(respawnError).toMatchObject({
+      name: 'AI_APICallError',
+      data: { stderr: '' },
+    });
+    expect((respawnError as Error).message).not.toContain('late stderr from old child');
+
+    await client.close();
+  });
+
   it('kills the child process on process error before entering error state', async () => {
     const { child } = createMockProcess();
     setSpawnMock(() => child);
