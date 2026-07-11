@@ -56,6 +56,7 @@ function createMockProcess(
   options: {
     userAgent?: string;
     disableModelList?: boolean;
+    disableInitialize?: boolean;
     initializeCapabilities?: Record<string, unknown> | null;
   } = {},
 ): MockProcess {
@@ -73,6 +74,7 @@ function createMockProcess(
       writes.push(message);
 
       if (message.method === 'initialize') {
+        if (options.disableInitialize) continue;
         child.stdout.write(
           `${JSON.stringify({
             id: message.id,
@@ -1016,6 +1018,7 @@ describe('AppServerRpcClient', () => {
 
     await client.ensureReady();
     first.child.emit('exit', 1, null);
+    first.child.emit('close', 1, null);
     await client.ensureReady();
 
     expect(spawns).toBe(2);
@@ -1052,9 +1055,238 @@ describe('AppServerRpcClient', () => {
     await client.ensureReady();
 
     child.emit('exit', 1, null);
+    child.emit('close', 1, null);
     await flush();
 
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    await client.close();
+  });
+
+  it('includes captured stderr in pending request crash rejections', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const failure = client.request('never/reply', {}).then(
+      () => new Error('Expected request to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+    child.stderr.write('fatal crash detail\n');
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('stderr (tail): fatal crash detail');
+    await client.close();
+  });
+
+  it('includes captured stderr once in initialization crash APICallErrors', async () => {
+    const { child } = createMockProcess({ disableInitialize: true });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    const failure = client.ensureReady().then(
+      () => new Error('Expected initialization to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+
+    const rawStderr = 'initialization crashed with a detailed cause\n';
+    child.stderr.write(rawStderr);
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect(error).toMatchObject({
+      name: 'AI_APICallError',
+      data: { stderr: rawStderr },
+    });
+    expect((error as Error).message).toContain(
+      'stderr (tail): initialization crashed with a detailed cause',
+    );
+    expect((error as Error).message.match(/stderr \(tail\):/g)).toHaveLength(1);
+    await client.close();
+  });
+
+  it('does not append a stderr suffix when an unexpected exit captured no stderr', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const failure = client.request('never/reply', {}).then(
+      () => new Error('Expected request to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect((error as Error).message).not.toContain('stderr (tail)');
+    await client.close();
+  });
+
+  it('uses an installation-integrity hint for ENOENT captured during initialization', async () => {
+    const { child } = createMockProcess({ disableInitialize: true });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    const failure = client.ensureReady().then(
+      () => new Error('Expected initialization to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+
+    child.stderr.write('spawn /x/y/codex ENOENT\n');
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toMatchObject({ name: 'AI_APICallError' });
+    expect((error as Error).message).toContain(
+      'codex app-server failed to start: codex executable not found (ENOENT)',
+    );
+    expect((error as Error).message).toContain('stderr (tail): spawn /x/y/codex ENOENT');
+    expect((error as Error).message).not.toContain('requires codex CLI >=');
+    await client.close();
+  });
+
+  it('prioritizes an unknown-subcommand version hint found only in stderr', async () => {
+    const { child } = createMockProcess({ disableInitialize: true });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    const failure = client.ensureReady().then(
+      () => new Error('Expected initialization to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+
+    child.stderr.write("spawn /x/y/codex ENOENT\nerror: unknown subcommand 'app-server'\n");
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect((error as Error).message).toContain('codex app-server requires codex CLI >= 0.144.0');
+    expect((error as Error).message).toContain("error: unknown subcommand 'app-server'");
+    expect((error as Error).message).not.toContain('codex executable not found');
+    await client.close();
+  });
+
+  it('adds stderr exactly once when initialization times out without a process crash', async () => {
+    const { child } = createMockProcess({ disableInitialize: true });
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient({
+      settings: { connectionTimeoutMs: 10 },
+    });
+    const failure = client.ensureReady().then(
+      () => new Error('Expected initialization to reject'),
+      (error: unknown) => error,
+    );
+    const rawStderr = 'server remained alive but initialization stalled\n';
+    child.stderr.write(rawStderr);
+
+    const error = await failure;
+    expect(error).toMatchObject({
+      name: 'AI_APICallError',
+      data: { stderr: rawStderr },
+    });
+    expect((error as Error).message).toContain(
+      'stderr (tail): server remained alive but initialization stalled',
+    );
+    expect((error as Error).message.match(/stderr \(tail\):/g)).toHaveLength(1);
+    await client.close();
+  });
+
+  it('renders a single-line, last-five-line, tail-truncated stderr excerpt', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const failure = client.request('never/reply', {}).then(
+      () => new Error('Expected request to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+    child.stderr.write(
+      [
+        'discard-one',
+        'discard-two',
+        'keep-one',
+        'keep-two',
+        'keep-three',
+        'keep-four',
+        `${'x'.repeat(620)}tail-end`,
+      ].join('\n'),
+    );
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    const excerpt = (error as Error).message.split('stderr (tail): ')[1];
+    expect(excerpt).toBeDefined();
+    expect(excerpt).not.toContain('\n');
+    expect(excerpt).not.toContain('discard-one');
+    expect(excerpt).not.toContain('discard-two');
+    expect(excerpt).toMatch(/^…/);
+    expect(excerpt).toHaveLength(601);
+    expect(excerpt).toMatch(/tail-end$/);
+    await client.close();
+  });
+
+  it('captures stderr delivered after exit but before close', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const failure = client.request('never/reply', {}).then(
+      () => new Error('Expected request to reject'),
+      (error: unknown) => error,
+    );
+    await flush();
+    child.emit('exit', 1, null);
+    child.stderr.write('late stderr chunk from drain race\n');
+    child.emit('close', 1, null);
+
+    const error = await failure;
+    expect((error as Error).message).toContain('stderr (tail): late stderr chunk from drain race');
+    await client.close();
+  });
+
+  it('logs unexpected exits with stderr as one exact single-line warning', async () => {
+    const { child } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const client = new AppServerRpcClient({ settings: { logger } });
+    await client.ensureReady();
+
+    child.stderr.write('first stderr line\nsecond stderr line\n');
+    child.emit('exit', 7, null);
+    child.emit('close', 7, null);
+    await flush();
+
+    const expectedWarning =
+      '[codex-app-server] codex app-server exited (code=7, signal=null) | stderr (tail): first stderr line; second stderr line';
+    expect(logger.warn).toHaveBeenCalledWith(expectedWarning);
+    expect(expectedWarning).not.toContain('\n');
     await client.close();
   });
 
@@ -1109,6 +1341,7 @@ describe('AppServerRpcClient', () => {
     ).toBe(1);
 
     child.emit('exit', 1, null);
+    child.emit('close', 1, null);
     await flush();
 
     expect(

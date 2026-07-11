@@ -186,6 +186,7 @@ export class AppServerRpcClient extends EventEmitter {
   private activeRequestContextsByTurn = new Map<string, ActiveRequestContext>();
   private completedTurnIds = new Set<string>();
   private lastStderr = '';
+  private lastCrashHadStderr = false;
   private idleTimer?: NodeJS.Timeout;
   private serverCapabilities?: Record<string, unknown> | null;
   private expectedExitSignal?: NodeJS.Signals;
@@ -445,6 +446,7 @@ export class AppServerRpcClient extends EventEmitter {
     const args = [...base.args, 'app-server', '--listen', 'stdio://'];
 
     this.lastStderr = '';
+    this.lastCrashHadStderr = false;
     this.expectedExitSignal = undefined;
     this.child = spawn(base.cmd, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -456,20 +458,25 @@ export class AppServerRpcClient extends EventEmitter {
       cwd: this.settings.cwd,
     });
 
-    this.child.stderr.setEncoding('utf8');
-    this.child.stderr.on('data', (chunk) => {
+    const child = this.child;
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
+      if (this.child !== child) return;
       this.lastStderr += String(chunk);
       if (this.lastStderr.length > 4000) {
         this.lastStderr = this.lastStderr.slice(-4000);
       }
     });
 
-    this.child.on('error', (error) => {
+    child.on('error', (error) => {
       this.logger.error(`[codex-app-server] process error: ${String(error)}`);
-      this.handleCrash(error);
+      const base = String(error);
+      const message = this.withStderrTail(base);
+      this.lastCrashHadStderr = message !== base;
+      this.handleCrash(new Error(message));
     });
 
-    this.child.on('exit', (code, signal) => {
+    child.on('exit', (code, signal) => {
       const message = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
       const expected =
         this.state === 'closed' || (signal !== null && signal === this.expectedExitSignal);
@@ -479,12 +486,30 @@ export class AppServerRpcClient extends EventEmitter {
         return;
       }
 
-      this.logger.warn(`[codex-app-server] ${message}`);
-      this.handleCrash(new Error(message));
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        child.off('close', finish);
+        clearTimeout(timer);
+        if (this.state === 'closed' || this.state === 'error' || this.child !== child) {
+          return;
+        }
+
+        const base = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
+        const crashMessage = this.withStderrTail(base);
+        this.lastCrashHadStderr = crashMessage !== base;
+        this.logger.warn(`[codex-app-server] ${crashMessage}`);
+        this.handleCrash(new Error(crashMessage));
+      };
+
+      child.once('close', finish);
+      const timer = setTimeout(finish, 120);
+      timer.unref?.();
     });
 
     this.stdoutReader = readline.createInterface({
-      input: this.child.stdout,
+      input: child.stdout,
       crlfDelay: Infinity,
     });
 
@@ -509,13 +534,23 @@ export class AppServerRpcClient extends EventEmitter {
         this.settings.connectionTimeoutMs ?? this.requestTimeoutMs,
       );
     } catch (error) {
-      const message = String((error as Error)?.message ?? error);
-      if (message.includes('ENOENT') || message.includes('unknown subcommand')) {
+      const raw = String((error as Error)?.message ?? error);
+      if (raw.includes('unknown subcommand') || this.lastStderr.includes('unknown subcommand')) {
         throw new Error(
-          "codex app-server requires codex CLI >= 0.144.0. Run 'codex --version' to check.",
+          this.withStderrTail(
+            "codex app-server requires codex CLI >= 0.144.0. Run 'codex --version' to check.",
+          ),
+        );
+      }
+      if (raw.includes('ENOENT') || this.lastStderr.includes('ENOENT')) {
+        throw new Error(
+          this.withStderrTail(
+            "codex app-server failed to start: codex executable not found (ENOENT). Check that the codex CLI is installed and its native binary is intact — a corrupted @openai/codex npm install can cause this. Run 'codex --version' to verify.",
+          ),
         );
       }
 
+      const message = this.lastCrashHadStderr ? raw : this.withStderrTail(raw);
       throw createAPICallError({
         message: `Failed to initialize codex app-server: ${message}`,
         stderr: this.lastStderr,
@@ -587,7 +622,7 @@ export class AppServerRpcClient extends EventEmitter {
   }
 
   private handleCrash(error: unknown): void {
-    if (this.state === 'closed') return;
+    if (this.state === 'closed' || this.state === 'error') return;
 
     this.state = 'error';
     this.clearIdleTimer();
@@ -613,6 +648,39 @@ export class AppServerRpcClient extends EventEmitter {
     this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
     this.writeQueue = Promise.resolve();
+  }
+
+  private stderrExcerpt(): string {
+    if (!this.lastStderr) return '';
+
+    const escape = String.fromCharCode(27);
+    const ansiEscapeSequence = new RegExp(
+      `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u0007]*(?:\\u0007|${escape}\\\\))`,
+      'g',
+    );
+    const withoutAnsi = this.lastStderr.replace(ansiEscapeSequence, '');
+    const withoutControls = Array.from(withoutAnsi)
+      .filter((character) => {
+        const code = character.charCodeAt(0);
+        return character === '\n' || (code >= 32 && (code < 127 || code > 159));
+      })
+      .join('');
+    const excerpt = withoutControls
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-5)
+      .join('; ');
+
+    if (excerpt.length > 600) {
+      return `…${excerpt.slice(-600)}`;
+    }
+    return excerpt;
+  }
+
+  private withStderrTail(message: string): string {
+    const excerpt = this.stderrExcerpt();
+    return excerpt ? `${message} | stderr (tail): ${excerpt}` : message;
   }
 
   private handleLine(line: string): void {
