@@ -459,19 +459,19 @@ export class AppServerRpcClient extends EventEmitter {
     });
 
     const child = this.child;
+    let stderrBuf = '';
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk) => {
-      if (this.child !== child) return;
-      this.lastStderr += String(chunk);
-      if (this.lastStderr.length > 4000) {
-        this.lastStderr = this.lastStderr.slice(-4000);
+      stderrBuf = (stderrBuf + String(chunk)).slice(-4000);
+      if (this.child === child) {
+        this.lastStderr = stderrBuf;
       }
     });
 
     child.on('error', (error) => {
       this.logger.error(`[codex-app-server] process error: ${String(error)}`);
       const base = String(error);
-      const message = this.withStderrTail(base);
+      const message = this.withStderrTail(base, stderrBuf);
       this.lastCrashHadStderr = message !== base;
       this.handleCrash(new Error(message));
     });
@@ -486,21 +486,29 @@ export class AppServerRpcClient extends EventEmitter {
         return;
       }
 
+      const crashedPending = this.markCrashed();
+      if (!crashedPending) return;
+
       let settled = false;
       const finish = (): void => {
         if (settled) return;
         settled = true;
         child.off('close', finish);
         clearTimeout(timer);
-        if (this.state === 'closed' || this.state === 'error' || this.child !== child) {
-          return;
-        }
 
         const base = `codex app-server exited (code=${String(code)}, signal=${String(signal)})`;
-        const crashMessage = this.withStderrTail(base);
-        this.lastCrashHadStderr = crashMessage !== base;
+        const crashMessage = this.withStderrTail(base, stderrBuf);
+
+        if (this.child === undefined) {
+          // No respawn has started yet for this instance; keep instance-level stderr
+          // state consistent (including any late chunks captured in stderrBuf) so a
+          // subsequent initialize-catch classification/message sees the same data.
+          this.lastStderr = stderrBuf;
+          this.lastCrashHadStderr = crashMessage !== base;
+        }
+
         this.logger.warn(`[codex-app-server] ${crashMessage}`);
-        this.handleCrash(new Error(crashMessage));
+        this.rejectCrashedPending(crashedPending, new Error(crashMessage));
       };
 
       child.once('close', finish);
@@ -621,8 +629,8 @@ export class AppServerRpcClient extends EventEmitter {
     this.writeQueue = Promise.resolve();
   }
 
-  private handleCrash(error: unknown): void {
-    if (this.state === 'closed' || this.state === 'error') return;
+  private markCrashed(): Map<JsonRpcId, PendingRequest> | undefined {
+    if (this.state === 'closed' || this.state === 'error') return undefined;
 
     this.state = 'error';
     this.clearIdleTimer();
@@ -634,13 +642,12 @@ export class AppServerRpcClient extends EventEmitter {
       this.child = undefined;
     }
 
-    for (const [id, pending] of this.pending.entries()) {
-      clearTimeout(pending.timer);
-      pending.reject(
-        new Error(`Request ${String(id)} failed after app-server crash: ${String(error)}`),
-      );
+    const pending = new Map(this.pending);
+    for (const [, entry] of pending) {
+      clearTimeout(entry.timer);
     }
     this.pending.clear();
+
     this.threadLocks.clear();
     this.pendingRequestContexts.clear();
     this.pendingRequestContextIdsByThread.clear();
@@ -648,17 +655,33 @@ export class AppServerRpcClient extends EventEmitter {
     this.completedTurnIds.clear();
     this.serverCapabilities = undefined;
     this.writeQueue = Promise.resolve();
+
+    return pending;
   }
 
-  private stderrExcerpt(): string {
-    if (!this.lastStderr) return '';
+  private rejectCrashedPending(pending: Map<JsonRpcId, PendingRequest>, error: unknown): void {
+    for (const [id, entry] of pending) {
+      entry.reject(
+        new Error(`Request ${String(id)} failed after app-server crash: ${String(error)}`),
+      );
+    }
+  }
+
+  private handleCrash(error: unknown): void {
+    const pending = this.markCrashed();
+    if (!pending) return;
+    this.rejectCrashedPending(pending, error);
+  }
+
+  private stderrExcerpt(raw: string): string {
+    if (!raw) return '';
 
     const escape = String.fromCharCode(27);
     const ansiEscapeSequence = new RegExp(
       `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u0007]*(?:\\u0007|${escape}\\\\))`,
       'g',
     );
-    const withoutAnsi = this.lastStderr.replace(ansiEscapeSequence, '');
+    const withoutAnsi = raw.replace(ansiEscapeSequence, '');
     const withoutControls = Array.from(withoutAnsi)
       .filter((character) => {
         const code = character.charCodeAt(0);
@@ -678,8 +701,8 @@ export class AppServerRpcClient extends EventEmitter {
     return excerpt;
   }
 
-  private withStderrTail(message: string): string {
-    const excerpt = this.stderrExcerpt();
+  private withStderrTail(message: string, raw: string = this.lastStderr): string {
+    const excerpt = this.stderrExcerpt(raw);
     return excerpt ? `${message} | stderr (tail): ${excerpt}` : message;
   }
 
