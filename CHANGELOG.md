@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-07-22
+
+### Security
+
+- The exec provider no longer places an inline MCP HTTP `bearerToken` on the spawned codex command line (previously serialized as `-c mcp_servers.<name>.http_headers.Authorization=Bearer <token>`, readable by any local process via `ps` or `/proc/<pid>/cmdline`). The token is now passed through a synthesized child-environment variable (`CODEX_MCP_<NAME>_BEARER_TOKEN`) referenced via `bearer_token_env_var` (#42). If both `bearerToken` and `bearerTokenEnvVar` are set, `bearerTokenEnvVar` wins and the inline token is ignored with a warning; an explicit `Authorization` entry in `httpHeaders` still takes precedence over `bearerToken`. The app-server transport is unaffected (MCP config travels over JSON-RPC stdin, not argv). Prefer `bearerTokenEnvVar` over inline `bearerToken`, and keep secrets out of `httpHeaders` (values ride argv) — use `envHttpHeaders` instead.
+
 ## [2.1.1] - 2026-07-10
 
 ### Fixed

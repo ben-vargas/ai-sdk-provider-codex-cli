@@ -47,9 +47,12 @@ function makeMockSpawn(lines: string[], exitCode = 0) {
 
 // Mock child_process
 vi.mock('node:child_process', async () => {
-  let currentMock: (cmd: string, args: string[]) => any = makeMockSpawn([], 0) as any;
+  let currentMock: (cmd: string, args: string[], opts?: object) => any = makeMockSpawn(
+    [],
+    0,
+  ) as any;
   const mod = {
-    spawn: (cmd: string, args: string[]) => currentMock(cmd, args),
+    spawn: (cmd: string, args: string[], opts?: object) => currentMock(cmd, args, opts),
     __setSpawnMock: (fn: any) => {
       currentMock = fn;
     },
@@ -1237,6 +1240,7 @@ describe('ExecLanguageModel', () => {
 
     it('merges MCP servers across constructor and providerOptions', async () => {
       let argsCaptured: string[] = [];
+      let envCaptured: Record<string, string | undefined> = {};
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-mcp-merge' }),
         JSON.stringify({
@@ -1244,8 +1248,9 @@ describe('ExecLanguageModel', () => {
           item: { item_type: 'assistant_message', text: 'ok' },
         }),
       ];
-      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      (childProc as any).__setSpawnMock((cmd: string, args: string[], opts?: { env?: any }) => {
         argsCaptured = args;
+        envCaptured = opts?.env ?? {};
         return makeMockSpawn(lines, 0)(cmd, args);
       });
 
@@ -1302,9 +1307,12 @@ describe('ExecLanguageModel', () => {
       expect(argsCaptured).toContain('mcp_servers.remote.bearer_token_env_var=MCP_TOKEN');
       expect(argsCaptured).toContain('mcp_servers.remote.http_headers.x-debug=1');
       expect(argsCaptured).toContain('mcp_servers.direct.url=https://direct.example');
+      // Inline bearer tokens are routed through the child environment, never argv
       expect(argsCaptured).toContain(
-        'mcp_servers.direct.http_headers.Authorization=Bearer DIRECT_TOKEN',
+        'mcp_servers.direct.bearer_token_env_var=CODEX_MCP_DIRECT_BEARER_TOKEN',
       );
+      expect(envCaptured.CODEX_MCP_DIRECT_BEARER_TOKEN).toBe('DIRECT_TOKEN');
+      expect(argsCaptured.some((arg) => arg.includes('DIRECT_TOKEN'))).toBe(false);
       expect(argsCaptured.some((arg) => arg.includes('mcp_servers.direct.bearer_token='))).toBe(
         false,
       );
@@ -1470,6 +1478,129 @@ describe('ExecLanguageModel', () => {
           arg.includes('mcp_servers.remote.http_headers.Authorization=Bearer base-token-secret'),
         ),
       ).toBe(false);
+    });
+
+    it('never places inline bearerToken in argv; routes it via the child env', async () => {
+      let argsCaptured: string[] = [];
+      let envCaptured: Record<string, string | undefined> = {};
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-bearer-env' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[], opts?: { env?: any }) => {
+        argsCaptured = args;
+        envCaptured = opts?.env ?? {};
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          mcpServers: {
+            docs: {
+              transport: 'http',
+              url: 'https://mcp.example',
+              bearerToken: 'sk-mcp-secret',
+              httpHeaders: { 'x-debug': '1' },
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      expect(argsCaptured).toContain(
+        'mcp_servers.docs.bearer_token_env_var=CODEX_MCP_DOCS_BEARER_TOKEN',
+      );
+      expect(envCaptured.CODEX_MCP_DOCS_BEARER_TOKEN).toBe('sk-mcp-secret');
+      // Non-secret headers still pass through argv; the token never does
+      expect(argsCaptured).toContain('mcp_servers.docs.http_headers.x-debug=1');
+      expect(argsCaptured.some((arg) => arg.includes('sk-mcp-secret'))).toBe(false);
+    });
+
+    it('prefers explicit bearerTokenEnvVar over inline bearerToken when both are set', async () => {
+      let argsCaptured: string[] = [];
+      let envCaptured: Record<string, string | undefined> = {};
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-bearer-both' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[], opts?: { env?: any }) => {
+        argsCaptured = args;
+        envCaptured = opts?.env ?? {};
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          mcpServers: {
+            docs: {
+              transport: 'http',
+              url: 'https://mcp.example',
+              bearerToken: 'sk-mcp-secret',
+              bearerTokenEnvVar: 'MY_TOKEN_VAR',
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      expect(argsCaptured).toContain('mcp_servers.docs.bearer_token_env_var=MY_TOKEN_VAR');
+      expect(envCaptured.CODEX_MCP_DOCS_BEARER_TOKEN).toBeUndefined();
+      expect(argsCaptured.some((arg) => arg.includes('sk-mcp-secret'))).toBe(false);
+    });
+
+    it('lets an explicit Authorization header win over inline bearerToken without leaking the token', async () => {
+      let argsCaptured: string[] = [];
+      let envCaptured: Record<string, string | undefined> = {};
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-bearer-explicit-auth' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[], opts?: { env?: any }) => {
+        argsCaptured = args;
+        envCaptured = opts?.env ?? {};
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-5',
+        settings: {
+          allowNpx: true,
+          mcpServers: {
+            docs: {
+              transport: 'http',
+              url: 'https://mcp.example',
+              bearerToken: 'sk-mcp-secret',
+              httpHeaders: { Authorization: 'Basic explicit-credentials' },
+            },
+          },
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+      expect(argsCaptured).toContain(
+        'mcp_servers.docs.http_headers.Authorization=Basic explicit-credentials',
+      );
+      expect(
+        argsCaptured.some((arg) => arg.includes('mcp_servers.docs.bearer_token_env_var=')),
+      ).toBe(false);
+      expect(envCaptured.CODEX_MCP_DOCS_BEARER_TOKEN).toBeUndefined();
+      expect(argsCaptured.some((arg) => arg.includes('sk-mcp-secret'))).toBe(false);
     });
 
     it('merges addDirs from providerOptions with constructor settings', async () => {

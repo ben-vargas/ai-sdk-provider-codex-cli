@@ -51,6 +51,13 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
   - **Stdio servers** (`transport: 'stdio'`): `command` (required), `args?`, `env?`, `cwd?`.
   - **HTTP/RMCP servers** (`transport: 'http'`): `url` (required), `bearerToken?`, `bearerTokenEnvVar?`, `httpHeaders?`, `envHttpHeaders?`.
 
+Auth notes for HTTP servers:
+
+- Prefer `bearerTokenEnvVar` (the name of an environment variable holding the token) over an inline `bearerToken`.
+- With the exec provider, an inline `bearerToken` is never placed on the codex command line: the provider passes it to the spawned process through a synthesized environment variable (`CODEX_MCP_<NAME>_BEARER_TOKEN`) and emits `bearer_token_env_var` pointing at it, so the secret is not visible in `ps` output or `/proc/<pid>/cmdline`.
+- If both `bearerToken` and `bearerTokenEnvVar` are set, `bearerTokenEnvVar` wins and the inline token is ignored (a warning is logged).
+- An explicit `Authorization` key in `httpHeaders` takes precedence over `bearerToken`. Note that `httpHeaders` values are passed as `-c` arguments on the exec provider's command line — put secrets in `bearerTokenEnvVar` or `envHttpHeaders` instead of `httpHeaders`.
+
 Example:
 
 ```ts

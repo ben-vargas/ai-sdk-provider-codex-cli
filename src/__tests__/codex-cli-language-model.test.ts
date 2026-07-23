@@ -980,9 +980,11 @@ describe('CodexCliLanguageModel', () => {
       expect(argsCaptured).toContain('mcp_servers.remote.bearer_token_env_var=MCP_TOKEN');
       expect(argsCaptured).toContain('mcp_servers.remote.http_headers.x-debug=1');
       expect(argsCaptured).toContain('mcp_servers.direct.url=https://direct.example');
+      // Inline bearer tokens are routed through the child environment, never argv
       expect(argsCaptured).toContain(
-        'mcp_servers.direct.http_headers.Authorization=Bearer DIRECT_TOKEN',
+        'mcp_servers.direct.bearer_token_env_var=CODEX_MCP_DIRECT_BEARER_TOKEN',
       );
+      expect(argsCaptured.some((arg) => arg.includes('DIRECT_TOKEN'))).toBe(false);
       expect(argsCaptured.some((arg) => arg.includes('mcp_servers.direct.bearer_token='))).toBe(
         false,
       );
