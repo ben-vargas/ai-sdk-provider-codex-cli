@@ -42,7 +42,6 @@ import {
   isPlainObject,
   mapCodexCliFinishReason,
   mapUnsupportedSettingsWarnings,
-  mcpHttpHeadersWithBearerToken,
   mergeMcpServers,
   safeStringify,
   sanitizeJsonSchema,
@@ -274,7 +273,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
     }
 
     // MCP configuration
-    this.applyMcpSettings(args, settings);
+    const mcpSecretEnv = this.applyMcpSettings(args, settings);
 
     // Color handling
     if (settings.color) {
@@ -338,6 +337,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...(settings.env || {}),
+      ...mcpSecretEnv,
       RUST_LOG: process.env.RUST_LOG || 'error',
     };
 
@@ -376,12 +376,25 @@ export class ExecLanguageModel implements LanguageModelV4 {
     };
   }
 
-  private applyMcpSettings(args: string[], settings: CodexExecSettings): void {
+  /**
+   * Apply MCP server settings as `-c` config overrides.
+   *
+   * Returns environment variables that must be set on the spawned codex
+   * process. Inline HTTP `bearerToken` secrets are routed through the child
+   * environment (via `bearer_token_env_var`) instead of argv, because command
+   * lines are readable by any local process (`ps`, /proc/<pid>/cmdline).
+   */
+  private applyMcpSettings(
+    args: string[],
+    settings: CodexExecSettings,
+  ): Record<string, string> | undefined {
     if (settings.rmcpClient) {
       this.addConfigOverride(args, 'features.rmcp_client', true);
     }
 
-    if (!settings.mcpServers) return;
+    if (!settings.mcpServers) return undefined;
+
+    const secretEnv: Record<string, string> = {};
 
     for (const [rawName, server] of Object.entries(settings.mcpServers)) {
       const name = assertValidMcpServerName(rawName);
@@ -410,15 +423,45 @@ export class ExecLanguageModel implements LanguageModelV4 {
         if (server.cwd) this.addConfigOverride(args, `${prefix}.cwd`, server.cwd);
       } else {
         this.addConfigOverride(args, `${prefix}.url`, server.url);
-        if (server.bearerTokenEnvVar)
+        const hasExplicitAuthorizationHeader = Object.keys(server.httpHeaders ?? {}).some(
+          (key) => key.toLowerCase() === 'authorization',
+        );
+        if (server.bearerTokenEnvVar) {
           this.addConfigOverride(args, `${prefix}.bearer_token_env_var`, server.bearerTokenEnvVar);
-        const httpHeaders = mcpHttpHeadersWithBearerToken(server);
-        if (httpHeaders !== undefined)
-          this.addConfigOverride(args, `${prefix}.http_headers`, httpHeaders);
+          if (server.bearerToken !== undefined) {
+            this.logger.warn(
+              `[codex-cli] MCP server '${name}': both bearerToken and bearerTokenEnvVar are set; using bearerTokenEnvVar and ignoring the inline token.`,
+            );
+          }
+        } else if (server.bearerToken !== undefined && !hasExplicitAuthorizationHeader) {
+          const envVarName = this.allocateBearerTokenEnvVar(name, secretEnv);
+          secretEnv[envVarName] = server.bearerToken;
+          this.addConfigOverride(args, `${prefix}.bearer_token_env_var`, envVarName);
+        }
+        if (server.httpHeaders !== undefined)
+          this.addConfigOverride(args, `${prefix}.http_headers`, server.httpHeaders);
         if (server.envHttpHeaders !== undefined)
           this.addConfigOverride(args, `${prefix}.env_http_headers`, server.envHttpHeaders);
       }
     }
+
+    return Object.keys(secretEnv).length > 0 ? secretEnv : undefined;
+  }
+
+  /**
+   * Pick a child-env variable name to carry an inline MCP bearer token,
+   * avoiding collisions between server names that normalize identically
+   * (e.g. 'foo-bar' and 'foo_bar').
+   */
+  private allocateBearerTokenEnvVar(serverName: string, secretEnv: Record<string, string>): string {
+    const base = `CODEX_MCP_${serverName.toUpperCase().replace(/-/g, '_')}_BEARER_TOKEN`;
+    let candidate = base;
+    let suffix = 2;
+    while (candidate in secretEnv) {
+      candidate = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
   }
 
   private addConfigOverride(
