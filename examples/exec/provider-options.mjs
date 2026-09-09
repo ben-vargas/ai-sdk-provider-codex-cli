@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 async function main() {
-  const model = codexExec('gpt-5.5', {
+  const model = codexExec('gpt-6-astra', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'medium',

@@ -1,0 +1,38 @@
+{
+  "method": "thread/started",
+  "params": {
+    "thread": {
+      "id": "01990000-0000-7000-8000-000000000001",
+      "extra": null,
+      "sessionId": "01990000-0000-7000-8000-000000000001",
+      "forkedFromId": null,
+      "parentThreadId": null,
+      "preview": "",
+      "ephemeral": true,
+      "section": null,
+      "sectionEnteredAt": null,
+      "projectId": null,
+      "historyMode": "legacy",
+      "modelProvider": "openai",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "xhigh",
+      "createdAt": 1788939105,
+      "updatedAt": 1788939105,
+      "recencyAt": 1788939105,
+      "status": {
+        "type": "idle"
+      },
+      "path": null,
+      "cwd": "/tmp/project",
+      "cliVersion": "0.153.4",
+      "source": "vscode",
+      "canAcceptDirectInput": true,
+      "threadSource": null,
+      "agentNickname": null,
+      "agentRole": null,
+      "gitInfo": null,
+      "name": null,
+      "turns": []
+    }
+  }
+}

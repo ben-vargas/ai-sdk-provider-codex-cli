@@ -59,7 +59,7 @@ console.log(models.map((m) => m.id));
 await provider.close();
 ```
 
-The examples in these docs use `gpt-5.5`, the default model returned by `model/list` at the time of writing. Substitute whatever `listModels()` returns for you.
+The examples in these docs use `gpt-6-astra`, the default model returned by `model/list` at the time of writing. Substitute whatever `listModels()` returns for you.
 
 ## Basic Usage
 
@@ -68,10 +68,10 @@ import { generateText, streamText, generateObject } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
-  approvalMode: 'on-failure',
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
 });
 
@@ -141,8 +141,8 @@ AI SDK v7 adds a provider-agnostic, top-level `reasoning` option. This provider 
 
 ```js
 const { text } = await generateText({
-  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
-  reasoning: 'high', // 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  model: codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true }),
+  reasoning: 'high', // 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' ('max' / 'ultra' only via provider options)
   prompt: 'Prove that the square root of 2 is irrational.',
 });
 ```
@@ -184,13 +184,14 @@ const { text } = await generateText({
 
 The provider applies safe defaults for non‑interactive execution. You can override them per call via provider settings:
 
-- `fullAuto: true` → `--full-auto` (exec)
 - `dangerouslyBypassApprovalsAndSandbox: true` → `--dangerously-bypass-approvals-and-sandbox` (exec)
-- Otherwise, the exec provider writes config overrides: `-c approval_policy=...` and `-c sandbox_mode=...`; the app-server provider passes `approvalPolicy` / `sandboxPolicy` on the thread.
+- Otherwise, the exec provider writes config overrides: `-c approval_policy=...` and `-c sandbox_mode=...` (defaults `on-request` / `workspace-write`); the app-server provider passes `approvalPolicy` / `sandboxPolicy` on the thread.
+- `fullAuto: true` (exec) is deprecated: Codex CLI 0.147 removed `--full-auto`, so it now means `sandboxMode: 'workspace-write'`.
+- `'on-failure'` (exec `approvalMode` / app-server `approvalPolicy`) is deprecated: Codex CLI 0.143 retired it (the app-server rejects it), so the provider sends `'on-request'` instead and warns.
 
 Recommended defaults for CI/local automation:
 
-- `approvalMode: 'on-failure'`
+- `approvalMode: 'on-request'`
 - `sandboxMode: 'workspace-write'`
 - `skipGitRepoCheck: true` (exec)
 
@@ -215,7 +216,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer();
 const result = await streamText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'List the files here, then summarize the largest one.',
 });
 
@@ -236,7 +237,7 @@ To see the raw Codex JSON-RPC notifications as `raw` stream parts, opt in with t
 
 ```js
 const result = await streamText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Say hello.',
   include: { rawChunks: true },
 });
@@ -259,7 +260,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const provider = createCodexAppServer();
 
 const first = await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Start a migration checklist.',
   providerOptions: {
     'codex-app-server': { threadMode: 'persistent' },
@@ -269,7 +270,7 @@ const first = await generateText({
 const threadId = first.finalStep.providerMetadata?.['codex-app-server']?.threadId;
 
 const second = await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Continue from step 2.',
   providerOptions: {
     'codex-app-server': { threadId },
@@ -325,7 +326,7 @@ const customCodex = createCodexExec({
 });
 
 // Model-specific override
-const model = customCodex('gpt-5.5', {
+const model = customCodex('gpt-6-astra', {
   logger: false, // Disable logging for this model only
 });
 ```
@@ -348,7 +349,7 @@ const codex = createCodexExec({
 
 try {
   const result = await generateText({
-    model: codex('gpt-5.5'),
+    model: codex('gpt-6-astra'),
     prompt: 'Hello!',
   });
   console.log(result.text);

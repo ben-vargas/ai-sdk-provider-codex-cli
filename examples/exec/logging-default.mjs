@@ -26,10 +26,10 @@ async function main() {
   try {
     // Default logging - only warn/error messages will appear
     const result = streamText({
-      model: codexExec('gpt-5.5', {
+      model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
       }),
       prompt: 'Say hello in 5 words',

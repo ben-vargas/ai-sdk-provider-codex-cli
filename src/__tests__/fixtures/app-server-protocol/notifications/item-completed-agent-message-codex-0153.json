@@ -1,0 +1,17 @@
+{
+  "method": "item/completed",
+  "params": {
+    "item": {
+      "type": "agentMessage",
+      "id": "msg_01530000000000000000000000000000000000000000000000",
+      "text": "pong",
+      "phase": "final_answer",
+      "memoryCitation": null,
+      "delivery": null,
+      "questions": null
+    },
+    "threadId": "01990000-0000-7000-8000-000000000001",
+    "turnId": "01990000-0000-7000-8000-000000000002",
+    "completedAtMs": 1788939109874
+  }
+}

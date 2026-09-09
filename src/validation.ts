@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { CodexAppServerSettings, CodexExecSettings } from './types.js';
 import { isValidConfigOverrideKey, isValidMcpServerName } from './config-key-utils.js';
+import { isDeprecatedApprovalPolicyAlias } from './shared-utils.js';
+import { CODEX_REASONING_EFFORTS } from './types-shared.js';
 
 const loggerFunctionSchema = z.object({
   debug: z.any().refine((val) => typeof val === 'function', {
@@ -80,6 +82,13 @@ const configOverrideKeySchema = z
     message: 'configOverrides keys must match /^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$/.',
   });
 
+/**
+ * Reasoning effort levels accepted by both providers (`reasoningEffort` in
+ * exec mode, `effort` in app-server mode). Codex decides per model which
+ * levels are valid; unsupported values are rejected by the CLI/API.
+ */
+export const reasoningEffortSchema = z.enum(CODEX_REASONING_EFFORTS);
+
 const configOverridesSchema = z
   .record(
     configOverrideKeySchema,
@@ -95,7 +104,7 @@ export const sharedSettingsSchema = z
     env: z.record(z.string(), z.string()).optional(),
     verbose: z.boolean().optional(),
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningEffort: reasoningEffortSchema.optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
@@ -121,6 +130,8 @@ export const execSettingsSchema = sharedSettingsSchema
   })
   .strict();
 
+// Deprecated legacy form (Codex CLI ~0.105); translated to `granular` by the
+// app-server model with inverted flags. Kept strict so typos are still caught.
 const approvalRejectSchema = z.object({
   reject: z.object({
     sandbox_approval: z.boolean(),
@@ -128,6 +139,23 @@ const approvalRejectSchema = z.object({
     mcp_elicitations: z.boolean(),
   }),
 });
+
+// Current protocol form (`AskForApproval::Granular`, codex app-server v2).
+const approvalGranularSchema = z.object({
+  granular: z.object({
+    sandbox_approval: z.boolean(),
+    rules: z.boolean(),
+    mcp_elicitations: z.boolean(),
+    skill_approval: z.boolean().optional(),
+    request_permissions: z.boolean().optional(),
+  }),
+});
+
+const appServerApprovalPolicySchema = z.union([
+  z.enum(['untrusted', 'on-failure', 'on-request', 'never']),
+  approvalGranularSchema,
+  approvalRejectSchema,
+]);
 
 const sandboxPolicySchema = z.union([
   z.enum(['read-only', 'workspace-write', 'danger-full-access']),
@@ -201,11 +229,9 @@ export const appServerSettingsSchema = z
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
-    approvalPolicy: z
-      .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
-      .optional(),
+    approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
     baseInstructions: z.string().optional(),
     developerInstructions: z.string().optional(),
@@ -245,11 +271,9 @@ export const appServerProviderOptionsSchema = z
     includeRawChunks: z.boolean().optional(),
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
-    approvalPolicy: z
-      .union([z.enum(['untrusted', 'on-failure', 'on-request', 'never']), approvalRejectSchema])
-      .optional(),
+    approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
     baseInstructions: z.string().optional(),
     developerInstructions: z.string().optional(),
@@ -322,6 +346,20 @@ export function validateExecSettings(settings: unknown): {
       'Both fullAuto and dangerouslyBypassApprovalsAndSandbox specified; fullAuto takes precedence.',
     );
   }
+  if (s.fullAuto && s.sandboxMode !== undefined && s.sandboxMode !== 'workspace-write') {
+    warnings.push(
+      `fullAuto is deprecated (Codex CLI 0.147 removed --full-auto) and is ignored because sandboxMode '${s.sandboxMode}' is set explicitly.`,
+    );
+  } else if (s.fullAuto) {
+    warnings.push(
+      "fullAuto is deprecated (Codex CLI 0.147 removed --full-auto); it now maps to sandboxMode 'workspace-write'.",
+    );
+  }
+  if (isDeprecatedApprovalPolicyAlias(s.approvalMode)) {
+    warnings.push(
+      `approvalMode '${s.approvalMode}' is deprecated (retired by Codex CLI 0.143); it is sent as 'on-request'.`,
+    );
+  }
 
   return { valid: true, warnings, errors: [] };
 }
@@ -344,6 +382,19 @@ export function validateAppServerSettings(settings: unknown): {
   const s = parsed.data as CodexAppServerSettings;
   if (s.autoApprove && s.approvalPolicy !== undefined) {
     warnings.push('autoApprove overrides approvalPolicy for server-initiated approval requests.');
+  }
+  if (isDeprecatedApprovalPolicyAlias(s.approvalPolicy)) {
+    warnings.push(
+      `approvalPolicy '${s.approvalPolicy}' is deprecated (retired by Codex CLI 0.143 and rejected by app-server >= 0.144); it is sent as 'on-request'.`,
+    );
+  } else if (
+    typeof s.approvalPolicy === 'object' &&
+    s.approvalPolicy !== null &&
+    'reject' in s.approvalPolicy
+  ) {
+    warnings.push(
+      'approvalPolicy { reject } is deprecated (removed from the Codex app-server protocol); it is translated to the equivalent { granular } policy.',
+    );
   }
   if (s.threadMode === 'persistent' && s.resume) {
     warnings.push(

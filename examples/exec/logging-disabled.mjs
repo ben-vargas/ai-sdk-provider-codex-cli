@@ -36,10 +36,10 @@ async function main() {
   try {
     // Disable all logging
     const result = streamText({
-      model: codexExec('gpt-5.5', {
+      model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
         logger: false, // Disable all logging
       }),

@@ -105,6 +105,40 @@ describe('ExecLanguageModel', () => {
     expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
   });
 
+  it('parses the codex 0.153.4 exec JSONL stream (gpt-6-astra) with the extended usage fields', async () => {
+    // Captured from `codex exec --experimental-json -m gpt-6-astra` on 0.153.4 (thread id anonymized).
+    const lines = [
+      '{"type":"thread.started","thread_id":"01990000-0000-7000-8000-000000000010"}',
+      '{"type":"turn.started"}',
+      '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"pong"}}',
+      '{"type":"turn.completed","usage":{"input_tokens":16537,"cached_input_tokens":12288,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0}}',
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-6-astra',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const res = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'Reply with exactly the word: pong' }] as any,
+    });
+
+    expect(res.content[0]).toMatchObject({ type: 'text', text: 'pong' });
+    expect(res.providerMetadata?.['codex-cli']).toMatchObject({
+      sessionId: '01990000-0000-7000-8000-000000000010',
+    });
+    expect(res.usage).toMatchObject({
+      inputTokens: { total: 16537, noCache: 4249, cacheRead: 12288 },
+      outputTokens: { total: 5 },
+    });
+    // The raw payload keeps the 0.153 fields even though they are not mapped yet.
+    expect(res.usage.raw).toMatchObject({
+      cache_write_input_tokens: 0,
+      reasoning_output_tokens: 0,
+    });
+    expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
+  });
+
   it('doGenerate includes tool-call and tool-result parts in content', async () => {
     const lines = [
       JSON.stringify({ type: 'thread.started', thread_id: 'thread-tools-generate' }),
@@ -493,7 +527,7 @@ describe('ExecLanguageModel', () => {
       settings: {
         allowNpx: true,
         color: 'never',
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
         skipGitRepoCheck: true,
         outputLastMessageFile: join(mkdtempSync(join(tmpdir(), 'codex-test-')), 'last.txt'),
@@ -507,7 +541,7 @@ describe('ExecLanguageModel', () => {
     expect(seen.args).toContain('--experimental-json');
     expect(seen.args).not.toContain('--json');
     expect(seen.args).toContain('-c');
-    expect(seen.args).toContain('approval_policy=on-failure');
+    expect(seen.args).toContain('approval_policy=on-request');
     expect(seen.args).toContain('sandbox_mode=workspace-write');
     expect(seen.args).toContain('--skip-git-repo-check');
     expect(seen.args).toContain('--output-last-message');
@@ -682,7 +716,7 @@ describe('ExecLanguageModel', () => {
     });
   });
 
-  it('uses --full-auto when specified and omits -c flags', async () => {
+  it('maps deprecated fullAuto to -c sandbox_mode=workspace-write and never emits --full-auto', async () => {
     let lastArgs: string[] = [];
     const lines = [
       JSON.stringify({
@@ -708,9 +742,126 @@ describe('ExecLanguageModel', () => {
     });
     await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-    expect(lastArgs).toContain('--full-auto');
-    // No -c flags when fullAuto
-    expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
+    // Codex CLI 0.147 removed `codex exec --full-auto`; fullAuto is now sugar for
+    // sandboxMode: 'workspace-write' expressed through the regular -c overrides.
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
+    expect(lastArgs).toContain('approval_policy=on-request');
+  });
+
+  it('defaults to approval_policy=on-request and sandbox_mode=workspace-write', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-defaults' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).toContain('approval_policy=on-request');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
+    expect(lastArgs.join(' ')).not.toContain('approval_policy=on-failure');
+  });
+
+  it('translates the deprecated approvalMode on-failure to on-request and warns once', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-alias' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const warn = vi.fn();
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        approvalMode: 'on-failure',
+        logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
+      },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi again' }] as any });
+
+    expect(lastArgs).toContain('approval_policy=on-request');
+    expect(lastArgs).not.toContain('approval_policy=on-failure');
+    const deprecationWarnings = warn.mock.calls.filter((call) =>
+      String(call[0]).includes("approvalMode 'on-failure' is deprecated"),
+    );
+    expect(deprecationWarnings).toHaveLength(1);
+  });
+
+  it('lets an explicit sandboxMode win over the deprecated fullAuto flag', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-explicit-sandbox' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never', fullAuto: true, sandboxMode: 'read-only' },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).toContain('sandbox_mode=read-only');
+    expect(lastArgs).not.toContain('sandbox_mode=workspace-write');
+  });
+
+  it('keeps fullAuto precedence over dangerouslyBypassApprovalsAndSandbox', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-precedence' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        fullAuto: true,
+        dangerouslyBypassApprovalsAndSandbox: true,
+      },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
   });
 
   it('rejects with APICallError on non-zero exit', async () => {
@@ -1015,7 +1166,7 @@ describe('ExecLanguageModel', () => {
       ).rejects.toThrow(/Invalid MCP server name/);
     });
 
-    it('keeps reasoning flags when fullAuto is enabled (but omits approval/sandbox overrides)', async () => {
+    it('keeps reasoning flags when the deprecated fullAuto flag is enabled', async () => {
       let lastArgs: string[] = [];
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-fa' }),
@@ -1035,8 +1186,8 @@ describe('ExecLanguageModel', () => {
       });
       await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-      expect(lastArgs).toContain('--full-auto');
-      expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
+      expect(lastArgs).not.toContain('--full-auto');
+      expect(lastArgs).toContain('sandbox_mode=workspace-write');
       expect(lastArgs).toContain('model_reasoning_effort=medium');
     });
   });
@@ -1120,7 +1271,7 @@ describe('ExecLanguageModel', () => {
         settings: { allowNpx: true, color: 'never' },
       });
       // Runtime forward-compat: a future reasoning level outside the v4 union.
-      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const unmappableReasoning = 'extreme' as unknown as LanguageModelV4CallOptions['reasoning'];
       const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
 
       expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
@@ -1129,7 +1280,7 @@ describe('ExecLanguageModel', () => {
           w.type === 'unsupported' && w.feature === 'reasoning',
       );
       expect(warning).toBeDefined();
-      expect(warning?.details).toContain("'ultra'");
+      expect(warning?.details).toContain("'extreme'");
     });
 
     it('warns and keeps configured effort for unmappable top-level reasoning', async () => {
@@ -1143,7 +1294,7 @@ describe('ExecLanguageModel', () => {
         id: 'gpt-5',
         settings: { allowNpx: true, color: 'never', reasoningEffort: 'medium' },
       });
-      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const unmappableReasoning = 'extreme' as unknown as LanguageModelV4CallOptions['reasoning'];
       const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
 
       expect(argsCaptured).toContain('model_reasoning_effort=medium');
@@ -1151,7 +1302,51 @@ describe('ExecLanguageModel', () => {
         (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
           w.type === 'unsupported' && w.feature === 'reasoning',
       );
-      expect(warning?.details).toContain("'ultra'; it will be ignored");
+      expect(warning?.details).toContain("'extreme'; it will be ignored");
+    });
+
+    it('maps the max and ultra efforts (Codex >= 0.149) from settings and providerOptions', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-6-astra',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'max' },
+      });
+
+      const first = await model.doGenerate({ prompt });
+      expect(argsCaptured).toContain('model_reasoning_effort=max');
+      expect(first.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+      const second = await model.doGenerate({
+        prompt,
+        providerOptions: { 'codex-cli': { reasoningEffort: 'ultra' } },
+      });
+      expect(argsCaptured).toContain('model_reasoning_effort=ultra');
+      expect(second.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+    });
+
+    it('accepts ultra through the top-level reasoning option now that Codex supports it', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-6-astra',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      // The AI SDK v7 union stops at 'xhigh'; a caller may still pass the newer
+      // Codex levels at runtime and the provider forwards them unchanged.
+      const ultra = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: ultra });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=ultra');
+      expect(res.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
     });
   });
 

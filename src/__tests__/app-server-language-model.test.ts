@@ -246,7 +246,7 @@ describe('AppServerLanguageModel', () => {
 
     const result = await model.doGenerate({
       prompt: [{ role: 'user', content: 'Say hello' }] as never,
-      reasoning: 'ultra' as never,
+      reasoning: 'extreme' as never,
     });
 
     expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
@@ -254,9 +254,39 @@ describe('AppServerLanguageModel', () => {
       expect.objectContaining({
         type: 'unsupported',
         feature: 'reasoning',
-        details: expect.stringContaining("'ultra'; it will be ignored"),
+        details: expect.stringContaining("'extreme'; it will be ignored"),
       }),
     );
+  });
+
+  it('sends the max and ultra efforts (Codex >= 0.149) to turn/start', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-6-astra',
+      client: client as never,
+      settings: { effort: 'max' },
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'max effort' }] as never,
+    });
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('max');
+    expect(first.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+    const second = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'ultra effort' }] as never,
+      providerOptions: { 'codex-app-server': { effort: 'ultra' } },
+    });
+    expect((client.turnStartCalls[1] as TurnStartParams).effort).toBe('ultra');
+    expect(second.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+    const third = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'ultra via top-level reasoning' }] as never,
+      providerOptions: { 'codex-app-server': {} },
+      reasoning: 'ultra' as never,
+    });
+    expect((client.turnStartCalls[2] as TurnStartParams).effort).toBe('ultra');
+    expect(third.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
   });
 
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {
@@ -565,6 +595,149 @@ describe('AppServerLanguageModel', () => {
     };
     expect(threadStart.sandbox).toBe('danger-full-access');
     expect(turnStart.sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+  });
+
+  describe('approval policy mapping (codex >= 0.144 wire format)', () => {
+    function createLogger() {
+      return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    }
+
+    it('translates deprecated on-failure to on-request on thread/start and turn/start and warns once per instance', async () => {
+      const client = new FakeClient();
+      const logger = createLogger();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-astra',
+        client: client as never,
+        settings: { approvalPolicy: 'on-failure', logger },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'one' }] as never });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'two' }] as never });
+
+      for (const call of client.threadStartCalls) {
+        expect((call as { approvalPolicy?: unknown }).approvalPolicy).toBe('on-request');
+      }
+      for (const call of client.turnStartCalls) {
+        expect((call as TurnStartParams).approvalPolicy).toBe('on-request');
+      }
+      const deprecationWarnings = logger.warn.mock.calls.filter((call) =>
+        String(call[0]).includes("approvalPolicy 'on-failure' is deprecated"),
+      );
+      expect(deprecationWarnings).toHaveLength(1);
+    });
+
+    it('translates the legacy reject policy to an inverted granular policy', async () => {
+      const client = new FakeClient();
+      const logger = createLogger();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-astra',
+        client: client as never,
+        settings: {
+          approvalPolicy: {
+            reject: { sandbox_approval: true, rules: false, mcp_elicitations: true },
+          },
+          logger,
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'reject' }] as never });
+
+      const expected = {
+        granular: {
+          sandbox_approval: false,
+          rules: true,
+          mcp_elicitations: false,
+          skill_approval: true,
+          request_permissions: true,
+        },
+      };
+      expect((client.threadStartCalls[0] as { approvalPolicy?: unknown }).approvalPolicy).toEqual(
+        expected,
+      );
+      expect((client.turnStartCalls[0] as TurnStartParams).approvalPolicy).toEqual(expected);
+      expect(
+        logger.warn.mock.calls.some((call) =>
+          String(call[0]).includes('approvalPolicy { reject } is deprecated'),
+        ),
+      ).toBe(true);
+    });
+
+    it('passes current policies (granular object and plain strings) through unchanged', async () => {
+      const client = new FakeClient();
+      const logger = createLogger();
+      const granular = {
+        granular: {
+          sandbox_approval: true,
+          rules: false,
+          mcp_elicitations: true,
+          skill_approval: false,
+          request_permissions: true,
+        },
+      };
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-astra',
+        client: client as never,
+        settings: { approvalPolicy: granular, logger },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'granular' }] as never });
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'never' }] as never,
+        providerOptions: { 'codex-app-server': { approvalPolicy: 'never' } },
+      });
+
+      expect((client.threadStartCalls[0] as { approvalPolicy?: unknown }).approvalPolicy).toEqual(
+        granular,
+      );
+      expect((client.turnStartCalls[0] as TurnStartParams).approvalPolicy).toEqual(granular);
+      expect((client.turnStartCalls[1] as TurnStartParams).approvalPolicy).toBe('never');
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('translates on-failure supplied through providerOptions and on thread/resume', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-astra',
+        client: client as never,
+        settings: { logger: false },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'resume' }] as never,
+        providerOptions: {
+          'codex-app-server': { threadId: 'thr_existing', approvalPolicy: 'on-failure' },
+        },
+      });
+
+      expect((client.threadResumeCalls[0] as { approvalPolicy?: unknown }).approvalPolicy).toBe(
+        'on-request',
+      );
+      expect((client.turnStartCalls[0] as TurnStartParams).approvalPolicy).toBe('on-request');
+    });
+
+    it('applies the translated policy to session default turn params (injectMessage)', async () => {
+      const client = new FakeClient();
+      let session: { injectMessage: (content: string) => Promise<void> } | undefined;
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-astra',
+        client: client as never,
+        settings: {
+          approvalPolicy: 'on-failure',
+          logger: false,
+          onSessionCreated: (created) => {
+            session = created as typeof session;
+          },
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'start' }] as never });
+      await session?.injectMessage('follow-up');
+
+      expect(client.turnStartCalls).toHaveLength(2);
+      for (const call of client.turnStartCalls) {
+        expect((call as TurnStartParams).approvalPolicy).toBe('on-request');
+      }
+    });
   });
 
   it('uses thread resume when threadId is provided and only sends last user message', async () => {

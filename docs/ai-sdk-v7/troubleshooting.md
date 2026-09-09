@@ -51,10 +51,10 @@ Also check `codex --version`; upgrading the CLI (`npm i -g @openai/codex@latest`
 ## Sandbox / approval errors
 
 - Use safer defaults for non‑interactive runs:
-  - `approvalMode: 'on-failure'`
+  - `approvalMode: 'on-request'`
   - `sandboxMode: 'workspace-write'`
   - `skipGitRepoCheck: true` (exec)
-- For fully autonomous flows: `fullAuto: true` (be cautious). Avoid `dangerouslyBypassApprovalsAndSandbox` unless the environment is already sandboxed.
+- For fully autonomous flows: `sandboxMode: 'workspace-write'` (the deprecated `fullAuto: true` maps to the same thing since Codex CLI 0.147 removed `--full-auto`). Avoid `dangerouslyBypassApprovalsAndSandbox` unless the environment is already sandboxed.
 - App-server: Codex-native approval requests (commands, file changes, skills, MCP elicitations) need a `serverRequests` handler or `autoApprove: true`; otherwise the provider answers with its default policy and your turn may be blocked from doing what you expected.
 
 ## Streaming emits only a final chunk

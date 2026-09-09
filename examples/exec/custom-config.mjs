@@ -3,13 +3,13 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Demonstrates custom CWD and sandbox/approval options
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   cwd: process.cwd(),
   skipGitRepoCheck: true,
   // try fully autonomous mode (be careful):
-  // fullAuto: true,
-  approvalMode: 'on-failure',
+  // fullAuto: true, // deprecated since Codex CLI 0.147: same as sandboxMode: 'workspace-write'
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
   color: 'never',
 });

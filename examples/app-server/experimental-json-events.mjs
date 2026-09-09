@@ -15,7 +15,7 @@ import { generateText, streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
 });
 
 function getUsageTotals(usage) {
@@ -32,7 +32,7 @@ try {
   console.log('This example demonstrates the codex app-server JSON-RPC event stream.');
   console.log('Events are parsed from app-server notifications.\n');
 
-  const model = appServer('gpt-5.5', {});
+  const model = appServer('gpt-6-astra', {});
 
   // Example 1: Basic text generation with usage tracking
   async function example1_basicWithUsage() {

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-09
+
+### Changed
+
+- Update the optional `@openai/codex` dependency from `^0.144.0` to `^0.153.4`, making Codex CLI 0.153.x (the line that introduced `gpt-6-astra`) the validated support baseline for both `codexExec` and `codexAppServer` (same drift class as #36/#38: a caret on a 0.x version only allows patch-level updates, so the bundled CLI could silently shadow a newer global install via `node_modules/.bin`).
+- Raise the app-server default `minCodexVersion` from `0.144.0` to `0.153.0` to match the new baseline (set `minCodexVersion` explicitly to accept older CLIs). The default now lives in a single exported constant, `DEFAULT_MIN_CODEX_VERSION`.
+- The exec provider's default `approvalMode` is now `'on-request'` (previously the retired `'on-failure'`), sent as `-c approval_policy=on-request`.
+- Refresh example and docs baseline references (`gpt-6-astra` as the example model, `approvalPolicy: 'on-request'`, `minCodexVersion: '0.153.0'`), the integration smoke-test default model, and the lockfile for the new Codex baseline. `CodexModelId` gains the current catalog slugs (`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.3-codex-spark`).
+
+### Added
+
+- Reasoning efforts `'max'` and `'ultra'` (Codex CLI >= 0.149; exposed by the `gpt-6-astra` / `gpt-5.6` families) are accepted by `reasoningEffort` (exec), `effort` (app-server) and the runtime top-level `reasoning` mapping; the full list is exported as `CODEX_REASONING_EFFORTS` and shared by every zod schema (`reasoningEffortSchema`).
+- App-server `approvalPolicy` accepts the current protocol-shaped `{ granular: { sandbox_approval, rules, mcp_elicitations, skill_approval?, request_permissions? } }` object.
+- Protocol compatibility fixtures captured from a real Codex 0.153.4 app-server turn on `gpt-6-astra` (thread/turn metadata, `agentMessage` items with `delivery`/`questions`, token usage with `cacheWriteInputTokens`, new `codexErrorInfo` codes) and the 0.153.4 `codex exec --json` stream.
+
+### Fixed
+
+- `fullAuto: true` no longer crashes on Codex CLI >= 0.147, which removed `codex exec --full-auto` (`error: unexpected argument '--full-auto'`). The flag is now sugar for `sandboxMode: 'workspace-write'` (emitted as `-c sandbox_mode=workspace-write`, an explicit `sandboxMode` wins) and keeps its precedence over `dangerouslyBypassApprovalsAndSandbox`.
+- `approvalPolicy: 'on-failure'` no longer fails every app-server call on Codex >= 0.144 (`-32600 Invalid request: unknown variant 'on-failure'`); it is translated to `'on-request'` on `thread/start`, `thread/resume` and `turn/start` with a one-time warning. The exec provider applies the same translation instead of relying on the CLI's serde alias.
+- The legacy `approvalPolicy: { reject: … }` object (never valid on the Codex versions this package supports) is translated to the equivalent `{ granular: … }` policy with inverted flags.
+- The exec provider now recognizes the `agent_message` item type actually emitted by `codex exec --json` (previously only the legacy `assistant_message` spelling was matched, so final text was always recovered from the `--output-last-message` file).
+
+### Deprecated
+
+- `fullAuto` (exec), `'on-failure'` (exec `approvalMode` and app-server `approvalPolicy`) and the app-server `{ reject: … }` approval object. They keep working through the translations above and emit warnings from `validateExecSettings` / `validateAppServerSettings` and at call time.
+
 ## [2.1.2] - 2026-07-22
 
 ### Security

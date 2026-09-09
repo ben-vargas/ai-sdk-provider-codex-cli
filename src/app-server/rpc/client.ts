@@ -54,6 +54,12 @@ type ClientState = 'idle' | 'starting' | 'ready' | 'error' | 'closed';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_COMPLETED_TURN_IDS = 1_024;
+/**
+ * Default minimum Codex CLI version accepted by the app-server client.
+ * Tracks the validated support baseline (Codex CLI 0.153.x); override with
+ * `minCodexVersion` to accept older CLIs.
+ */
+export const DEFAULT_MIN_CODEX_VERSION = '0.153.0';
 
 export function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
   if (explicitPath) {
@@ -308,7 +314,7 @@ export class AppServerRpcClient extends EventEmitter {
     if (this.serverCapabilities?.modelList === false) {
       throw new UnsupportedFeatureError({
         feature: 'model/list',
-        minCodexVersion: this.settings.minCodexVersion ?? '0.144.0',
+        minCodexVersion: this.settings.minCodexVersion ?? DEFAULT_MIN_CODEX_VERSION,
         serverVersion: this.serverVersion,
       });
     }
@@ -322,7 +328,7 @@ export class AppServerRpcClient extends EventEmitter {
       if (error instanceof JsonRpcRequestError && error.code === -32601) {
         throw new UnsupportedFeatureError({
           feature: 'model/list',
-          minCodexVersion: this.settings.minCodexVersion ?? '0.144.0',
+          minCodexVersion: this.settings.minCodexVersion ?? DEFAULT_MIN_CODEX_VERSION,
           serverVersion: this.serverVersion,
         });
       }
@@ -546,7 +552,7 @@ export class AppServerRpcClient extends EventEmitter {
       if (raw.includes('unknown subcommand') || this.lastStderr.includes('unknown subcommand')) {
         throw new Error(
           this.withStderrTail(
-            "codex app-server requires codex CLI >= 0.144.0. Run 'codex --version' to check.",
+            `codex app-server requires codex CLI >= ${DEFAULT_MIN_CODEX_VERSION}. Run 'codex --version' to check.`,
           ),
         );
       }
@@ -581,7 +587,7 @@ export class AppServerRpcClient extends EventEmitter {
     }
 
     this.serverVersion = detected;
-    const minVersion = this.settings.minCodexVersion ?? '0.144.0';
+    const minVersion = this.settings.minCodexVersion ?? DEFAULT_MIN_CODEX_VERSION;
     const compared = compareSemver(detected, minVersion);
     if (compared === undefined) {
       this.logger.warn(

@@ -12,7 +12,12 @@ export interface Logger {
  * Known Codex-capable model IDs with string fallback for forward compatibility.
  */
 export type CodexModelId =
+  | 'gpt-6-astra'
+  | 'gpt-5.6-sol'
+  | 'gpt-5.6-terra'
+  | 'gpt-5.6-luna'
   | 'gpt-5.5'
+  | 'gpt-5.3-codex-spark'
   | 'gpt-5.3-codex'
   | 'gpt-5.2-codex'
   | 'gpt-5.2-codex-max'
@@ -21,13 +26,47 @@ export type CodexModelId =
   | 'gpt-5.2'
   | (string & {});
 
+/**
+ * Approval policy for exec mode (`-c approval_policy=...`).
+ *
+ * `'on-failure'` is deprecated: Codex CLI 0.143 retired it (the core config
+ * keeps it only as an alias of `'on-request'`), so the provider translates it
+ * to `'on-request'` and warns. Note that headless `codex exec` runs force
+ * `never` internally unless an automatic approvals reviewer is configured.
+ */
 export type ApprovalMode = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
 // 'none' is the newer "no extra reasoning" level for GPT-5.1+.
 // 'minimal' is retained as a backwards-compatible alias for older GPT-5 slugs.
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+// 'max' and 'ultra' were added by Codex CLI 0.149 (gpt-6-astra / gpt-5.6 families).
+// Which levels a model accepts is owned by Codex: inspect
+// `supportedReasoningEfforts` from `listModels()` / `provider.listModels()`.
+export type ReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultra';
+
+/**
+ * Every reasoning effort level known to this provider, in ascending order.
+ * Kept in compile-time sync with `ReasoningEffort`.
+ */
+export const CODEX_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+] as const satisfies readonly ReasoningEffort[];
 
 /**
  * Reasoning summary detail level for exec mode.

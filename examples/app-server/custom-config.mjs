@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const defaultSettings = {
-  minCodexVersion: '0.144.0',
+  minCodexVersion: '0.153.0',
   idleTimeoutMs: 30000,
 };
 
@@ -15,14 +15,14 @@ try {
     // Optional app-server style policy overrides:
     // approvalPolicy: 'on-request',
     // personality: 'pragmatic',
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   };
 
   console.log('Default app-server settings:', JSON.stringify(defaultSettings));
   console.log('Per-model settings:', JSON.stringify(modelSettings));
 
-  const model = appServer('gpt-5.5', modelSettings);
+  const model = appServer('gpt-6-astra', modelSettings);
 
   const { text } = await generateText({
     model,

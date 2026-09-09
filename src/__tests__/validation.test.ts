@@ -14,6 +14,34 @@ describe('validateSettings', () => {
     expect(res.warnings.length).toBeGreaterThan(0);
   });
 
+  it('warns that fullAuto is deprecated and maps to workspace-write', () => {
+    const res = validateSettings({ fullAuto: true });
+    expect(res.valid).toBe(true);
+    expect(res.warnings.some((w) => /fullAuto is deprecated/.test(w))).toBe(true);
+    expect(res.warnings.some((w) => /workspace-write/.test(w))).toBe(true);
+  });
+
+  it('warns when fullAuto conflicts with an explicit sandboxMode', () => {
+    const res = validateSettings({ fullAuto: true, sandboxMode: 'read-only' });
+    expect(res.valid).toBe(true);
+    expect(res.warnings.some((w) => /ignored because sandboxMode 'read-only'/.test(w))).toBe(true);
+  });
+
+  it('accepts the deprecated approvalMode on-failure with a warning', () => {
+    const res = validateSettings({ approvalMode: 'on-failure' });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+    expect(res.warnings.some((w) => /approvalMode 'on-failure' is deprecated/.test(w))).toBe(true);
+  });
+
+  it('does not warn for the current approvalMode values', () => {
+    for (const approvalMode of ['untrusted', 'on-request', 'never'] as const) {
+      const res = validateSettings({ approvalMode });
+      expect(res.valid).toBe(true);
+      expect(res.warnings.some((w) => /approvalMode/.test(w))).toBe(false);
+    }
+  });
+
   it('rejects invalid reasoningSummary value "none"', () => {
     const res = validateSettings({ reasoningEffort: 'high', reasoningSummary: 'none' });
     expect(res.valid).toBe(false);
@@ -36,6 +64,30 @@ describe('validateSettings', () => {
     const res = validateSettings({ reasoningEffort: 'none' });
     expect(res.valid).toBe(true);
     expect(res.errors).toHaveLength(0);
+  });
+
+  it('accepts max and ultra reasoningEffort (Codex >= 0.149)', () => {
+    for (const reasoningEffort of ['max', 'ultra'] as const) {
+      const res = validateSettings({ reasoningEffort });
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    }
+  });
+
+  it('rejects unknown reasoningEffort values', () => {
+    const res = validateSettings({ reasoningEffort: 'extreme' });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /reasoningEffort/i.test(e))).toBe(true);
+  });
+
+  it('accepts max and ultra effort for app-server settings', () => {
+    for (const effort of ['max', 'ultra'] as const) {
+      const res = validateAppServerSettings({ effort });
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    }
+    const invalid = validateAppServerSettings({ effort: 'extreme' });
+    expect(invalid.valid).toBe(false);
   });
 
   it('accepts addDirs with valid paths', () => {
@@ -65,6 +117,43 @@ describe('validateSettings', () => {
     });
     expect(res.valid).toBe(true);
     expect(res.errors).toHaveLength(0);
+  });
+
+  it('accepts the granular app-server approvalPolicy object', () => {
+    const res = validateAppServerSettings({
+      approvalPolicy: {
+        granular: { sandbox_approval: true, rules: false, mcp_elicitations: true },
+      },
+    });
+    expect(res.valid).toBe(true);
+    expect(res.errors).toHaveLength(0);
+    expect(res.warnings).toHaveLength(0);
+  });
+
+  it('rejects a granular approvalPolicy missing required flags', () => {
+    const res = validateAppServerSettings({
+      approvalPolicy: { granular: { sandbox_approval: true } },
+    });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /approvalPolicy/i.test(e))).toBe(true);
+  });
+
+  it('warns for the deprecated on-failure app-server approvalPolicy', () => {
+    const res = validateAppServerSettings({ approvalPolicy: 'on-failure' });
+    expect(res.valid).toBe(true);
+    expect(res.warnings.some((w) => /approvalPolicy 'on-failure' is deprecated/.test(w))).toBe(
+      true,
+    );
+  });
+
+  it('warns for the deprecated reject app-server approvalPolicy', () => {
+    const res = validateAppServerSettings({
+      approvalPolicy: { reject: { sandbox_approval: true, rules: true, mcp_elicitations: false } },
+    });
+    expect(res.valid).toBe(true);
+    expect(res.warnings.some((w) => /approvalPolicy \{ reject \} is deprecated/.test(w))).toBe(
+      true,
+    );
   });
 
   it('rejects invalid app-server minCodexVersion', () => {

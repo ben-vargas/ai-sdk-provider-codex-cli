@@ -84,7 +84,7 @@ async function main() {
   const codex = createCodexExec({
     defaultSettings: {
       cwd: process.cwd(),
-      approvalMode: 'on-failure',
+      approvalMode: 'on-request',
       sandboxMode: 'read-only',
       verbose: true,
     },
@@ -94,7 +94,7 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('gpt-5.5'),
+      model: codex('gpt-6-astra'),
       instructions: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });
