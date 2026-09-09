@@ -241,6 +241,9 @@ const codexErrorInfoSchema = z.union([
   z.enum([
     'contextWindowExceeded',
     'usageLimitExceeded',
+    'rateLimitExceeded',
+    'sessionBudgetExceeded',
+    'misalignmentPolicyViolation',
     'serverOverloaded',
     'cyberPolicy',
     'internalServerError',
