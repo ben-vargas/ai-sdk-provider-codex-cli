@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The exported `CodexErrorInfo` type no longer carries an open `Record<string, unknown>` member (introduced in 1.4.0): it made `'httpConnectionFailed' in info` narrowing resolve the payload to `unknown`, breaking `info.httpConnectionFailed.httpStatusCode` for consumers. Object variants are now enumerated explicitly while the forward-compat `(string & {})` member is kept for newer string codes, matching 2.2.1 on the AI SDK v7 line (#46). The validator's enum lists the three 0.153 codes explicitly (already accepted through the catch-all).
+- The exported `CodexErrorInfo` type no longer carries an open `Record<string, unknown>` member (introduced in 1.4.0): it made `'httpConnectionFailed' in info` narrowing resolve the payload to `unknown`, breaking `info.httpConnectionFailed.httpStatusCode` for consumers. Object variants are now enumerated explicitly while the forward-compat `(string & {})` member is kept for newer string codes, matching 2.2.1 on the AI SDK v7 line (#46). The validator's enum lists the three 0.153 codes explicitly (already accepted through the catch-all). `CodexErrorInfo` and `TurnError` are now exported by name from the package entry point (previously only reachable structurally through the exported `Turn` / `ErrorNotification` types).
 
 ## [1.4.0] - 2026-09-09
 
