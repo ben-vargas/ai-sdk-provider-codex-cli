@@ -94,7 +94,7 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('gpt-5.5'),
+      model: codex('gpt-6-astra'),
       instructions: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });

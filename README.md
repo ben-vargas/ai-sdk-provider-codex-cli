@@ -10,7 +10,7 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues)
 [![Latest Release](https://img.shields.io/github/v/release/ben-vargas/ai-sdk-provider-codex-cli?display_name=tag)](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/releases/latest)
 
-A community provider for Vercel AI SDK v7 that integrates OpenAI's Codex CLI (for example `gpt-5.5`) using your ChatGPT Plus/Pro subscription. Available model slugs follow whatever your installed Codex CLI exposes — use `listModels()` / `provider.listModels()` to discover them.
+A community provider for Vercel AI SDK v7 that integrates OpenAI's Codex CLI (for example `gpt-6-astra`) using your ChatGPT Plus/Pro subscription. Available model slugs follow whatever your installed Codex CLI exposes — use `listModels()` / `provider.listModels()` to discover them.
 
 This package ships two provider modes:
 
@@ -64,7 +64,7 @@ npm i ai@^6 ai-sdk-provider-codex-cli@ai-sdk-v6
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.144.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.144.0`, the latest non-alpha release line validated for this release line. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
+> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.153.x** (the line that introduced `gpt-6-astra`) for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.153.4`, the latest non-alpha release line validated for this release line. If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -78,7 +78,7 @@ npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-failure',
@@ -100,14 +100,14 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.144.0',
+    minCodexVersion: '0.153.0',
     autoApprove: false,
     personality: 'pragmatic',
   },
 });
 
 const { textStream } = await streamText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Write two short lines of encouragement.',
 });
 for await (const chunk of textStream) process.stdout.write(chunk);
@@ -126,7 +126,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const provider = createCodexAppServer();
 
 const first = await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Start a migration checklist.',
   providerOptions: {
     'codex-app-server': { threadMode: 'persistent' },
@@ -136,7 +136,7 @@ const first = await generateText({
 const threadId = first.finalStep.providerMetadata?.['codex-app-server']?.threadId;
 
 const second = await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Continue from step 2.',
   providerOptions: {
     'codex-app-server': { threadId },
@@ -155,7 +155,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const schema = z.object({ name: z.string(), age: z.number().int() });
 const { object } = await generateObject({
-  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true }),
   schema,
   prompt: 'Generate a small user profile.',
 });
@@ -189,7 +189,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 import { readFileSync } from 'fs';
 
-const model = codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true });
+const model = codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true });
 const imageBuffer = readFileSync('./screenshot.png');
 
 const { text } = await generateText({
@@ -232,7 +232,7 @@ import { streamText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const result = await streamText({
-  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true }),
   prompt: 'List files and count lines in the largest one',
 });
 
@@ -268,20 +268,20 @@ Control logging verbosity and integrate with your observability stack:
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 // Default: warn/error only (clean production output)
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
 });
 
 // Verbose mode: enable debug/info logs for troubleshooting
-const verboseModel = codexExec('gpt-5.5', {
+const verboseModel = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true, // Shows all log levels
 });
 
 // Custom logger: integrate with Winston, Pino, Datadog, etc.
-const customModel = codexExec('gpt-5.5', {
+const customModel = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   verbose: true,
@@ -294,7 +294,7 @@ const customModel = codexExec('gpt-5.5', {
 });
 
 // Silent: disable all logging
-const silentModel = codexExec('gpt-5.5', {
+const silentModel = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   logger: false, // No logs at all
@@ -403,7 +403,7 @@ Control reasoning effort, verbosity, and advanced Codex features at model creati
 ```ts
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   addDirs: ['../shared'],
@@ -457,7 +457,7 @@ values take precedence over constructor defaults while leaving other settings in
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   reasoningEffort: 'medium',
   modelVerbosity: 'medium',
@@ -499,7 +499,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const appServerProvider = createCodexAppServer();
 
 const response = await generateText({
-  model: appServerProvider('gpt-5.5'),
+  model: appServerProvider('gpt-6-astra'),
   prompt: 'Continue this task.',
   providerOptions: {
     'codex-app-server': {

@@ -4,7 +4,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 async function main() {
   // Example 1: High reasoning effort
   console.log('=== Example 1: Deep Reasoning ===');
-  const deepThinking = codexExec('gpt-5.5', {
+  const deepThinking = codexExec('gpt-6-astra', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'high',
@@ -20,7 +20,7 @@ async function main() {
 
   // Example 2: Web search enabled
   console.log('\n=== Example 2: Web Search ===');
-  const withWebSearch = codexExec('gpt-5.5', {
+  const withWebSearch = codexExec('gpt-6-astra', {
     allowNpx: true,
     skipGitRepoCheck: true,
     webSearch: true,
@@ -34,7 +34,7 @@ async function main() {
 
   // Example 3: Generic config overrides
   console.log('\n=== Example 3: Advanced Config ===');
-  const advanced = codexExec('gpt-5.5', {
+  const advanced = codexExec('gpt-6-astra', {
     allowNpx: true,
     configOverrides: {
       model_context_window: 200000,
@@ -51,7 +51,7 @@ async function main() {
 
   // Example 4: Combined settings
   console.log('\n=== Example 4: All Features ===');
-  const fullFeatured = codexExec('gpt-5.5', {
+  const fullFeatured = codexExec('gpt-6-astra', {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'medium',

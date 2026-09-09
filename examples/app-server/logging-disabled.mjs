@@ -27,7 +27,7 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -41,7 +41,7 @@ try {
     try {
       // Disable all logging
       const result = streamText({
-        model: appServer('gpt-5.5', {
+        model: appServer('gpt-6-astra', {
           approvalPolicy: 'on-failure',
           sandboxPolicy: { type: 'workspaceWrite' },
           logger: false, // Disable all logging

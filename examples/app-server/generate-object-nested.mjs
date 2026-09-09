@@ -12,13 +12,13 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
 });
 
 try {
   console.log('  Codex CLI - Nested Object Generation\n');
 
-  const model = appServer('gpt-5.5', {
+  const model = appServer('gpt-6-astra', {
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
     effort: 'low',

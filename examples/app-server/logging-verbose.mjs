@@ -24,7 +24,7 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
 });
 
 try {
@@ -38,7 +38,7 @@ try {
     try {
       // Enable verbose logging to surface provider diagnostics when available.
       const result = streamText({
-        model: appServer('gpt-5.5', {
+        model: appServer('gpt-6-astra', {
           approvalPolicy: 'on-failure',
           sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging

@@ -41,7 +41,7 @@ console.log('  app-server command available');
 console.log('\n Running minimal app-server generation...');
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.144.0',
+    minCodexVersion: '0.153.0',
     idleTimeoutMs: 30000,
     approvalPolicy: 'on-failure',
     sandboxPolicy: { type: 'workspaceWrite' },
@@ -50,7 +50,7 @@ const provider = createCodexAppServer({
 
 try {
   const { text } = await generateText({
-    model: provider('gpt-5.5'),
+    model: provider('gpt-6-astra'),
     prompt: 'Reply with exactly OK.',
   });
   console.log('  App-server generation OK');

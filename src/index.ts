@@ -58,6 +58,7 @@ export type {
   ReasoningSummaryFormat,
   ModelVerbosity,
 } from './types.js';
+export { DEFAULT_MIN_CODEX_VERSION } from './app-server/rpc/client.js';
 
 // Backward-compat type exports
 export type {

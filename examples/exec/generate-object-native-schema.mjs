@@ -23,7 +23,7 @@ console.log('   100-200 fewer tokens per request');
 console.log('   API-level enforcement (more reliable)');
 console.log('   Guaranteed valid JSON output\n');
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

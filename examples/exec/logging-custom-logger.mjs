@@ -47,7 +47,7 @@ async function main() {
   try {
     // Use custom logger with verbose mode enabled
     const result = streamText({
-      model: codexExec('gpt-5.5', {
+      model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-failure',

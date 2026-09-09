@@ -5,7 +5,7 @@ This package ships two provider modes:
 - **`codexExec`** wraps the `codex exec` CLI in non‑interactive mode and maps settings to CLI flags/config overrides. Per-call overrides use `providerOptions['codex-cli']`.
 - **`codexAppServer`** speaks JSON-RPC to a persistent `codex app-server` process. Per-call overrides use `providerOptions['codex-app-server']`.
 
-Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listModels()` (see [guide.md](./guide.md#discovering-models)). Examples below use `gpt-5.5` as a placeholder.
+Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listModels()` (see [guide.md](./guide.md#discovering-models)). Examples below use `gpt-6-astra` as a placeholder.
 
 ## Exec Provider Settings (`codexExec`)
 
@@ -61,7 +61,7 @@ Auth notes for HTTP servers:
 Example:
 
 ```ts
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   rmcpClient: true,
   mcpServers: {
     // Stdio MCP
@@ -126,7 +126,7 @@ Use AI SDK `providerOptions` to override Codex parameters for a single request w
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
-const model = codexExec('gpt-5.5', {
+const model = codexExec('gpt-6-astra', {
   reasoningEffort: 'medium',
   modelVerbosity: 'medium',
 });
@@ -232,7 +232,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 const provider = createCodexAppServer();
 
 const response = await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   prompt: 'Continue this task.',
   providerOptions: {
     'codex-app-server': {
@@ -288,7 +288,7 @@ Notes:
 
 ```ts
 await generateText({
-  model: provider('gpt-5.5'),
+  model: provider('gpt-6-astra'),
   reasoning: 'low', // ignored in favor of providerOptions below
   prompt: 'Quick sanity check.',
   providerOptions: {

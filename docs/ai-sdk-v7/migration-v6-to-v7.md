@@ -130,7 +130,7 @@ AI SDK 7 adds a top-level, provider-agnostic `reasoning` option. Provider 2.x ma
 
 ```js
 await generateText({
-  model: codexExec('gpt-5.5', { allowNpx: true, skipGitRepoCheck: true }),
+  model: codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true }),
   reasoning: 'high',
   prompt: 'Think hard about this.',
 });

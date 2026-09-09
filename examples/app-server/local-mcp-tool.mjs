@@ -18,7 +18,7 @@ const mathServer = createSdkMcpServer({
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.144.0',
+    minCodexVersion: '0.153.0',
     idleTimeoutMs: 30000,
     mcpServers: {
       math: mathServer,
@@ -30,7 +30,7 @@ const provider = createCodexAppServer({
 
 try {
   const result = await generateText({
-    model: provider('gpt-5.5'),
+    model: provider('gpt-6-astra'),
     prompt:
       'Use the math MCP tool to compute 41 + 1 and answer with the numeric result and one sentence.',
   });
