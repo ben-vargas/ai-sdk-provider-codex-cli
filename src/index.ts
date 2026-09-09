@@ -49,8 +49,14 @@ export type {
   CodexAppServerProviderOptions,
   CodexAppServerRequestHandlers,
   CodexAppServerSession,
+  AppServerApprovalPolicy,
+  AppServerApprovalGranular,
+  AppServerApprovalReject,
+  AppServerSandboxPolicy,
   AppServerUserInput,
   AppServerThreadMode,
+  ApprovalMode,
+  SandboxMode,
   CodexModelId,
   Logger,
   ReasoningEffort,
@@ -58,6 +64,8 @@ export type {
   ReasoningSummaryFormat,
   ModelVerbosity,
 } from './types.js';
+export { CODEX_REASONING_EFFORTS } from './types-shared.js';
+export { DEFAULT_MIN_CODEX_VERSION } from './app-server/rpc/client.js';
 
 // Backward-compat type exports
 export type {

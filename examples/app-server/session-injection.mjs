@@ -5,7 +5,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.130.0',
+    minCodexVersion: '0.153.0',
     idleTimeoutMs: 30000,
     threadMode: 'persistent',
     effort: 'medium',
@@ -15,7 +15,7 @@ const provider = createCodexAppServer({
 
 try {
   const result = streamText({
-    model: provider('gpt-5.5'),
+    model: provider('gpt-6-astra'),
     prompt:
       'Write a tiny Node.js function named parseCsvLine that parses one CSV line with no dependencies. Return one markdown code block only. Do not include explanations, usage examples, commands, or file writes.',
     providerOptions: {

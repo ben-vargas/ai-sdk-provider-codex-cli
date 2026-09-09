@@ -1,0 +1,20 @@
+{
+  "method": "item/started",
+  "params": {
+    "item": {
+      "type": "userMessage",
+      "id": "01990000-0000-7000-8000-000000000003",
+      "clientId": null,
+      "content": [
+        {
+          "type": "text",
+          "text": "Reply with exactly the word: pong",
+          "text_elements": []
+        }
+      ]
+    },
+    "threadId": "01990000-0000-7000-8000-000000000001",
+    "turnId": "01990000-0000-7000-8000-000000000002",
+    "startedAtMs": 1788939107841
+  }
+}

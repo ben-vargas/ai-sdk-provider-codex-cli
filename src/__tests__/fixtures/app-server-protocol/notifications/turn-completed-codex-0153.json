@@ -1,0 +1,26 @@
+{
+  "method": "turn/completed",
+  "params": {
+    "threadId": "01990000-0000-7000-8000-000000000001",
+    "turn": {
+      "id": "01990000-0000-7000-8000-000000000002",
+      "items": [
+        {
+          "type": "agentMessage",
+          "id": "msg_01530000000000000000000000000000000000000000000000",
+          "text": "pong",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        }
+      ],
+      "itemsView": "summary",
+      "status": "completed",
+      "error": null,
+      "startedAt": 1788939105,
+      "completedAt": 1788939109,
+      "durationMs": 4133
+    }
+  }
+}

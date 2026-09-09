@@ -139,17 +139,35 @@ export interface TurnStartParams {
   approvalPolicy?: unknown;
   sandboxPolicy?: unknown;
   model?: string | null;
-  effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+  /**
+   * Reasoning effort. Open-ended string upstream (`ReasoningEffort = string`
+   * in codex 0.153.4); known values include 'none', 'minimal', 'low',
+   * 'medium', 'high', 'xhigh', 'max', and 'ultra' (the last two since
+   * codex 0.149). Per-model availability comes from `model/list`.
+   */
+  effort?: string | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
   outputSchema?: unknown;
   collaborationMode?: unknown;
 }
 
+/**
+ * `codexErrorInfo` carried by `TurnError`. Mirrors the validator: the known
+ * codes are listed for narrowing, and the trailing `string` / object members
+ * are forward-compat catch-alls so newer Codex CLIs (0.153 added
+ * `rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`)
+ * never fail validation. Compare against the known literals and treat anything
+ * else as a generic error.
+ */
 export type CodexErrorInfo =
   | 'contextWindowExceeded'
   | 'usageLimitExceeded'
+  | 'rateLimitExceeded'
+  | 'sessionBudgetExceeded'
+  | 'misalignmentPolicyViolation'
   | 'serverOverloaded'
+  | 'cyberPolicy'
   | 'internalServerError'
   | 'unauthorized'
   | 'badRequest'
@@ -159,7 +177,10 @@ export type CodexErrorInfo =
   | { httpConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
-  | { responseTooManyFailedAttempts: { httpStatusCode: number | null } };
+  | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
+  | { activeTurnNotSteerable: { turnKind: string } }
+  | (string & {})
+  | Record<string, unknown>;
 
 export interface TurnError {
   message: string;
