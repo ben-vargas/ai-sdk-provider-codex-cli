@@ -153,12 +153,21 @@ export interface TurnStartParams {
 }
 
 /**
- * `codexErrorInfo` carried by `TurnError`. Mirrors the validator: the known
- * codes are listed for narrowing, and the trailing `string` / object members
- * are forward-compat catch-alls so newer Codex CLIs (0.153 added
+ * `codexErrorInfo` carried by `TurnError` / `ErrorNotification`.
+ *
+ * The known string codes are listed for narrowing and autocompletion, and the
+ * trailing `(string & {})` member mirrors the validator's forward-compat
+ * `z.string()` catch-all, so a newer Codex CLI's string codes (0.153 added
  * `rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`)
- * never fail validation. Compare against the known literals and treat anything
- * else as a generic error.
+ * are always representable and comparable without casts. Compare against the
+ * known literals and treat anything else as a generic error.
+ *
+ * Object variants are enumerated explicitly and deliberately NOT given an open
+ * `Record<string, unknown>` catch-all: an index-signature member would turn
+ * `'httpConnectionFailed' in info` narrowing into `unknown` and break
+ * `info.httpConnectionFailed.httpStatusCode` for every consumer. The validator
+ * still accepts unknown object variants at runtime; they surface through the
+ * generic error path and are added here when upstream defines them.
  */
 export type CodexErrorInfo =
   | 'contextWindowExceeded'
@@ -178,9 +187,8 @@ export type CodexErrorInfo =
   | { responseStreamConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
   | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
-  | { activeTurnNotSteerable: { turnKind: string } }
-  | (string & {})
-  | Record<string, unknown>;
+  | { activeTurnNotSteerable: { turnKind: 'review' | 'compact' | (string & {}) } }
+  | (string & {});
 
 export interface TurnError {
   message: string;
