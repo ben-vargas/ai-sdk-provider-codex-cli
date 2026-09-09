@@ -5,7 +5,9 @@ import {
   incomingNotificationSchemas,
   serverRequestSchema,
 } from '../app-server/protocol/validators.js';
-import type { CodexErrorInfo, TurnError } from '../app-server/protocol/types.js';
+// Imported from the package entry point on purpose: consumers must be able to
+// name these types from 'ai-sdk-provider-codex-cli', not just the internal module.
+import type { CodexErrorInfo, TurnError } from '../index.js';
 
 const fixturesRoot = join(process.cwd(), 'src', '__tests__', 'fixtures', 'app-server-protocol');
 

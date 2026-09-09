@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+<!-- Merged to main but not yet published. Fold into the next release's entry and choose the version bump accordingly. -->
+
+### Fixed
+
+- `CodexErrorInfo` and `TurnError` are now exported by name from the package entry point. 2.2.1 described `CodexErrorInfo` as exported, but it was only reachable structurally through the exported `Turn` / `ErrorNotification` types (`Turn['error']['codexErrorInfo']`); `import type { CodexErrorInfo } from 'ai-sdk-provider-codex-cli'` now works. Same fix as 1.4.1 on the AI SDK v6 line (#47).
+
 ## [2.2.1] - 2026-09-09
 
 ### Fixed
