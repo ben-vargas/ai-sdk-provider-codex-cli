@@ -59,13 +59,16 @@ type PromptImage =
       url: string;
     };
 
-const CODEX_REASONING_EFFORTS: Record<string, true> = {
+// Codex reasoning effort levels; kept in compile-time sync with ReasoningEffort.
+const CODEX_REASONING_EFFORTS: Record<ReasoningEffort, true> = {
   none: true,
   minimal: true,
   low: true,
   medium: true,
   high: true,
   xhigh: true,
+  max: true,
+  ultra: true,
 };
 
 function resolveReasoningEffort(args: {

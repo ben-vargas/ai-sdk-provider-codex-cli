@@ -40,7 +40,33 @@ export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
 // 'none' is the newer "no extra reasoning" level for GPT-5.1+.
 // 'minimal' is retained as a backwards-compatible alias for older GPT-5 slugs.
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+// 'max' and 'ultra' were added by Codex CLI 0.149 (gpt-6-astra / gpt-5.6 families).
+// Which levels a model accepts is owned by Codex: inspect
+// `supportedReasoningEfforts` from `listModels()` / `provider.listModels()`.
+export type ReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultra';
+
+/**
+ * Every reasoning effort level known to this provider, in ascending order.
+ * Kept in compile-time sync with `ReasoningEffort`.
+ */
+export const CODEX_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+] as const satisfies readonly ReasoningEffort[];
 
 /**
  * Reasoning summary detail level for exec mode.

@@ -66,6 +66,30 @@ describe('validateSettings', () => {
     expect(res.errors).toHaveLength(0);
   });
 
+  it('accepts max and ultra reasoningEffort (Codex >= 0.149)', () => {
+    for (const reasoningEffort of ['max', 'ultra'] as const) {
+      const res = validateSettings({ reasoningEffort });
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    }
+  });
+
+  it('rejects unknown reasoningEffort values', () => {
+    const res = validateSettings({ reasoningEffort: 'extreme' });
+    expect(res.valid).toBe(false);
+    expect(res.errors.some((e) => /reasoningEffort/i.test(e))).toBe(true);
+  });
+
+  it('accepts max and ultra effort for app-server settings', () => {
+    for (const effort of ['max', 'ultra'] as const) {
+      const res = validateAppServerSettings({ effort });
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    }
+    const invalid = validateAppServerSettings({ effort: 'extreme' });
+    expect(invalid.valid).toBe(false);
+  });
+
   it('accepts addDirs with valid paths', () => {
     const res = validateSettings({ addDirs: ['../shared', '/tmp/lib'] });
     expect(res.valid).toBe(true);

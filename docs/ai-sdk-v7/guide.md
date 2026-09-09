@@ -142,7 +142,7 @@ AI SDK v7 adds a provider-agnostic, top-level `reasoning` option. This provider 
 ```js
 const { text } = await generateText({
   model: codexExec('gpt-6-astra', { allowNpx: true, skipGitRepoCheck: true }),
-  reasoning: 'high', // 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  reasoning: 'high', // 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' ('max' / 'ultra' only via provider options)
   prompt: 'Prove that the square root of 2 is irrational.',
 });
 ```

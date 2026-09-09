@@ -190,8 +190,9 @@ export interface TurnStartParams {
   model?: string | null;
   /**
    * Reasoning effort. Open-ended string upstream (`ReasoningEffort = string`
-   * in codex 0.142.5); known values include 'none', 'minimal', 'low',
-   * 'medium', 'high', 'xhigh', and 'ultra'.
+   * in codex 0.153.4); known values include 'none', 'minimal', 'low',
+   * 'medium', 'high', 'xhigh', 'max', and 'ultra' (the last two since
+   * codex 0.149). Per-model availability comes from `model/list`.
    */
   effort?: string | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;

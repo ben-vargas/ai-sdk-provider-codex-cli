@@ -21,7 +21,7 @@ const model = codexExec('gpt-6-astra', {
   approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
   color: 'never',
-  reasoningEffort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
+  reasoningEffort: 'xhigh', // gpt-6-astra also accepts 'max' and 'ultra'; deeper reasoning for structured outputs
 });
 
 // Example 1: Product comparison with scoring and rationale

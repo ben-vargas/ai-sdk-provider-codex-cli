@@ -28,10 +28,11 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 
 ### Reasoning & Verbosity
 
-- **`reasoningEffort`** ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Controls reasoning depth for reasoning-capable models. Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
+- **`reasoningEffort`** ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'): Controls reasoning depth for reasoning-capable models. Higher effort produces more thorough reasoning at the cost of latency. Maps to `-c model_reasoning_effort=<value>`.
   - Which effort levels a given model accepts is owned by Codex/OpenAI and varies by model family; check your Codex CLI docs for the models `listModels()` returns.
   - `'none'` is the "no extra reasoning" level for newer model families; `'minimal'` is retained as a backwards-compatible alias used by older GPT‑5 slugs.
   - `'xhigh'` is only exposed on model families that support it.
+  - `'max'` and `'ultra'` were added by Codex CLI 0.149 and are exposed by the `gpt-6-astra` / `gpt-5.6` families (`listModels()` reports `supportedReasoningEfforts` per model). They are not part of the AI SDK v7 top-level `reasoning` union, so set them via `reasoningEffort` / `effort`.
   - The AI SDK v7 top-level `reasoning` call option maps onto this setting — see [Reasoning Precedence](#reasoning-precedence).
 - **`reasoningSummary`** ('auto' | 'detailed'): Controls reasoning summary detail level. **Note:** Despite API error messages claiming 'concise' and 'none' are valid, they are rejected with 400 errors. Only 'auto' and 'detailed' work. Maps to `-c model_reasoning_summary=<value>`.
 - **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.
@@ -196,7 +197,7 @@ await generateText({
 **Turn behavior**
 
 - `personality` ('none' | 'friendly' | 'pragmatic'): Codex response personality.
-- `effort` ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Reasoning effort for the turn; see [Reasoning Precedence](#reasoning-precedence).
+- `effort` ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'): Reasoning effort for the turn (`'max'` / `'ultra'` need Codex CLI >= 0.149); see [Reasoning Precedence](#reasoning-precedence).
 - `summary` ('auto' | 'concise' | 'detailed' | 'none'): Reasoning summary level (app-server protocol accepts all four).
 - `approvalPolicy`: 'untrusted' | 'on-request' | 'never' or the protocol-shaped `{ granular: { sandbox_approval, rules, mcp_elicitations, skill_approval?, request_permissions? } }` object (flags set to `true` are forwarded to your `serverRequests` handlers, `false` auto-rejects that category). `'on-failure'` and the legacy `{ reject: … }` form are deprecated: Codex app-server >= 0.144 rejects them, so the provider translates them (`'on-failure'` → `'on-request'`, `reject` → the equivalent inverted `granular`) and warns once per model.
 - `sandboxPolicy`: 'read-only' | 'workspace-write' | 'danger-full-access' or a protocol-shaped object (e.g. `{ type: 'externalSandbox', networkAccess: 'enabled' }`).

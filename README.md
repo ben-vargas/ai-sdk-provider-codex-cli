@@ -409,7 +409,7 @@ const model = codexExec('gpt-6-astra', {
   addDirs: ['../shared'],
 
   // Reasoning & verbosity
-  reasoningEffort: 'medium', // none | minimal | low | medium | high | xhigh (xhigh on codex-max and newer models that expose it)
+  reasoningEffort: 'medium', // none | minimal | low | medium | high | xhigh | max | ultra (max/ultra need Codex CLI >= 0.149; check listModels().supportedReasoningEfforts)
   reasoningSummary: 'auto', // auto | detailed (Note: 'concise' and 'none' are rejected by API)
   reasoningSummaryFormat: 'none', // none | experimental
   modelVerbosity: 'high', // low | medium | high
@@ -489,7 +489,7 @@ const response = await generateText({
 
 **Precedence:** `providerOptions['codex-cli']` > top-level `reasoning` call option > constructor `CodexCliSettings` > Codex CLI defaults.
 
-The AI SDK v7 top-level `reasoning` option (`'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'`) maps directly to Codex reasoning effort in both provider modes; provider-specific effort options (`reasoningEffort` for exec, `effort` for app-server) win when both are set, and `'provider-default'` leaves your configured default untouched.
+The AI SDK v7 top-level `reasoning` option (`'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'`) maps directly to Codex reasoning effort in both provider modes; provider-specific effort options (`reasoningEffort` for exec, `effort` for app-server) win when both are set, and `'provider-default'` leaves your configured default untouched. The newer Codex levels `'max'` and `'ultra'` (Codex CLI >= 0.149, e.g. `gpt-6-astra`) are not part of the AI SDK union, so set them through the provider-specific options.
 
 App-server per-call overrides use `providerOptions['codex-app-server']`:
 

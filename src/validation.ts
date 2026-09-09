@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { CodexAppServerSettings, CodexExecSettings } from './types.js';
 import { isValidConfigOverrideKey, isValidMcpServerName } from './config-key-utils.js';
 import { isDeprecatedApprovalPolicyAlias } from './shared-utils.js';
+import { CODEX_REASONING_EFFORTS } from './types-shared.js';
 
 const loggerFunctionSchema = z.object({
   debug: z.any().refine((val) => typeof val === 'function', {
@@ -81,6 +82,13 @@ const configOverrideKeySchema = z
     message: 'configOverrides keys must match /^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$/.',
   });
 
+/**
+ * Reasoning effort levels accepted by both providers (`reasoningEffort` in
+ * exec mode, `effort` in app-server mode). Codex decides per model which
+ * levels are valid; unsupported values are rejected by the CLI/API.
+ */
+export const reasoningEffortSchema = z.enum(CODEX_REASONING_EFFORTS);
+
 const configOverridesSchema = z
   .record(
     configOverrideKeySchema,
@@ -96,7 +104,7 @@ export const sharedSettingsSchema = z
     env: z.record(z.string(), z.string()).optional(),
     verbose: z.boolean().optional(),
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningEffort: reasoningEffortSchema.optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
@@ -221,7 +229,7 @@ export const appServerSettingsSchema = z
     logger: z.union([z.literal(false), loggerFunctionSchema]).optional(),
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
     approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
@@ -263,7 +271,7 @@ export const appServerProviderOptionsSchema = z
     includeRawChunks: z.boolean().optional(),
 
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
-    effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
     approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),

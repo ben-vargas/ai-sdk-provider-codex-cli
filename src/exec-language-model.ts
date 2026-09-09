@@ -28,7 +28,7 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger, createVerboseLogger } from './logger.js';
 import type { CodexExecProviderOptions, CodexExecSettings, Logger } from './types.js';
-import { mcpServersSchema, validateModelId } from './validation.js';
+import { mcpServersSchema, reasoningEffortSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
@@ -104,11 +104,13 @@ const codexReasoningEfforts: Record<ReasoningEffort, true> = {
   medium: true,
   high: true,
   xhigh: true,
+  max: true,
+  ultra: true,
 };
 
 const codexCliProviderOptionsSchema: z.ZodType<CodexExecProviderOptions> = z
   .object({
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningEffort: reasoningEffortSchema.optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),

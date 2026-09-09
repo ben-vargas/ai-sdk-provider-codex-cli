@@ -23,7 +23,7 @@ try {
   const model = appServer('gpt-6-astra', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
-    effort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
+    effort: 'xhigh', // gpt-6-astra also accepts 'max' and 'ultra'; deeper reasoning for structured outputs
   });
 
   // Example 1: Product comparison with scoring and rationale

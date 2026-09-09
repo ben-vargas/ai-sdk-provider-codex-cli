@@ -246,7 +246,7 @@ describe('AppServerLanguageModel', () => {
 
     const result = await model.doGenerate({
       prompt: [{ role: 'user', content: 'Say hello' }] as never,
-      reasoning: 'ultra' as never,
+      reasoning: 'extreme' as never,
     });
 
     expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('medium');
@@ -254,9 +254,39 @@ describe('AppServerLanguageModel', () => {
       expect.objectContaining({
         type: 'unsupported',
         feature: 'reasoning',
-        details: expect.stringContaining("'ultra'; it will be ignored"),
+        details: expect.stringContaining("'extreme'; it will be ignored"),
       }),
     );
+  });
+
+  it('sends the max and ultra efforts (Codex >= 0.149) to turn/start', async () => {
+    const client = new FakeClient();
+    const model = new AppServerLanguageModel({
+      id: 'gpt-6-astra',
+      client: client as never,
+      settings: { effort: 'max' },
+    });
+
+    const first = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'max effort' }] as never,
+    });
+    expect((client.turnStartCalls[0] as TurnStartParams).effort).toBe('max');
+    expect(first.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+    const second = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'ultra effort' }] as never,
+      providerOptions: { 'codex-app-server': { effort: 'ultra' } },
+    });
+    expect((client.turnStartCalls[1] as TurnStartParams).effort).toBe('ultra');
+    expect(second.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+    const third = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'ultra via top-level reasoning' }] as never,
+      providerOptions: { 'codex-app-server': {} },
+      reasoning: 'ultra' as never,
+    });
+    expect((client.turnStartCalls[2] as TurnStartParams).effort).toBe('ultra');
+    expect(third.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
   });
 
   it('doGenerate keeps only the final completed text block when multiple are emitted', async () => {

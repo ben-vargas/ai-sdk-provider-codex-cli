@@ -1271,7 +1271,7 @@ describe('ExecLanguageModel', () => {
         settings: { allowNpx: true, color: 'never' },
       });
       // Runtime forward-compat: a future reasoning level outside the v4 union.
-      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const unmappableReasoning = 'extreme' as unknown as LanguageModelV4CallOptions['reasoning'];
       const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
 
       expect(argsCaptured.join(' ')).not.toContain('model_reasoning_effort=');
@@ -1280,7 +1280,7 @@ describe('ExecLanguageModel', () => {
           w.type === 'unsupported' && w.feature === 'reasoning',
       );
       expect(warning).toBeDefined();
-      expect(warning?.details).toContain("'ultra'");
+      expect(warning?.details).toContain("'extreme'");
     });
 
     it('warns and keeps configured effort for unmappable top-level reasoning', async () => {
@@ -1294,7 +1294,7 @@ describe('ExecLanguageModel', () => {
         id: 'gpt-5',
         settings: { allowNpx: true, color: 'never', reasoningEffort: 'medium' },
       });
-      const unmappableReasoning = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const unmappableReasoning = 'extreme' as unknown as LanguageModelV4CallOptions['reasoning'];
       const res = await model.doGenerate({ prompt, reasoning: unmappableReasoning });
 
       expect(argsCaptured).toContain('model_reasoning_effort=medium');
@@ -1302,7 +1302,51 @@ describe('ExecLanguageModel', () => {
         (w): w is Extract<SharedV4Warning, { type: 'unsupported' }> =>
           w.type === 'unsupported' && w.feature === 'reasoning',
       );
-      expect(warning?.details).toContain("'ultra'; it will be ignored");
+      expect(warning?.details).toContain("'extreme'; it will be ignored");
+    });
+
+    it('maps the max and ultra efforts (Codex >= 0.149) from settings and providerOptions', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-6-astra',
+        settings: { allowNpx: true, color: 'never', reasoningEffort: 'max' },
+      });
+
+      const first = await model.doGenerate({ prompt });
+      expect(argsCaptured).toContain('model_reasoning_effort=max');
+      expect(first.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+
+      const second = await model.doGenerate({
+        prompt,
+        providerOptions: { 'codex-cli': { reasoningEffort: 'ultra' } },
+      });
+      expect(argsCaptured).toContain('model_reasoning_effort=ultra');
+      expect(second.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
+    });
+
+    it('accepts ultra through the top-level reasoning option now that Codex supports it', async () => {
+      let argsCaptured: string[] = [];
+      mockableChildProc.__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(reasoningLines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-6-astra',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      // The AI SDK v7 union stops at 'xhigh'; a caller may still pass the newer
+      // Codex levels at runtime and the provider forwards them unchanged.
+      const ultra = 'ultra' as unknown as LanguageModelV4CallOptions['reasoning'];
+      const res = await model.doGenerate({ prompt, reasoning: ultra });
+
+      expect(argsCaptured).toContain('model_reasoning_effort=ultra');
+      expect(res.warnings.filter((w) => w.type === 'unsupported')).toHaveLength(0);
     });
   });
 
