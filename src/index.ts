@@ -18,6 +18,8 @@ export type {
   JsonRpcMessage,
   Thread,
   Turn,
+  TurnError,
+  CodexErrorInfo,
   ThreadItem,
   UserInput,
   TurnStartParams,
