@@ -762,7 +762,11 @@ export class ExecLanguageModel implements LanguageModelV4 {
     });
   }
 
-  private handleSpawnError(err: unknown, promptExcerpt: string) {
+  // Converts a child-process spawn failure (e.g. ENOENT for a missing codex
+  // binary) into the error the stream should be rejected with. Returns rather
+  // than throws: it is called from inside the child's 'error' listener, where a
+  // throw would escape as an uncaught exception instead of settling the request.
+  private handleSpawnError(err: unknown, promptExcerpt: string): Error {
     const e =
       err && typeof err === 'object'
         ? (err as {
@@ -775,9 +779,9 @@ export class ExecLanguageModel implements LanguageModelV4 {
     const message = String((e?.message ?? err) || 'Failed to run Codex CLI');
     // crude auth detection
     if (/login|auth|unauthorized|not\s+logged/i.test(message)) {
-      throw createAuthenticationError(message);
+      return createAuthenticationError(message);
     }
-    throw createAPICallError({
+    return createAPICallError({
       message,
       code: typeof e?.code === 'string' ? e.code : undefined,
       exitCode: typeof e?.exitCode === 'number' ? e.exitCode : undefined,

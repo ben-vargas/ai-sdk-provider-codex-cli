@@ -665,13 +665,6 @@ describe('ExecLanguageModel', () => {
   describe('owned --output-last-message cleanup', () => {
     // A mock child whose lifecycle the test controls. Writes the fallback file
     // like the real CLI, then emits the requested outcome.
-    const errored = { resolve: () => {}, promise: Promise.resolve() };
-    function armErrored() {
-      errored.promise = new Promise<void>((resolve) => {
-        errored.resolve = resolve;
-      });
-    }
-
     function makeControlledSpawn(opts: {
       lines?: string[];
       outcome: 'close' | 'error' | 'hang';
@@ -693,12 +686,9 @@ describe('ExecLanguageModel', () => {
           for (const l of opts.lines ?? []) child.stdout.write(l + '\n');
           child.stdout.end();
           if (opts.outcome === 'error') {
-            try {
-              child.emit('error', new Error('spawn failed'));
-            } catch {
-              // handleSpawnError throws (pre-existing), so emit() rethrows here.
-            }
-            errored.resolve();
+            // Node emits 'error' and then still emits 'close' for a failed spawn.
+            child.emit('error', new Error('spawn failed'));
+            child.emit('close', -2);
           } else {
             child.emit('close', opts.exitCode ?? 0);
           }
@@ -778,15 +768,12 @@ describe('ExecLanguageModel', () => {
       expect(existsSync(captured.path)).toBe(false);
     });
 
-    it('removes the owned file on a child error', async () => {
-      armErrored();
+    it('rejects with an APICallError and removes the owned file on a child error', async () => {
       const captured = captureOutputPath(makeControlledSpawn({ outcome: 'error' }));
       const model = new ExecLanguageModel({ id: 'gpt-5', settings: { allowNpx: true } });
-      // The 'error' listener currently throws out of handleSpawnError before it
-      // can reach controller.error (pre-existing), so the request never settles;
-      // only assert the cleanup side effect once the error has been emitted.
-      void model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }).catch(() => {});
-      await errored.promise;
+      await expect(
+        model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any }),
+      ).rejects.toMatchObject({ name: 'AI_APICallError', message: 'spawn failed' });
       expect(existsSync(captured.path)).toBe(false);
     });
 
