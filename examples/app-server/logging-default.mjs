@@ -34,7 +34,7 @@ try {
       // Default logging suppresses request-level debug output.
       const result = streamText({
         model: appServer('gpt-6-astra', {
-          approvalPolicy: 'on-failure',
+          approvalPolicy: 'on-request',
           sandboxPolicy: { type: 'workspaceWrite' },
         }),
         prompt: 'Say hello in 5 words',

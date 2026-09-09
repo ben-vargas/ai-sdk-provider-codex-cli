@@ -81,7 +81,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
-  approvalMode: 'on-failure',
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
 });
 
@@ -175,7 +175,7 @@ console.log(object);
 - **Tool streaming support** - Monitor autonomous tool execution in real-time
 - **Native JSON Schema support** via `--output-schema` (exec) / the `outputSchema` turn parameter (app-server)
 - JSON object generation with Zod schemas (100-200 fewer tokens per request vs prompt engineering)
-- Safe defaults for non‑interactive automation (`on-failure`, `workspace-write`, `--skip-git-repo-check`)
+- Safe defaults for non‑interactive automation (`on-request`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx -y @openai/codex` when the local `@openai/codex` package can't be resolved (`allowNpx`)
 - Usage tracking from experimental JSON event format
 - **Image support** - Local binary images in both providers; remote HTTP/HTTPS image URLs work via AI SDK download
@@ -353,9 +353,9 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
 - `cwd`: Working directory for Codex
 - `addDirs`: Extra directories Codex may read/write (repeats `--add-dir`)
 - Autonomy/sandbox:
-  - `fullAuto` (equivalent to `--full-auto`)
   - `dangerouslyBypassApprovalsAndSandbox` (bypass approvals and sandbox; dangerous)
-  - Otherwise the provider writes `-c approval_policy=...` and `-c sandbox_mode=...` for you; defaults to `on-failure` and `workspace-write`
+  - Otherwise the provider writes `-c approval_policy=...` and `-c sandbox_mode=...` for you; defaults to `on-request` and `workspace-write`. `approvalMode: 'on-failure'` is deprecated (Codex CLI 0.143 retired it) and is sent as `on-request`
+  - `fullAuto` is deprecated: Codex CLI 0.147 removed `codex exec --full-auto`, so the flag now just means `sandboxMode: 'workspace-write'` (an explicit `sandboxMode` wins)
 - `skipGitRepoCheck`: on by default (pass `false` to keep Codex's git-repo check for CI/non‑repo safety)
 - `color`: `always` | `never` | `auto`
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably

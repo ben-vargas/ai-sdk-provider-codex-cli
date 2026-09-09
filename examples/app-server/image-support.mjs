@@ -71,7 +71,7 @@ try {
 
   // Create model instance - gpt-6-astra supports vision/multimodal inputs
   const model = appServer('gpt-6-astra', {
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });
 

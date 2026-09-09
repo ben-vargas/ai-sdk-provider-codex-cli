@@ -26,6 +26,14 @@ export type CodexModelId =
   | 'gpt-5.2'
   | (string & {});
 
+/**
+ * Approval policy for exec mode (`-c approval_policy=...`).
+ *
+ * `'on-failure'` is deprecated: Codex CLI 0.143 retired it (the core config
+ * keeps it only as an alias of `'on-request'`), so the provider translates it
+ * to `'on-request'` and warns. Note that headless `codex exec` runs force
+ * `never` internally unless an automatic approvals reviewer is configured.
+ */
 export type ApprovalMode = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';

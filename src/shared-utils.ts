@@ -48,6 +48,26 @@ export function mapCodexCliFinishReason(reason?: string): LanguageModelV4FinishR
   }
 }
 
+/**
+ * Codex CLI 0.143 retired the `on-failure` approval policy: the core config
+ * only keeps it as a serde alias of `on-request`, and the app-server v2
+ * protocol rejects it outright (`-32600 unknown variant 'on-failure'`).
+ * Normalize the deprecated spelling so both providers always send `on-request`.
+ */
+export const DEPRECATED_APPROVAL_POLICY_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  'on-failure': 'on-request',
+});
+
+export function normalizeApprovalPolicyAlias<T>(value: T): T {
+  if (typeof value !== 'string') return value;
+  const normalized = DEPRECATED_APPROVAL_POLICY_ALIASES[value];
+  return normalized === undefined ? value : (normalized as unknown as T);
+}
+
+export function isDeprecatedApprovalPolicyAlias(value: unknown): value is string {
+  return typeof value === 'string' && Object.hasOwn(DEPRECATED_APPROVAL_POLICY_ALIASES, value);
+}
+
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return (
     typeof value === 'object' &&

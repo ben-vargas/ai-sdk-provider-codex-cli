@@ -43,7 +43,7 @@ const provider = createCodexAppServer({
   defaultSettings: {
     minCodexVersion: '0.153.0',
     idleTimeoutMs: 30000,
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   },
 });

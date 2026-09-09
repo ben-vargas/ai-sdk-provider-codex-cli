@@ -88,7 +88,7 @@ async function main() {
       minCodexVersion: '0.153.0',
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
-      approvalPolicy: 'on-failure',
+      approvalPolicy: 'on-request',
       sandboxPolicy: { type: 'readOnly' },
       verbose: true,
     },

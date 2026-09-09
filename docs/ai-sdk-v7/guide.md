@@ -71,7 +71,7 @@ import { z } from 'zod';
 const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
-  approvalMode: 'on-failure',
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
 });
 
@@ -184,13 +184,14 @@ const { text } = await generateText({
 
 The provider applies safe defaults for non‑interactive execution. You can override them per call via provider settings:
 
-- `fullAuto: true` → `--full-auto` (exec)
 - `dangerouslyBypassApprovalsAndSandbox: true` → `--dangerously-bypass-approvals-and-sandbox` (exec)
-- Otherwise, the exec provider writes config overrides: `-c approval_policy=...` and `-c sandbox_mode=...`; the app-server provider passes `approvalPolicy` / `sandboxPolicy` on the thread.
+- Otherwise, the exec provider writes config overrides: `-c approval_policy=...` and `-c sandbox_mode=...` (defaults `on-request` / `workspace-write`); the app-server provider passes `approvalPolicy` / `sandboxPolicy` on the thread.
+- `fullAuto: true` (exec) is deprecated: Codex CLI 0.147 removed `--full-auto`, so it now means `sandboxMode: 'workspace-write'`.
+- `'on-failure'` (exec `approvalMode` / app-server `approvalPolicy`) is deprecated: Codex CLI 0.143 retired it (the app-server rejects it), so the provider sends `'on-request'` instead and warns.
 
 Recommended defaults for CI/local automation:
 
-- `approvalMode: 'on-failure'`
+- `approvalMode: 'on-request'`
 - `sandboxMode: 'workspace-write'`
 - `skipGitRepoCheck: true` (exec)
 

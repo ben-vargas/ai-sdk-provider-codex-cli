@@ -23,8 +23,8 @@ try {
     console.log(`[${label}]`, text);
   }
 
-  await run('on-failure + workspace-write', {
-    approvalPolicy: 'on-failure',
+  await run('on-request + workspace-write', {
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });
   await run('on-request + read-only', {
@@ -34,6 +34,14 @@ try {
   await run('never + danger-full-access', {
     approvalPolicy: 'never',
     sandboxPolicy: { type: 'dangerFullAccess' },
+  });
+  // Fine-grained control (codex app-server `granular` policy): flags set to
+  // `true` are routed to your `serverRequests` handlers, `false` auto-rejects.
+  await run('granular + read-only', {
+    approvalPolicy: {
+      granular: { sandbox_approval: true, rules: true, mcp_elicitations: false },
+    },
+    sandboxPolicy: { type: 'readOnly' },
   });
 
   console.log('Note: These modes affect how Codex would execute tools/commands if needed.');

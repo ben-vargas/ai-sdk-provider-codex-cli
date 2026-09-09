@@ -84,7 +84,7 @@ async function main() {
   const codex = createCodexExec({
     defaultSettings: {
       cwd: process.cwd(),
-      approvalMode: 'on-failure',
+      approvalMode: 'on-request',
       sandboxMode: 'read-only',
       verbose: true,
     },

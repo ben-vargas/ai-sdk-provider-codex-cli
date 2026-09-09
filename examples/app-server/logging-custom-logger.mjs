@@ -53,7 +53,7 @@ try {
       // Use a custom logger with verbose mode enabled.
       const result = streamText({
         model: appServer('gpt-6-astra', {
-          approvalPolicy: 'on-failure',
+          approvalPolicy: 'on-request',
           sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging to see debug/info
           logger: customLogger, // Use our custom logger

@@ -18,7 +18,7 @@ console.log(' Codex CLI - Advanced Object Generation\n');
 const model = codexExec('gpt-6-astra', {
   allowNpx: true,
   skipGitRepoCheck: true,
-  approvalMode: 'on-failure',
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
   color: 'never',
   reasoningEffort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs

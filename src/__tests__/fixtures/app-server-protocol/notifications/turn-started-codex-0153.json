@@ -1,0 +1,16 @@
+{
+  "method": "turn/started",
+  "params": {
+    "threadId": "01990000-0000-7000-8000-000000000001",
+    "turn": {
+      "id": "01990000-0000-7000-8000-000000000002",
+      "items": [],
+      "itemsView": "notLoaded",
+      "status": "inProgress",
+      "error": null,
+      "startedAt": 1788939105,
+      "completedAt": null,
+      "durationMs": null
+    }
+  }
+}

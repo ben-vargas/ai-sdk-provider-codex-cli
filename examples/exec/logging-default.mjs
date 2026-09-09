@@ -29,7 +29,7 @@ async function main() {
       model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
       }),
       prompt: 'Say hello in 5 words',

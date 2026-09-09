@@ -39,7 +39,7 @@ async function main() {
       model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
         logger: false, // Disable all logging
       }),

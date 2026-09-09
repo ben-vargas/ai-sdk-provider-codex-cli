@@ -282,7 +282,7 @@ describe('CodexCliLanguageModel', () => {
       settings: {
         allowNpx: true,
         color: 'never',
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
         skipGitRepoCheck: true,
         outputLastMessageFile: join(mkdtempSync(join(tmpdir(), 'codex-test-')), 'last.txt'),
@@ -296,7 +296,7 @@ describe('CodexCliLanguageModel', () => {
     expect(seen.args).toContain('--experimental-json');
     expect(seen.args).not.toContain('--json');
     expect(seen.args).toContain('-c');
-    expect(seen.args).toContain('approval_policy=on-failure');
+    expect(seen.args).toContain('approval_policy=on-request');
     expect(seen.args).toContain('sandbox_mode=workspace-write');
     expect(seen.args).toContain('--skip-git-repo-check');
     expect(seen.args).toContain('--output-last-message');
@@ -471,7 +471,7 @@ describe('CodexCliLanguageModel', () => {
     });
   });
 
-  it('uses --full-auto when specified and omits -c flags', async () => {
+  it('maps deprecated fullAuto to -c sandbox_mode=workspace-write and never emits --full-auto', async () => {
     let lastArgs: string[] = [];
     const lines = [
       JSON.stringify({
@@ -497,9 +497,126 @@ describe('CodexCliLanguageModel', () => {
     });
     await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-    expect(lastArgs).toContain('--full-auto');
-    // No -c flags when fullAuto
-    expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
+    // Codex CLI 0.147 removed `codex exec --full-auto`; fullAuto is now sugar for
+    // sandboxMode: 'workspace-write' expressed through the regular -c overrides.
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
+    expect(lastArgs).toContain('approval_policy=on-request');
+  });
+
+  it('defaults to approval_policy=on-request and sandbox_mode=workspace-write', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-defaults' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).toContain('approval_policy=on-request');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
+    expect(lastArgs.join(' ')).not.toContain('approval_policy=on-failure');
+  });
+
+  it('translates the deprecated approvalMode on-failure to on-request and warns once', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-alias' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const warn = vi.fn();
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        approvalMode: 'on-failure',
+        logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
+      },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi again' }] as any });
+
+    expect(lastArgs).toContain('approval_policy=on-request');
+    expect(lastArgs).not.toContain('approval_policy=on-failure');
+    const deprecationWarnings = warn.mock.calls.filter((call) =>
+      String(call[0]).includes("approvalMode 'on-failure' is deprecated"),
+    );
+    expect(deprecationWarnings).toHaveLength(1);
+  });
+
+  it('lets an explicit sandboxMode win over the deprecated fullAuto flag', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-explicit-sandbox' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: { allowNpx: true, color: 'never', fullAuto: true, sandboxMode: 'read-only' },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).toContain('sandbox_mode=read-only');
+    expect(lastArgs).not.toContain('sandbox_mode=workspace-write');
+  });
+
+  it('keeps fullAuto precedence over dangerouslyBypassApprovalsAndSandbox', async () => {
+    let lastArgs: string[] = [];
+    const lines = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread-precedence' }),
+      JSON.stringify({
+        type: 'item.completed',
+        item: { item_type: 'assistant_message', text: 'OK' },
+      }),
+    ];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new CodexCliLanguageModel({
+      id: 'gpt-5',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        fullAuto: true,
+        dangerouslyBypassApprovalsAndSandbox: true,
+      },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    expect(lastArgs).not.toContain('--full-auto');
+    expect(lastArgs).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(lastArgs).toContain('sandbox_mode=workspace-write');
   });
 
   it('rejects with APICallError on non-zero exit', async () => {
@@ -804,7 +921,7 @@ describe('CodexCliLanguageModel', () => {
       ).rejects.toThrow(/Invalid MCP server name/);
     });
 
-    it('keeps reasoning flags when fullAuto is enabled (but omits approval/sandbox overrides)', async () => {
+    it('keeps reasoning flags when the deprecated fullAuto flag is enabled', async () => {
       let lastArgs: string[] = [];
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-fa' }),
@@ -824,8 +941,8 @@ describe('CodexCliLanguageModel', () => {
       });
       await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-      expect(lastArgs).toContain('--full-auto');
-      expect(lastArgs.join(' ')).not.toMatch(/approval_policy|sandbox_mode/);
+      expect(lastArgs).not.toContain('--full-auto');
+      expect(lastArgs).toContain('sandbox_mode=workspace-write');
       expect(lastArgs).toContain('model_reasoning_effort=medium');
     });
   });

@@ -26,12 +26,15 @@ import {
 import { cleanupTempImages, type ImageData, writeImageToTempFile } from '../image-utils.js';
 import {
   createEmptyCodexUsage,
+  isDeprecatedApprovalPolicyAlias,
   mapUnsupportedSettingsWarnings,
   mcpServersToConfigOverrides,
   mergeSingleMcpServer,
+  normalizeApprovalPolicyAlias,
 } from '../shared-utils.js';
 import { assertValidMcpServerName } from '../config-key-utils.js';
 import type {
+  AppServerApprovalPolicy,
   AppServerMcpServerConfig,
   AppServerThreadMode,
   CodexAppServerProviderOptions,
@@ -132,8 +135,50 @@ function mapSandboxToTurnSandboxPolicy(settings: CodexAppServerSettings): unknow
   return undefined;
 }
 
-function mapApprovalPolicy(settings: CodexAppServerSettings): unknown {
-  return settings.approvalPolicy;
+/**
+ * Maps the public `approvalPolicy` setting onto the codex app-server v2
+ * `AskForApproval` wire shape.
+ *
+ * - `'on-failure'` was retired by Codex CLI 0.143 and app-server >= 0.144
+ *   rejects it (`-32600 unknown variant`), so it becomes `'on-request'`.
+ * - The legacy `{ reject }` form (Codex ~0.105) used inverted flags
+ *   (`true` = auto-reject); it becomes the equivalent `{ granular }` policy,
+ *   where categories `reject` did not know about (skills, permission
+ *   requests) keep their historical "shown to the client" behavior.
+ */
+export function mapApprovalPolicy(
+  policy: AppServerApprovalPolicy | undefined,
+  warnDeprecated?: (key: string, message: string) => void,
+): unknown {
+  if (policy === undefined) return undefined;
+
+  if (isDeprecatedApprovalPolicyAlias(policy)) {
+    const normalized = normalizeApprovalPolicyAlias(policy);
+    warnDeprecated?.(
+      `approvalPolicy:${policy}`,
+      `approvalPolicy '${policy}' is deprecated (retired by Codex CLI 0.143 and rejected by app-server >= 0.144); sending '${normalized}' instead.`,
+    );
+    return normalized;
+  }
+
+  if (typeof policy === 'object' && policy !== null && 'reject' in policy) {
+    const { reject } = policy;
+    warnDeprecated?.(
+      'approvalPolicy:reject',
+      'approvalPolicy { reject } is deprecated (removed from the Codex app-server protocol); sending the equivalent { granular } policy instead.',
+    );
+    return {
+      granular: {
+        sandbox_approval: !reject.sandbox_approval,
+        rules: !reject.rules,
+        mcp_elicitations: !reject.mcp_elicitations,
+        skill_approval: true,
+        request_permissions: true,
+      },
+    };
+  }
+
+  return policy;
 }
 
 function mergeServerRequests(
@@ -214,6 +259,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
   private readonly rawEventsByThreadId = new Map<string, boolean>();
   private persistentSession?: AppServerSession;
   private persistentBootstrapLock = Promise.resolve();
+  private readonly deprecationWarningsEmitted = new Set<string>();
 
   constructor(options: AppServerLanguageModelOptions) {
     this.modelId = options.id;
@@ -227,6 +273,18 @@ export class AppServerLanguageModel implements LanguageModelV4 {
     if (!this.modelId || this.modelId.trim() === '') {
       throw new NoSuchModelError({ modelId: this.modelId, modelType: 'languageModel' });
     }
+  }
+
+  private warnDeprecatedOnce(key: string, message: string): void {
+    if (this.deprecationWarningsEmitted.has(key)) return;
+    this.deprecationWarningsEmitted.add(key);
+    this.logger.warn(`[codex-app-server] ${message}`);
+  }
+
+  private mapApprovalPolicy(settings: CodexAppServerSettings): unknown {
+    return mapApprovalPolicy(settings.approvalPolicy, (key, message) =>
+      this.warnDeprecatedOnce(key, message),
+    );
   }
 
   private mergeSettings(providerOptions?: CodexAppServerProviderOptions): CodexAppServerSettings {
@@ -417,7 +475,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
       const thread = await this.client.threadStart({
         model: this.modelId,
         cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings),
+        approvalPolicy: this.mapApprovalPolicy(settings),
         sandbox: mapSandboxToThreadSandboxMode(settings),
         config: configOverrides,
         baseInstructions: settings.baseInstructions,
@@ -453,7 +511,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
             threadId: target.threadId,
             model: this.modelId,
             cwd: settings.cwd,
-            approvalPolicy: mapApprovalPolicy(settings),
+            approvalPolicy: this.mapApprovalPolicy(settings),
             sandbox: mapSandboxToThreadSandboxMode(settings),
             config: configOverrides,
             baseInstructions: settings.baseInstructions,
@@ -621,7 +679,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
       client: this.client,
       defaultTurnParams: {
         cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings),
+        approvalPolicy: this.mapApprovalPolicy(settings),
         sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
         effort: settings.effort,
         summary: settings.summary,
@@ -986,7 +1044,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
       input,
       settings: {
         cwd: settings.cwd,
-        approvalPolicy: mapApprovalPolicy(settings),
+        approvalPolicy: this.mapApprovalPolicy(settings),
         sandboxPolicy: mapSandboxToTurnSandboxPolicy(settings),
         effort: settings.effort,
         summary: settings.summary,

@@ -21,7 +21,7 @@ try {
   // Use the Codex flagship model to exercise extra-high reasoning effort.
   // Requires the validated Codex CLI 0.153.x line (gpt-6-astra exposes xhigh, max and ultra).
   const model = appServer('gpt-6-astra', {
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
     effort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
   });

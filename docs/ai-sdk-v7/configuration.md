@@ -15,15 +15,15 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 - `addDirs` (string[]): Additional directories Codex can read/write. Emits one `--add-dir <path>` per entry (useful in monorepos or when sharing resources across packages).
 - `color` ('always' | 'never' | 'auto'): Controls ANSI color emission.
 - `skipGitRepoCheck` (boolean): When true, passes `--skip-git-repo-check`.
-- `fullAuto` (boolean): Sets `--full-auto` (low-friction sandboxed execution).
+- `fullAuto` (boolean, **deprecated**): Codex CLI 0.147 removed `codex exec --full-auto`. The flag is now sugar for `sandboxMode: 'workspace-write'` (emitted as `-c sandbox_mode=workspace-write`); an explicit `sandboxMode` wins. Prefer `sandboxMode` directly.
 - `dangerouslyBypassApprovalsAndSandbox` (boolean): Maps to `--dangerously-bypass-approvals-and-sandbox`.
-- `approvalMode` ('untrusted' | 'on-failure' | 'on-request' | 'never'): Applied via `-c approval_policy=...`.
+- `approvalMode` ('untrusted' | 'on-request' | 'never'; `'on-failure'` deprecated): Applied via `-c approval_policy=...` (default `on-request`). `'on-failure'` was retired by Codex CLI 0.143 and is translated to `'on-request'` with a warning. Note that headless `codex exec` runs force `never` internally unless an automatic approvals reviewer is configured.
 - `sandboxMode` ('read-only' | 'workspace-write' | 'danger-full-access'): Applied via `-c sandbox_mode=...`.
 - `outputLastMessageFile` (string): File path to write the last agent message. If omitted, a temp file is created.
 - `env` (Record<string,string>): Extra env vars for the child process (e.g., `OPENAI_API_KEY`).
 - `verbose` (boolean): Enable verbose logging mode. When `true`, enables `debug` and `info` log levels. When `false` (default), only `warn` and `error` are logged.
 - `logger` (Logger | false): Custom logger object or `false` to disable logging entirely. Logger must implement four methods: `debug`, `info`, `warn`, and `error`. Default uses `console.*` methods.
-- `rmcpClient` (boolean): Enable the RMCP client so HTTP-based MCP servers can be reached (`-c features.rmcp_client=true`).
+- `rmcpClient` (boolean): Enable the RMCP client so HTTP-based MCP servers can be reached (`-c features.rmcp_client=true`). Current Codex CLIs (0.153.x) use the RMCP client unconditionally and no longer list this feature flag, so the override is a harmless no-op there; it is kept for older CLIs.
 - `mcpServers` (Record<string, McpServerConfig>): Define MCP servers (stdio or HTTP). Keys are server names; values follow the shapes below.
 
 ### Reasoning & Verbosity
@@ -153,10 +153,10 @@ await generateText({
 
 #### Core Settings
 
-- `approvalMode` → `-c approval_policy=<mode>`
+- `approvalMode` → `-c approval_policy=<mode>` (`on-failure` is sent as `on-request`)
 - `sandboxMode` → `-c sandbox_mode=<mode>`
 - `skipGitRepoCheck` → `--skip-git-repo-check`
-- `fullAuto` → `--full-auto`
+- `fullAuto` (deprecated) → `-c sandbox_mode=workspace-write` (Codex CLI 0.147 removed `--full-auto`)
 - `dangerouslyBypassApprovalsAndSandbox` → `--dangerously-bypass-approvals-and-sandbox`
 - `color` → `--color <always|never|auto>`
 - `outputLastMessageFile` → `--output-last-message <path>`
@@ -198,7 +198,7 @@ await generateText({
 - `personality` ('none' | 'friendly' | 'pragmatic'): Codex response personality.
 - `effort` ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'): Reasoning effort for the turn; see [Reasoning Precedence](#reasoning-precedence).
 - `summary` ('auto' | 'concise' | 'detailed' | 'none'): Reasoning summary level (app-server protocol accepts all four).
-- `approvalPolicy`: 'untrusted' | 'on-failure' | 'on-request' | 'never' or a protocol-shaped object.
+- `approvalPolicy`: 'untrusted' | 'on-request' | 'never' or the protocol-shaped `{ granular: { sandbox_approval, rules, mcp_elicitations, skill_approval?, request_permissions? } }` object (flags set to `true` are forwarded to your `serverRequests` handlers, `false` auto-rejects that category). `'on-failure'` and the legacy `{ reject: … }` form are deprecated: Codex app-server >= 0.144 rejects them, so the provider translates them (`'on-failure'` → `'on-request'`, `reject` → the equivalent inverted `granular`) and warns once per model.
 - `sandboxPolicy`: 'read-only' | 'workspace-write' | 'danger-full-access' or a protocol-shaped object (e.g. `{ type: 'externalSandbox', networkAccess: 'enabled' }`).
 - `baseInstructions` / `developerInstructions` (string): Instruction overrides passed to the thread.
 
@@ -300,11 +300,11 @@ await generateText({
 ## Defaults & Recommendations
 
 - Non‑interactive defaults (exec):
-  - `approvalMode: 'on-failure'`
+  - `approvalMode: 'on-request'`
   - `sandboxMode: 'workspace-write'`
   - `skipGitRepoCheck: true`
 - For strict automation in controlled environments:
-  - `fullAuto: true` OR `dangerouslyBypassApprovalsAndSandbox: true` (be careful!)
+  - `sandboxMode: 'workspace-write'` (what the deprecated `fullAuto: true` now means) OR `dangerouslyBypassApprovalsAndSandbox: true` (be careful!)
 - App-server: set `minCodexVersion` to the Codex CLI version you validated against, and always `await provider.close()`.
 
 ## JSON Mode

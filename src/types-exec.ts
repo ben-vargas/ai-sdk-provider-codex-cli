@@ -7,6 +7,12 @@ import type {
 export interface CodexExecSettings extends CodexSharedSettings {
   codexPath?: string;
   addDirs?: string[];
+  /**
+   * @deprecated Codex CLI 0.147 removed `codex exec --full-auto`. The flag is
+   * now sugar for `sandboxMode: 'workspace-write'` (emitted as
+   * `-c sandbox_mode=workspace-write`); an explicit `sandboxMode` wins. Prefer
+   * setting `sandboxMode` directly.
+   */
   fullAuto?: boolean;
   dangerouslyBypassApprovalsAndSandbox?: boolean;
   skipGitRepoCheck?: boolean;

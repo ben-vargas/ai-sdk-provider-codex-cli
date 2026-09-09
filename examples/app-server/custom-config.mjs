@@ -15,7 +15,7 @@ try {
     // Optional app-server style policy overrides:
     // approvalPolicy: 'on-request',
     // personality: 'pragmatic',
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   };
 

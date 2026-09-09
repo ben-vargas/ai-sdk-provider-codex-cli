@@ -8,8 +8,8 @@ const model = codexExec('gpt-6-astra', {
   cwd: process.cwd(),
   skipGitRepoCheck: true,
   // try fully autonomous mode (be careful):
-  // fullAuto: true,
-  approvalMode: 'on-failure',
+  // fullAuto: true, // deprecated since Codex CLI 0.147: same as sandboxMode: 'workspace-write'
+  approvalMode: 'on-request',
   sandboxMode: 'workspace-write',
   color: 'never',
 });

@@ -39,10 +39,12 @@ import {
 } from './config-key-utils.js';
 import {
   createEmptyCodexUsage,
+  isDeprecatedApprovalPolicyAlias,
   isPlainObject,
   mapCodexCliFinishReason,
   mapUnsupportedSettingsWarnings,
   mergeMcpServers,
+  normalizeApprovalPolicyAlias,
   safeStringify,
   sanitizeJsonSchema,
 } from './shared-utils.js';
@@ -66,7 +68,7 @@ interface ExperimentalJsonEvent {
   item?: {
     id?: string;
     item_type?: string; // Flattened from ConversationItemDetails
-    text?: string; // For assistant_message and reasoning items
+    text?: string; // For agent_message (legacy: assistant_message) and reasoning items
     [k: string]: unknown;
   };
   message?: string; // For error events
@@ -84,6 +86,14 @@ interface ActiveToolItem {
   toolName: string;
   inputPayload?: unknown;
   hasEmittedCall: boolean;
+}
+
+// `codex exec --json` serializes the agent's final message item as
+// `agent_message` (snake_case of the `AgentMessage` variant); older fixtures and
+// docs used `assistant_message`. Accept both so the JSONL stream is honored
+// instead of always falling back to the --output-last-message file.
+function isAgentMessageItemType(itemType: string | undefined): boolean {
+  return itemType === 'agent_message' || itemType === 'assistant_message';
 }
 
 // Codex reasoning effort levels; kept in compile-time sync with ReasoningEffort.
@@ -158,6 +168,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
   private logger: Logger;
   private sessionId?: string;
+  private readonly deprecationWarningsEmitted = new Set<string>();
 
   constructor(options: ExecLanguageModelOptions) {
     this.modelId = options.id;
@@ -169,6 +180,12 @@ export class ExecLanguageModel implements LanguageModelV4 {
     }
     const warn = validateModelId(this.modelId);
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
+  }
+
+  private warnDeprecatedOnce(key: string, message: string): void {
+    if (this.deprecationWarningsEmitted.has(key)) return;
+    this.deprecationWarningsEmitted.add(key);
+    this.logger.warn(`[codex-cli] ${message}`);
   }
 
   private mergeSettings(providerOptions?: CodexExecProviderOptions): CodexExecSettings {
@@ -231,13 +248,23 @@ export class ExecLanguageModel implements LanguageModelV4 {
     const base = resolveCodexPath(settings.codexPath, settings.allowNpx);
     const args: string[] = [...base.args, 'exec', '--experimental-json'];
 
-    // Approval/sandbox (exec subcommand does not accept -a/-s directly; use -c overrides)
-    if (settings.fullAuto) {
-      args.push('--full-auto');
-    } else if (settings.dangerouslyBypassApprovalsAndSandbox) {
+    // Approval/sandbox. `codex exec` does not accept `-a`, and Codex CLI 0.147
+    // removed `--full-auto` (its documented replacement is the workspace-write
+    // sandbox), so everything is expressed through `-c` config overrides.
+    // The deprecated `fullAuto` flag is sugar for `sandboxMode: 'workspace-write'`
+    // and keeps precedence over `dangerouslyBypassApprovalsAndSandbox` (see
+    // validateExecSettings). An explicit `sandboxMode` wins over `fullAuto`.
+    if (settings.dangerouslyBypassApprovalsAndSandbox && !settings.fullAuto) {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     } else {
-      const approval = settings.approvalMode ?? 'on-failure';
+      const requestedApproval = settings.approvalMode ?? 'on-request';
+      if (isDeprecatedApprovalPolicyAlias(requestedApproval)) {
+        this.warnDeprecatedOnce(
+          `approvalMode:${requestedApproval}`,
+          `approvalMode '${requestedApproval}' is deprecated (retired by Codex CLI 0.143); sending 'on-request' instead.`,
+        );
+      }
+      const approval = normalizeApprovalPolicyAlias(requestedApproval);
       args.push('-c', `approval_policy=${approval}`);
       const sandbox = settings.sandboxMode ?? 'workspace-write';
       args.push('-c', `sandbox_mode=${sandbox}`);
@@ -1092,7 +1119,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
           if (
             event.type === 'item.completed' &&
-            this.getItemType(item) === 'assistant_message' &&
+            isAgentMessageItemType(this.getItemType(item)) &&
             typeof item.text === 'string'
           ) {
             accumulatedText = item.text;

@@ -28,18 +28,52 @@ export type AppServerThreadMode = 'stateless' | 'persistent';
 export type AppServerPersonality = 'none' | 'friendly' | 'pragmatic';
 export type AppServerReasoningSummary = 'auto' | 'concise' | 'detailed' | 'none';
 
+/**
+ * Fine-grained approval controls (`AskForApproval::Granular` in the codex
+ * app-server v2 protocol; requires the experimental API, which this client
+ * always enables). When a flag is `true`, prompts of that category are shown
+ * to the client (via server requests); when `false`, they are auto-rejected.
+ */
+export interface AppServerApprovalGranular {
+  granular: {
+    sandbox_approval: boolean;
+    rules: boolean;
+    mcp_elicitations: boolean;
+    /** Defaults to `false` on the server when omitted. */
+    skill_approval?: boolean;
+    /** Defaults to `false` on the server when omitted. */
+    request_permissions?: boolean;
+  };
+}
+
+/**
+ * @deprecated Legacy `reject` form from Codex CLI ~0.105 (removed since
+ * 0.130). Flags are *inverted* relative to `granular` (`true` = auto-reject);
+ * the provider translates it to the equivalent `granular` policy and warns.
+ */
+export interface AppServerApprovalReject {
+  reject: {
+    sandbox_approval: boolean;
+    rules: boolean;
+    mcp_elicitations: boolean;
+  };
+}
+
+/**
+ * Approval policy sent on `thread/start`, `thread/resume` and `turn/start`.
+ *
+ * `'on-failure'` is deprecated: Codex CLI 0.143 retired it and app-server
+ * >= 0.144 rejects it (`-32600 unknown variant 'on-failure'`), so the
+ * provider translates it to `'on-request'` and warns once per model.
+ */
 export type AppServerApprovalPolicy =
   | 'untrusted'
-  | 'on-failure'
   | 'on-request'
   | 'never'
-  | {
-      reject: {
-        sandbox_approval: boolean;
-        rules: boolean;
-        mcp_elicitations: boolean;
-      };
-    };
+  | AppServerApprovalGranular
+  /** @deprecated Retired by Codex CLI 0.143; translated to `'on-request'`. */
+  | 'on-failure'
+  | AppServerApprovalReject;
 
 export type AppServerSandboxPolicy =
   | 'read-only'
