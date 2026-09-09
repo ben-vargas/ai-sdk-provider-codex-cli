@@ -32,10 +32,10 @@ async function main() {
   try {
     // Enable verbose logging to see debug and info messages
     const result = streamText({
-      model: codexExec('gpt-5.5', {
+      model: codexExec('gpt-6-astra', {
         allowNpx: true,
         skipGitRepoCheck: true,
-        approvalMode: 'on-failure',
+        approvalMode: 'on-request',
         sandboxMode: 'workspace-write',
         verbose: true, // Enable verbose logging
       }),

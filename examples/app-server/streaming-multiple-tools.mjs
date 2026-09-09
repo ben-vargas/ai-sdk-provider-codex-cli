@@ -7,14 +7,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const appServer = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.144.0',
+    minCodexVersion: '0.153.0',
     idleTimeoutMs: 30000,
     cwd: __dirname,
   },
 });
 
 try {
-  const model = appServer('gpt-5.5', {
+  const model = appServer('gpt-6-astra', {
     approvalPolicy: 'never',
     sandboxPolicy: { type: 'readOnly' },
     configOverrides: {

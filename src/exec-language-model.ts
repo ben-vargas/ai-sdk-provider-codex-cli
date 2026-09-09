@@ -28,7 +28,7 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger, createVerboseLogger } from './logger.js';
 import type { CodexExecProviderOptions, CodexExecSettings, Logger } from './types.js';
-import { mcpServersSchema, validateModelId } from './validation.js';
+import { mcpServersSchema, reasoningEffortSchema, validateModelId } from './validation.js';
 import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
@@ -39,10 +39,12 @@ import {
 } from './config-key-utils.js';
 import {
   createEmptyCodexUsage,
+  isDeprecatedApprovalPolicyAlias,
   isPlainObject,
   mapCodexCliFinishReason,
   mapUnsupportedSettingsWarnings,
   mergeMcpServers,
+  normalizeApprovalPolicyAlias,
   safeStringify,
   sanitizeJsonSchema,
 } from './shared-utils.js';
@@ -66,7 +68,7 @@ interface ExperimentalJsonEvent {
   item?: {
     id?: string;
     item_type?: string; // Flattened from ConversationItemDetails
-    text?: string; // For assistant_message and reasoning items
+    text?: string; // For agent_message (legacy: assistant_message) and reasoning items
     [k: string]: unknown;
   };
   message?: string; // For error events
@@ -86,6 +88,14 @@ interface ActiveToolItem {
   hasEmittedCall: boolean;
 }
 
+// `codex exec --json` serializes the agent's final message item as
+// `agent_message` (snake_case of the `AgentMessage` variant); older fixtures and
+// docs used `assistant_message`. Accept both so the JSONL stream is honored
+// instead of always falling back to the --output-last-message file.
+function isAgentMessageItemType(itemType: string | undefined): boolean {
+  return itemType === 'agent_message' || itemType === 'assistant_message';
+}
+
 // Codex reasoning effort levels; kept in compile-time sync with ReasoningEffort.
 const codexReasoningEfforts: Record<ReasoningEffort, true> = {
   none: true,
@@ -94,11 +104,13 @@ const codexReasoningEfforts: Record<ReasoningEffort, true> = {
   medium: true,
   high: true,
   xhigh: true,
+  max: true,
+  ultra: true,
 };
 
 const codexCliProviderOptionsSchema: z.ZodType<CodexExecProviderOptions> = z
   .object({
-    reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    reasoningEffort: reasoningEffortSchema.optional(),
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
@@ -158,6 +170,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
   private logger: Logger;
   private sessionId?: string;
+  private readonly deprecationWarningsEmitted = new Set<string>();
 
   constructor(options: ExecLanguageModelOptions) {
     this.modelId = options.id;
@@ -169,6 +182,12 @@ export class ExecLanguageModel implements LanguageModelV4 {
     }
     const warn = validateModelId(this.modelId);
     if (warn) this.logger.warn(`Codex CLI model: ${warn}`);
+  }
+
+  private warnDeprecatedOnce(key: string, message: string): void {
+    if (this.deprecationWarningsEmitted.has(key)) return;
+    this.deprecationWarningsEmitted.add(key);
+    this.logger.warn(`[codex-cli] ${message}`);
   }
 
   private mergeSettings(providerOptions?: CodexExecProviderOptions): CodexExecSettings {
@@ -231,13 +250,26 @@ export class ExecLanguageModel implements LanguageModelV4 {
     const base = resolveCodexPath(settings.codexPath, settings.allowNpx);
     const args: string[] = [...base.args, 'exec', '--experimental-json'];
 
-    // Approval/sandbox (exec subcommand does not accept -a/-s directly; use -c overrides)
-    if (settings.fullAuto) {
-      args.push('--full-auto');
-    } else if (settings.dangerouslyBypassApprovalsAndSandbox) {
+    // Approval/sandbox. `codex exec` does not accept `-a`, and Codex CLI 0.147
+    // removed `--full-auto` (its documented replacement is the workspace-write
+    // sandbox), so everything is expressed through `-c` config overrides.
+    // The deprecated `fullAuto` flag defaults the sandbox to 'workspace-write'
+    // and the approval policy to 'never' (what `--full-auto` pinned, even when
+    // `approvals_reviewer = "auto_review"` is configured), and keeps precedence
+    // over `dangerouslyBypassApprovalsAndSandbox` (see validateExecSettings).
+    // Explicit `sandboxMode` / `approvalMode` settings win over `fullAuto`.
+    if (settings.dangerouslyBypassApprovalsAndSandbox && !settings.fullAuto) {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     } else {
-      const approval = settings.approvalMode ?? 'on-failure';
+      const requestedApproval =
+        settings.approvalMode ?? (settings.fullAuto ? 'never' : 'on-request');
+      if (isDeprecatedApprovalPolicyAlias(requestedApproval)) {
+        this.warnDeprecatedOnce(
+          `approvalMode:${requestedApproval}`,
+          `approvalMode '${requestedApproval}' is deprecated (retired by Codex CLI 0.143); sending 'on-request' instead.`,
+        );
+      }
+      const approval = normalizeApprovalPolicyAlias(requestedApproval);
       args.push('-c', `approval_policy=${approval}`);
       const sandbox = settings.sandboxMode ?? 'workspace-write';
       args.push('-c', `sandbox_mode=${sandbox}`);
@@ -730,7 +762,11 @@ export class ExecLanguageModel implements LanguageModelV4 {
     });
   }
 
-  private handleSpawnError(err: unknown, promptExcerpt: string) {
+  // Converts a child-process spawn failure (e.g. ENOENT for a missing codex
+  // binary) into the error the stream should be rejected with. Returns rather
+  // than throws: it is called from inside the child's 'error' listener, where a
+  // throw would escape as an uncaught exception instead of settling the request.
+  private handleSpawnError(err: unknown, promptExcerpt: string): Error {
     const e =
       err && typeof err === 'object'
         ? (err as {
@@ -743,9 +779,9 @@ export class ExecLanguageModel implements LanguageModelV4 {
     const message = String((e?.message ?? err) || 'Failed to run Codex CLI');
     // crude auth detection
     if (/login|auth|unauthorized|not\s+logged/i.test(message)) {
-      throw createAuthenticationError(message);
+      return createAuthenticationError(message);
     }
-    throw createAPICallError({
+    return createAPICallError({
       message,
       code: typeof e?.code === 'string' ? e.code : undefined,
       exitCode: typeof e?.exitCode === 'number' ? e.exitCode : undefined,
@@ -1061,6 +1097,21 @@ export class ExecLanguageModel implements LanguageModelV4 {
         let lastUsage: LanguageModelV4Usage | undefined;
         let turnFailureMessage: string | undefined;
 
+        // Remove the provider-owned --output-last-message file (and the temp
+        // directory created for it). Safe to call repeatedly; never touches a
+        // caller-supplied outputLastMessageFile. Must run only after the final
+        // fallback read in finishStream, so it is wired into the child close /
+        // error paths rather than into cleanupTempFiles (which runs earlier).
+        const cleanupOwnedLastMessage = () => {
+          if (!lastMessageIsTemp || !lastMessagePath) return;
+          try {
+            rmSync(lastMessagePath, { force: true });
+          } catch {}
+          try {
+            rmSync(dirname(lastMessagePath), { recursive: true, force: true });
+          } catch {}
+        };
+
         // Define cleanup early so it's available for early abort
         const cleanupTempFiles = () => {
           // Clean up temp schema file
@@ -1092,7 +1143,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
           if (
             event.type === 'item.completed' &&
-            this.getItemType(item) === 'assistant_message' &&
+            isAgentMessageItemType(this.getItemType(item)) &&
             typeof item.text === 'string'
           ) {
             accumulatedText = item.text;
@@ -1162,9 +1213,15 @@ export class ExecLanguageModel implements LanguageModelV4 {
         };
         if (options.abortSignal) {
           if (options.abortSignal.aborted) {
+            // The normal close/error handlers are never registered on this
+            // path, so attach cleanup-only handlers first: the child may still
+            // write --output-last-message while it is being terminated.
+            child.on('close', cleanupOwnedLastMessage);
+            child.on('error', cleanupOwnedLastMessage);
             child.kill('SIGTERM');
             // Clean up temp files before returning
             cleanupTempFiles();
+            cleanupOwnedLastMessage();
             controller.error(options.abortSignal.reason ?? new Error('Request aborted'));
             return;
           }
@@ -1201,18 +1258,15 @@ export class ExecLanguageModel implements LanguageModelV4 {
             return;
           }
 
-          // Emit text (non-streaming JSONL suppresses deltas; we send final text once)
+          // Emit text (non-streaming JSONL suppresses deltas; we send final text once).
+          // The --output-last-message file is only a fallback for streams that
+          // carried no agent_message; the owned copy is removed by the close handler.
           let finalText = accumulatedText;
           if (!finalText && lastMessagePath) {
             try {
               const fileText = readFileSync(lastMessagePath, 'utf8');
               if (fileText) finalText = fileText.trim();
             } catch {}
-            if (lastMessageIsTemp) {
-              try {
-                rmSync(lastMessagePath, { force: true });
-              } catch {}
-            }
           }
 
           // No JSON extraction needed - native schema guarantees valid JSON
@@ -1315,6 +1369,7 @@ export class ExecLanguageModel implements LanguageModelV4 {
           this.logger.error(`[codex-cli] Stream spawn error: ${String(e)}`);
           if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
           cleanupTempFiles();
+          cleanupOwnedLastMessage();
           controller.error(this.handleSpawnError(e, promptExcerpt));
         });
         child.on('close', (code) => {
@@ -1325,12 +1380,18 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
           // Use setImmediate to ensure all stdout 'data' events are processed first
           setImmediate(() => {
-            // Flush any final JSONL line that arrived without a trailing newline
-            if (stdoutBuffer) {
-              processLine(stdoutBuffer);
-              stdoutBuffer = '';
+            try {
+              // Flush any final JSONL line that arrived without a trailing newline
+              if (stdoutBuffer) {
+                processLine(stdoutBuffer);
+                stdoutBuffer = '';
+              }
+              finishStream(code);
+            } finally {
+              // After the fallback read (success) or the error report (failure),
+              // the owned last-message file is no longer needed.
+              cleanupOwnedLastMessage();
             }
-            finishStream(code);
           });
         });
       },

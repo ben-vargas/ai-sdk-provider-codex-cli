@@ -85,10 +85,10 @@ async function main() {
 
   const codex = createCodexAppServer({
     defaultSettings: {
-      minCodexVersion: '0.144.0',
+      minCodexVersion: '0.153.0',
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
-      approvalPolicy: 'on-failure',
+      approvalPolicy: 'on-request',
       sandboxPolicy: { type: 'readOnly' },
       verbose: true,
     },
@@ -98,7 +98,7 @@ async function main() {
     console.log('Calling Codex CLI...\n');
 
     const result = await generateText({
-      model: codex('gpt-5.5'),
+      model: codex('gpt-6-astra'),
       instructions: FRONTEND_PROMPT,
       prompt: USER_PROMPT,
     });

@@ -2,13 +2,13 @@ import { streamText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.144.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
 });
 
 try {
-  const model = appServer('gpt-5.5', {
+  const model = appServer('gpt-6-astra', {
     includeRawChunks: true,
-    approvalPolicy: 'on-failure',
+    approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });
 

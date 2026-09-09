@@ -23,8 +23,15 @@
     "check-cli.mjs": { "mustInclude": ["app-server"] },
     "conversation-history.mjs": { "mustInclude": ["threadId"] },
     "generate-object-basic.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
+    "generate-object-advanced.mjs": {
+      "mustInclude": ["Advanced examples complete"],
+      "timeoutMs": 180000
+    },
     "generate-object-constraints.mjs": { "mustInclude": ["Done"] },
-    "generate-object-native-schema.mjs": { "mustInclude": ["Native schema showcase complete!"] },
+    "generate-object-native-schema.mjs": {
+      "mustInclude": ["Native schema showcase complete!"],
+      "timeoutMs": 120000
+    },
     "generate-object-nested.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
     "image-support.mjs": {
       "mustInclude": ["Example 2: streamText with Buffer", "Examples completed successfully!"],

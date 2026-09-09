@@ -44,11 +44,11 @@ export interface CodexAppServerProvider extends ProviderV4 {
  * @example
  * ```ts
  * const provider = createCodexAppServer({
- *   defaultSettings: { minCodexVersion: '0.144.0' },
+ *   defaultSettings: { minCodexVersion: '0.153.0' },
  * });
  *
  * try {
- *   const model = provider('gpt-5.3-codex');
+ *   const model = provider('gpt-6-astra');
  *   // use with generateText / streamText / generateObject
  * } finally {
  *   await provider.close();

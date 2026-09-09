@@ -465,3 +465,125 @@ describe('codex 0.142.5 protocol shapes', () => {
     }
   });
 });
+
+describe('codex 0.153.4 protocol shapes', () => {
+  // Every fixture below was captured from a real `codex app-server` 0.153.4
+  // turn on gpt-6-astra; only the cwd (/tmp/project) and the thread/turn/item
+  // identifiers were replaced with synthetic values of the same shape.
+  function loadFixture(name: string): { method: string; params: Record<string, unknown> } {
+    return JSON.parse(readFileSync(join(fixturesRoot, 'notifications', name), 'utf8')) as {
+      method: string;
+      params: Record<string, unknown>;
+    };
+  }
+
+  function parse(name: string) {
+    const fixture = loadFixture(name);
+    const schema = incomingNotificationSchemas[fixture.method];
+    expect(schema, `missing schema for ${fixture.method}`).toBeDefined();
+    const result = schema!.safeParse(fixture.params);
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true);
+    return result.success ? (result.data as Record<string, unknown>) : {};
+  }
+
+  it('parses thread/started with the 0.153 thread metadata (model, reasoningEffort, cliVersion)', () => {
+    const data = parse('thread-started-codex-0153.json');
+    const thread = data.thread as Record<string, unknown>;
+    expect(thread.model).toBe('gpt-6-astra');
+    expect(thread.reasoningEffort).toBe('xhigh');
+    expect(thread.cliVersion).toBe('0.153.4');
+    expect(thread.modelProvider).toBe('openai');
+  });
+
+  it('parses turn/started and turn/completed with itemsView/startedAt/durationMs', () => {
+    const started = parse('turn-started-codex-0153.json');
+    expect((started.turn as Record<string, unknown>).status).toBe('inProgress');
+    expect((started.turn as Record<string, unknown>).itemsView).toBe('notLoaded');
+
+    const completed = parse('turn-completed-codex-0153.json');
+    const turn = completed.turn as Record<string, unknown>;
+    expect(turn.status).toBe('completed');
+    expect(turn.itemsView).toBe('summary');
+    expect(typeof turn.durationMs).toBe('number');
+    const items = turn.items as Array<Record<string, unknown>>;
+    expect(items[0]?.type).toBe('agentMessage');
+    expect(items[0]?.text).toBe('pong');
+  });
+
+  it('parses agentMessage items carrying delivery/questions and completedAtMs', () => {
+    const data = parse('item-completed-agent-message-codex-0153.json');
+    const item = data.item as Record<string, unknown>;
+    expect(item.type).toBe('agentMessage');
+    expect(item.phase).toBe('final_answer');
+    expect(item.delivery).toBeNull();
+    expect(item.questions).toBeNull();
+    expect(typeof data.completedAtMs).toBe('number');
+  });
+
+  it('parses userMessage items started by the server (clientId, text_elements)', () => {
+    const data = parse('item-started-user-message-codex-0153.json');
+    const item = data.item as { type: string; content: Array<{ type: string }> };
+    expect(item.type).toBe('userMessage');
+    expect(item.content[0]?.type).toBe('text');
+    expect(typeof data.startedAtMs).toBe('number');
+  });
+
+  it('parses thread/tokenUsage/updated including cacheWriteInputTokens', () => {
+    const data = parse('token-usage-updated-codex-0153.json');
+    const usage = data.tokenUsage as { last: Record<string, number>; modelContextWindow: number };
+    expect(usage.last.inputTokens).toBe(16539);
+    expect(usage.last.cacheWriteInputTokens).toBe(0);
+    expect(usage.last.reasoningOutputTokens).toBe(0);
+    expect(usage.modelContextWindow).toBe(258400);
+  });
+
+  it('parses the 0.153 error codes without dropping the notification', () => {
+    const schema = incomingNotificationSchemas['error'];
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    for (const codexErrorInfo of [
+      'rateLimitExceeded',
+      'sessionBudgetExceeded',
+      'misalignmentPolicyViolation',
+    ]) {
+      const result = schema.safeParse({
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        willRetry: false,
+        error: {
+          message: `failed with ${codexErrorInfo}`,
+          codexErrorInfo,
+          additionalDetails: null,
+          misalignment: null,
+        },
+      });
+      expect(result.success, codexErrorInfo).toBe(true);
+    }
+  });
+
+  it('accepts the 0.153 approval policy variants on server request fixtures', () => {
+    const result = serverRequestSchema.safeParse({
+      id: 301,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'thr_1',
+        turnId: 'turn_1',
+        itemId: 'item_cmd_1',
+        environmentId: null,
+        startedAtMs: 1788939107841,
+        approvalId: null,
+        reason: null,
+        networkApprovalContext: null,
+        command: 'npm test',
+        cwd: '/tmp/project',
+        commandActions: [],
+        additionalPermissions: null,
+        proposedExecpolicyAmendment: null,
+        proposedNetworkPolicyAmendments: null,
+        availableDecisions: ['accept', 'acceptForSession', 'decline', 'cancel'],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});
