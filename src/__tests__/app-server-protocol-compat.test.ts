@@ -5,6 +5,7 @@ import {
   incomingNotificationSchemas,
   serverRequestSchema,
 } from '../app-server/protocol/validators.js';
+import type { CodexErrorInfo, TurnError } from '../app-server/protocol/types.js';
 
 const fixturesRoot = join(process.cwd(), 'src', '__tests__', 'fixtures', 'app-server-protocol');
 
@@ -535,6 +536,54 @@ describe('codex 0.153.4 protocol shapes', () => {
     expect(usage.last.cacheWriteInputTokens).toBe(0);
     expect(usage.last.reasoningOutputTokens).toBe(0);
     expect(usage.modelContextWindow).toBe(258400);
+  });
+
+  it('types the 0.153 error codes and forward-compat variants the validator accepts', () => {
+    // Compile-time: every value the schema admits must be representable without
+    // casts, and comparisons against the new codes must not be no-overlap errors.
+    const known: CodexErrorInfo[] = [
+      'rateLimitExceeded',
+      'sessionBudgetExceeded',
+      'misalignmentPolicyViolation',
+      'cyberPolicy',
+      { activeTurnNotSteerable: { turnKind: 'review' } },
+      { httpConnectionFailed: { httpStatusCode: 429 } },
+      'someFutureCode',
+    ];
+    // Compile-time: `in` guards on known object variants must keep narrowing
+    // their payload (an open object catch-all in the union would make these
+    // `unknown`, which is why the type has none).
+    const narrow = (info: CodexErrorInfo): number | string | null | undefined => {
+      if (typeof info === 'object' && 'httpConnectionFailed' in info) {
+        return info.httpConnectionFailed.httpStatusCode;
+      }
+      if (typeof info === 'object' && 'activeTurnNotSteerable' in info) {
+        return info.activeTurnNotSteerable.turnKind;
+      }
+      return undefined;
+    };
+    expect(narrow({ httpConnectionFailed: { httpStatusCode: 429 } })).toBe(429);
+    expect(narrow({ activeTurnNotSteerable: { turnKind: 'review' } })).toBe('review');
+    expect(narrow('rateLimitExceeded')).toBeUndefined();
+    const schema = incomingNotificationSchemas['turn/completed'];
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    for (const codexErrorInfo of known) {
+      const error: TurnError = { message: 'boom', codexErrorInfo, additionalDetails: null };
+      const parsed = schema.safeParse({
+        threadId: 'thr_1',
+        turn: { id: 'turn_1', items: [], status: 'failed', error },
+      });
+      expect(parsed.success, JSON.stringify(codexErrorInfo)).toBe(true);
+      if (parsed.success) {
+        const data = parsed.data as { turn: { error: TurnError } };
+        const roundTripped: CodexErrorInfo | null = data.turn.error.codexErrorInfo;
+        expect(roundTripped).toEqual(codexErrorInfo);
+        // Narrowing on a newly added literal compiles and behaves.
+        if (roundTripped === 'rateLimitExceeded') expect(codexErrorInfo).toBe('rateLimitExceeded');
+      }
+    }
   });
 
   it('parses the 0.153 error codes without dropping the notification', () => {
