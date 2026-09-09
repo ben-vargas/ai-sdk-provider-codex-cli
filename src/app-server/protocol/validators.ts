@@ -242,6 +242,7 @@ const codexErrorInfoSchema = z.union([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
+    'cyberPolicy',
     'internalServerError',
     'unauthorized',
     'badRequest',
@@ -253,6 +254,15 @@ const codexErrorInfoSchema = z.union([
   z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
   z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
+  z
+    .object({ activeTurnNotSteerable: z.object({ turnKind: z.string() }).passthrough() })
+    .passthrough(),
+  // Forward-compat catch-alls: consumers only compare against the known string
+  // codes above (unknown codes fall back to the generic error path), so a new
+  // errorInfo variant (e.g. the 0.153 `rateLimitExceeded`, `sessionBudgetExceeded`,
+  // `misalignmentPolicyViolation`) must never fail validation and drop the notification.
+  z.string(),
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const turnSchema = z

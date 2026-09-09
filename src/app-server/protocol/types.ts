@@ -139,7 +139,13 @@ export interface TurnStartParams {
   approvalPolicy?: unknown;
   sandboxPolicy?: unknown;
   model?: string | null;
-  effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+  /**
+   * Reasoning effort. Open-ended string upstream (`ReasoningEffort = string`
+   * in codex 0.153.4); known values include 'none', 'minimal', 'low',
+   * 'medium', 'high', 'xhigh', 'max', and 'ultra' (the last two since
+   * codex 0.149). Per-model availability comes from `model/list`.
+   */
+  effort?: string | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
   outputSchema?: unknown;
