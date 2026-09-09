@@ -201,9 +201,21 @@ export interface TurnStartParams {
   collaborationMode?: unknown;
 }
 
+/**
+ * `codexErrorInfo` carried by `TurnError` / `ErrorNotification`. Mirrors
+ * `codexErrorInfoSchema`: the known codes are listed for narrowing and
+ * autocompletion, and the trailing `string` / object members are the same
+ * forward-compat catch-alls the validator uses, so a newer Codex CLI can never
+ * produce a runtime value this type cannot represent (0.153 added
+ * `rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`).
+ * Compare against the known literals and treat anything else as a generic error.
+ */
 export type CodexErrorInfo =
   | 'contextWindowExceeded'
   | 'usageLimitExceeded'
+  | 'rateLimitExceeded'
+  | 'sessionBudgetExceeded'
+  | 'misalignmentPolicyViolation'
   | 'serverOverloaded'
   | 'cyberPolicy'
   | 'internalServerError'
@@ -216,7 +228,9 @@ export type CodexErrorInfo =
   | { responseStreamConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
   | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
-  | { activeTurnNotSteerable: { turnKind: 'review' | 'compact' } };
+  | { activeTurnNotSteerable: { turnKind: 'review' | 'compact' | (string & {}) } }
+  | (string & {})
+  | Record<string, unknown>;
 
 export interface TurnError {
   message: string;

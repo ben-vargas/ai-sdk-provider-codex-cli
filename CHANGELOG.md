@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-09-09
+
+### Fixed
+
+- The exported `CodexErrorInfo` type now matches what the app-server validator accepts: it lists the Codex 0.153 error codes (`rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`) alongside the existing ones and carries the same forward-compat `string` / object members as `codexErrorInfoSchema`, so consumers can represent and compare against newer codes without casts or no-overlap errors. The validator's enum lists the three new codes explicitly (they were already accepted through the catch-all). Same fix as shipped on the AI SDK v6 line in 1.4.0 (#45).
+
 ## [2.2.0] - 2026-09-09
 
 ### Changed
