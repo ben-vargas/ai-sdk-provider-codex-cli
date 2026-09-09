@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The exported `CodexErrorInfo` type now matches what the app-server validator accepts: it lists the Codex 0.153 error codes (`rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`) alongside the existing ones and carries the same forward-compat `string` / object members as `codexErrorInfoSchema`, so consumers can represent and compare against newer codes without casts or no-overlap errors. The validator's enum lists the three new codes explicitly (they were already accepted through the catch-all). Same fix as shipped on the AI SDK v6 line in 1.4.0 (#45).
+- The exported `CodexErrorInfo` type now matches the string codes the app-server validator accepts: it lists the Codex 0.153 error codes (`rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`) alongside the existing ones and carries the validator's forward-compat `(string & {})` member, so consumers can represent and compare against newer string codes without casts or no-overlap errors. Object variants stay explicitly enumerated (no open object catch-all) so `'httpConnectionFailed' in info` narrowing keeps working. The validator's enum lists the three new codes explicitly (they were already accepted through the catch-all).
 
 ## [2.2.0] - 2026-09-09
 

@@ -202,13 +202,21 @@ export interface TurnStartParams {
 }
 
 /**
- * `codexErrorInfo` carried by `TurnError` / `ErrorNotification`. Mirrors
- * `codexErrorInfoSchema`: the known codes are listed for narrowing and
- * autocompletion, and the trailing `string` / object members are the same
- * forward-compat catch-alls the validator uses, so a newer Codex CLI can never
- * produce a runtime value this type cannot represent (0.153 added
- * `rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`).
- * Compare against the known literals and treat anything else as a generic error.
+ * `codexErrorInfo` carried by `TurnError` / `ErrorNotification`.
+ *
+ * The known string codes are listed for narrowing and autocompletion, and the
+ * trailing `(string & {})` member mirrors the validator's forward-compat
+ * `z.string()` catch-all, so a newer Codex CLI's string codes (0.153 added
+ * `rateLimitExceeded`, `sessionBudgetExceeded`, `misalignmentPolicyViolation`)
+ * are always representable and comparable without casts. Compare against the
+ * known literals and treat anything else as a generic error.
+ *
+ * Object variants are enumerated explicitly and deliberately NOT given an open
+ * `Record<string, unknown>` catch-all: an index-signature member would turn
+ * `'httpConnectionFailed' in info` narrowing into `unknown` and break
+ * `info.httpConnectionFailed.httpStatusCode` for every consumer. The validator
+ * still accepts unknown object variants at runtime; they surface through the
+ * generic error path and are added here when upstream defines them.
  */
 export type CodexErrorInfo =
   | 'contextWindowExceeded'
@@ -229,8 +237,7 @@ export type CodexErrorInfo =
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
   | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
   | { activeTurnNotSteerable: { turnKind: 'review' | 'compact' | (string & {}) } }
-  | (string & {})
-  | Record<string, unknown>;
+  | (string & {});
 
 export interface TurnError {
   message: string;

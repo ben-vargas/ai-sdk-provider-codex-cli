@@ -547,9 +547,24 @@ describe('codex 0.153.4 protocol shapes', () => {
       'misalignmentPolicyViolation',
       'cyberPolicy',
       { activeTurnNotSteerable: { turnKind: 'review' } },
+      { httpConnectionFailed: { httpStatusCode: 429 } },
       'someFutureCode',
-      { someFutureVariant: { detail: 1 } },
     ];
+    // Compile-time: `in` guards on known object variants must keep narrowing
+    // their payload (an open object catch-all in the union would make these
+    // `unknown`, which is why the type has none).
+    const narrow = (info: CodexErrorInfo): number | string | null | undefined => {
+      if (typeof info === 'object' && 'httpConnectionFailed' in info) {
+        return info.httpConnectionFailed.httpStatusCode;
+      }
+      if (typeof info === 'object' && 'activeTurnNotSteerable' in info) {
+        return info.activeTurnNotSteerable.turnKind;
+      }
+      return undefined;
+    };
+    expect(narrow({ httpConnectionFailed: { httpStatusCode: 429 } })).toBe(429);
+    expect(narrow({ activeTurnNotSteerable: { turnKind: 'review' } })).toBe('review');
+    expect(narrow('rateLimitExceeded')).toBeUndefined();
     const schema = incomingNotificationSchemas['turn/completed'];
     expect(schema).toBeDefined();
     if (!schema) return;
