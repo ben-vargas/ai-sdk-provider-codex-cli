@@ -186,7 +186,7 @@ The provider applies safe defaults for non‑interactive execution. You can over
 
 - `dangerouslyBypassApprovalsAndSandbox: true` → `--dangerously-bypass-approvals-and-sandbox` (exec)
 - Otherwise, the exec provider writes config overrides: `-c approval_policy=...` and `-c sandbox_mode=...` (defaults `on-request` / `workspace-write`); the app-server provider passes `approvalPolicy` / `sandboxPolicy` on the thread.
-- `fullAuto: true` (exec) is deprecated: Codex CLI 0.147 removed `--full-auto`, so it now means `sandboxMode: 'workspace-write'`.
+- `fullAuto: true` (exec) is deprecated: Codex CLI 0.147 removed `--full-auto`, so it now defaults to `sandboxMode: 'workspace-write'` plus `approvalMode: 'never'` (explicit settings win; it still suppresses `dangerouslyBypassApprovalsAndSandbox`).
 - `'on-failure'` (exec `approvalMode` / app-server `approvalPolicy`) is deprecated: Codex CLI 0.143 retired it (the app-server rejects it), so the provider sends `'on-request'` instead and warns.
 
 Recommended defaults for CI/local automation:

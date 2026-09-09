@@ -14,17 +14,23 @@ describe('validateSettings', () => {
     expect(res.warnings.length).toBeGreaterThan(0);
   });
 
-  it('warns that fullAuto is deprecated and maps to workspace-write', () => {
+  it('warns that fullAuto is deprecated and defaults to workspace-write + never', () => {
     const res = validateSettings({ fullAuto: true });
     expect(res.valid).toBe(true);
     expect(res.warnings.some((w) => /fullAuto is deprecated/.test(w))).toBe(true);
     expect(res.warnings.some((w) => /workspace-write/.test(w))).toBe(true);
+    expect(res.warnings.some((w) => /approvalMode to 'never'/.test(w))).toBe(true);
   });
 
-  it('warns when fullAuto conflicts with an explicit sandboxMode', () => {
+  it('warns that only the sandbox mapping is ignored when fullAuto meets an explicit sandboxMode', () => {
     const res = validateSettings({ fullAuto: true, sandboxMode: 'read-only' });
     expect(res.valid).toBe(true);
-    expect(res.warnings.some((w) => /ignored because sandboxMode 'read-only'/.test(w))).toBe(true);
+    const w = res.warnings.find((m) =>
+      /sandbox mapping is ignored because sandboxMode 'read-only'/.test(m),
+    );
+    expect(w).toBeDefined();
+    expect(w).toMatch(/approvalMode 'never' default/);
+    expect(w).toMatch(/precedence over dangerouslyBypassApprovalsAndSandbox/);
   });
 
   it('accepts the deprecated approvalMode on-failure with a warning', () => {

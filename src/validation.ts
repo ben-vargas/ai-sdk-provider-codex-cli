@@ -348,11 +348,11 @@ export function validateExecSettings(settings: unknown): {
   }
   if (s.fullAuto && s.sandboxMode !== undefined && s.sandboxMode !== 'workspace-write') {
     warnings.push(
-      `fullAuto is deprecated (Codex CLI 0.147 removed --full-auto) and is ignored because sandboxMode '${s.sandboxMode}' is set explicitly.`,
+      `fullAuto is deprecated (Codex CLI 0.147 removed --full-auto); its sandbox mapping is ignored because sandboxMode '${s.sandboxMode}' is set explicitly (its approvalMode 'never' default and its precedence over dangerouslyBypassApprovalsAndSandbox still apply).`,
     );
   } else if (s.fullAuto) {
     warnings.push(
-      "fullAuto is deprecated (Codex CLI 0.147 removed --full-auto); it now maps to sandboxMode 'workspace-write'.",
+      "fullAuto is deprecated (Codex CLI 0.147 removed --full-auto); it now defaults sandboxMode to 'workspace-write' and approvalMode to 'never' unless those are set explicitly.",
     );
   }
   if (isDeprecatedApprovalPolicyAlias(s.approvalMode)) {

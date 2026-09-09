@@ -552,7 +552,7 @@ export class AppServerRpcClient extends EventEmitter {
       if (raw.includes('unknown subcommand') || this.lastStderr.includes('unknown subcommand')) {
         throw new Error(
           this.withStderrTail(
-            `codex app-server requires codex CLI >= ${DEFAULT_MIN_CODEX_VERSION}. Run 'codex --version' to check.`,
+            `codex app-server requires codex CLI >= ${this.settings.minCodexVersion ?? DEFAULT_MIN_CODEX_VERSION}. Run 'codex --version' to check.`,
           ),
         );
       }

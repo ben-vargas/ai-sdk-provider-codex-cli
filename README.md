@@ -355,7 +355,7 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
 - Autonomy/sandbox:
   - `dangerouslyBypassApprovalsAndSandbox` (bypass approvals and sandbox; dangerous)
   - Otherwise the provider writes `-c approval_policy=...` and `-c sandbox_mode=...` for you; defaults to `on-request` and `workspace-write`. `approvalMode: 'on-failure'` is deprecated (Codex CLI 0.143 retired it) and is sent as `on-request`
-  - `fullAuto` is deprecated: Codex CLI 0.147 removed `codex exec --full-auto`, so the flag now just means `sandboxMode: 'workspace-write'` (an explicit `sandboxMode` wins)
+  - `fullAuto` is deprecated: Codex CLI 0.147 removed `codex exec --full-auto`. The flag now defaults to `sandboxMode: 'workspace-write'` and `approvalMode: 'never'` (what `--full-auto` pinned); explicit `sandboxMode` / `approvalMode` win, and it still suppresses `dangerouslyBypassApprovalsAndSandbox`. To migrate, set both settings explicitly and drop the bypass flag if it was configured alongside
 - `skipGitRepoCheck`: on by default (pass `false` to keep Codex's git-repo check for CI/non‑repo safety)
 - `color`: `always` | `never` | `auto`
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably

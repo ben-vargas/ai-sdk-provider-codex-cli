@@ -15,7 +15,7 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 - `addDirs` (string[]): Additional directories Codex can read/write. Emits one `--add-dir <path>` per entry (useful in monorepos or when sharing resources across packages).
 - `color` ('always' | 'never' | 'auto'): Controls ANSI color emission.
 - `skipGitRepoCheck` (boolean): When true, passes `--skip-git-repo-check`.
-- `fullAuto` (boolean, **deprecated**): Codex CLI 0.147 removed `codex exec --full-auto`. The flag is now sugar for `sandboxMode: 'workspace-write'` (emitted as `-c sandbox_mode=workspace-write`); an explicit `sandboxMode` wins. Prefer `sandboxMode` directly.
+- `fullAuto` (boolean, **deprecated**): Codex CLI 0.147 removed `codex exec --full-auto`. The flag now defaults the emitted sandbox to `workspace-write` (`-c sandbox_mode=workspace-write`) and the approval policy to `never` (`-c approval_policy=never`, what `--full-auto` pinned even with `approvals_reviewer = "auto_review"`). Explicit `sandboxMode` / `approvalMode` (including provider `defaultSettings`) win, a later `configOverrides.approval_policy` can replace the emitted policy, and `fullAuto` still suppresses `dangerouslyBypassApprovalsAndSandbox`. To migrate, set `sandboxMode: 'workspace-write'` and `approvalMode: 'never'` and drop the bypass flag if it was configured alongside.
 - `dangerouslyBypassApprovalsAndSandbox` (boolean): Maps to `--dangerously-bypass-approvals-and-sandbox`.
 - `approvalMode` ('untrusted' | 'on-request' | 'never'; `'on-failure'` deprecated): Applied via `-c approval_policy=...` (default `on-request`). `'on-failure'` was retired by Codex CLI 0.143 and is translated to `'on-request'` with a warning. Note that headless `codex exec` runs force `never` internally unless an automatic approvals reviewer is configured.
 - `sandboxMode` ('read-only' | 'workspace-write' | 'danger-full-access'): Applied via `-c sandbox_mode=...`.
@@ -157,7 +157,7 @@ await generateText({
 - `approvalMode` → `-c approval_policy=<mode>` (`on-failure` is sent as `on-request`)
 - `sandboxMode` → `-c sandbox_mode=<mode>`
 - `skipGitRepoCheck` → `--skip-git-repo-check`
-- `fullAuto` (deprecated) → `-c sandbox_mode=workspace-write` (Codex CLI 0.147 removed `--full-auto`)
+- `fullAuto` (deprecated) → `-c approval_policy=never` + `-c sandbox_mode=workspace-write` defaults (Codex CLI 0.147 removed `--full-auto`; explicit `approvalMode` / `sandboxMode` win)
 - `dangerouslyBypassApprovalsAndSandbox` → `--dangerously-bypass-approvals-and-sandbox`
 - `color` → `--color <always|never|auto>`
 - `outputLastMessageFile` → `--output-last-message <path>`
@@ -305,7 +305,7 @@ await generateText({
   - `sandboxMode: 'workspace-write'`
   - `skipGitRepoCheck: true`
 - For strict automation in controlled environments:
-  - `sandboxMode: 'workspace-write'` (what the deprecated `fullAuto: true` now means) OR `dangerouslyBypassApprovalsAndSandbox: true` (be careful!)
+  - `sandboxMode: 'workspace-write'` + `approvalMode: 'never'` (what the deprecated `fullAuto: true` now defaults to) OR `dangerouslyBypassApprovalsAndSandbox: true` (be careful!)
 - App-server: set `minCodexVersion` to the Codex CLI version you validated against, and always `await provider.close()`.
 
 ## JSON Mode

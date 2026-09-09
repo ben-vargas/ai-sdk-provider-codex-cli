@@ -497,11 +497,12 @@ describe('CodexCliLanguageModel', () => {
     });
     await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-    // Codex CLI 0.147 removed `codex exec --full-auto`; fullAuto is now sugar for
-    // sandboxMode: 'workspace-write' expressed through the regular -c overrides.
+    // Codex CLI 0.147 removed `codex exec --full-auto`; fullAuto now defaults
+    // to the workspace-write sandbox and the approval policy 'never' it used
+    // to pin, expressed through the regular -c overrides.
     expect(lastArgs).not.toContain('--full-auto');
     expect(lastArgs).toContain('sandbox_mode=workspace-write');
-    expect(lastArgs).toContain('approval_policy=on-request');
+    expect(lastArgs).toContain('approval_policy=never');
   });
 
   it('defaults to approval_policy=on-request and sandbox_mode=workspace-write', async () => {

@@ -8,10 +8,16 @@ export interface CodexExecSettings extends CodexSharedSettings {
   codexPath?: string;
   addDirs?: string[];
   /**
-   * @deprecated Codex CLI 0.147 removed `codex exec --full-auto`. The flag is
-   * now sugar for `sandboxMode: 'workspace-write'` (emitted as
-   * `-c sandbox_mode=workspace-write`); an explicit `sandboxMode` wins. Prefer
-   * setting `sandboxMode` directly.
+   * @deprecated Codex CLI 0.147 removed `codex exec --full-auto`. The flag now
+   * defaults the emitted sandbox to `workspace-write` and the approval policy
+   * to `never` (what `--full-auto` pinned, even with
+   * `approvals_reviewer = "auto_review"` configured). Explicit `sandboxMode` /
+   * `approvalMode` settings (including provider `defaultSettings`) win over
+   * those defaults, and a later `configOverrides.approval_policy` can replace
+   * the emitted policy. `fullAuto` still suppresses
+   * `dangerouslyBypassApprovalsAndSandbox`. To migrate, set both
+   * `sandboxMode: 'workspace-write'` and `approvalMode: 'never'`, and drop
+   * `dangerouslyBypassApprovalsAndSandbox` if it was configured alongside.
    */
   fullAuto?: boolean;
   dangerouslyBypassApprovalsAndSandbox?: boolean;
