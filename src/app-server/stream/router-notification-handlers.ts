@@ -1,6 +1,11 @@
 import { generateId } from '@ai-sdk/provider-utils';
 import type { LanguageModelV4Usage } from '@ai-sdk/provider';
-import type { ThreadItem, ThreadTokenUsageUpdatedNotification, Turn } from '../protocol/types.js';
+import type {
+  ThreadItem,
+  ThreadTokenUsageUpdatedNotification,
+  TokenUsageBreakdown,
+  Turn,
+} from '../protocol/types.js';
 import { safeStringify } from '../../shared-utils.js';
 import type { AppServerStreamEmitter } from './emitter.js';
 import type { ToolTracker } from './tool-tracker.js';
@@ -56,6 +61,49 @@ function mapTool(item: ThreadItem): { toolName: string; dynamic?: boolean } | un
   return undefined;
 }
 
+function hasModelTokens(usage: TokenUsageBreakdown): boolean {
+  return usage.inputTokens > 0 || usage.outputTokens > 0;
+}
+
+/**
+ * Returns the usage a `thread/tokenUsage/updated` notification adds to the
+ * turn, or `undefined` when it adds none.
+ *
+ * Codex emits the notification after each model response, but also re-emits
+ * its current snapshot without new usage (rate-limit-only updates, a response
+ * stream that fails before completing), reports compaction estimates as a
+ * `last` with zero input/output, and resets `total` when the context window
+ * fills. So `last` is only trusted when there is no previous cumulative
+ * snapshot to compare against; otherwise the increment is how far the
+ * cumulative `total` advanced.
+ */
+function resolveTokenUsageIncrement(
+  last: TokenUsageBreakdown,
+  total: TokenUsageBreakdown | undefined,
+  previousTotal: TokenUsageBreakdown | undefined,
+): TokenUsageBreakdown | undefined {
+  if (!total || !previousTotal) {
+    return hasModelTokens(last) ? last : undefined;
+  }
+
+  const delta = (current: number, previous: number | undefined): number =>
+    Math.max(0, current - (previous ?? 0));
+  const increment: TokenUsageBreakdown = {
+    totalTokens: delta(total.totalTokens, previousTotal.totalTokens),
+    inputTokens: delta(total.inputTokens, previousTotal.inputTokens),
+    cachedInputTokens: delta(total.cachedInputTokens, previousTotal.cachedInputTokens),
+    outputTokens: delta(total.outputTokens, previousTotal.outputTokens),
+    reasoningOutputTokens: delta(total.reasoningOutputTokens, previousTotal.reasoningOutputTokens),
+  };
+  if (typeof total.cacheWriteInputTokens === 'number') {
+    increment.cacheWriteInputTokens = delta(
+      total.cacheWriteInputTokens,
+      previousTotal.cacheWriteInputTokens,
+    );
+  }
+  return hasModelTokens(increment) ? increment : undefined;
+}
+
 export interface NotificationHandlerContext {
   emitter: AppServerStreamEmitter;
   toolTracker: ToolTracker;
@@ -66,6 +114,8 @@ export interface NotificationHandlerContext {
   onError: (error: Error) => void;
   isSameTurn: (params: Record<string, unknown>) => boolean;
   getBoundTurnId: () => string | undefined;
+  /** Thread's cumulative token usage before `turnId` started, when known. */
+  getTokenUsageTotalBeforeTurn: (turnId: string) => TokenUsageBreakdown | undefined;
 }
 
 export type NotificationHandler = (params: Record<string, unknown>) => void;
@@ -73,6 +123,10 @@ export type NotificationHandler = (params: Record<string, unknown>) => void;
 export function createNotificationHandlers(
   context: NotificationHandlerContext,
 ): Record<string, NotificationHandler> {
+  // Cumulative snapshot the next usage notification is measured against.
+  let previousTokenUsageTotal: TokenUsageBreakdown | undefined;
+  let tokenUsageBaselineResolved = false;
+
   const handleReasoningDelta =
     (isSummary: boolean): NotificationHandler =>
     (params) => {
@@ -187,23 +241,39 @@ export function createNotificationHandlers(
       const event = params as unknown as ThreadTokenUsageUpdatedNotification;
       const last = event.tokenUsage?.last;
       if (!last) return;
+      const total = event.tokenUsage?.total;
 
-      // `last` is this single model response; the turn controller sums them.
+      if (!tokenUsageBaselineResolved) {
+        tokenUsageBaselineResolved = true;
+        const turnId = context.getBoundTurnId() ?? event.turnId;
+        previousTokenUsageTotal =
+          typeof turnId === 'string' ? context.getTokenUsageTotalBeforeTurn(turnId) : undefined;
+      }
+      const increment = resolveTokenUsageIncrement(last, total, previousTokenUsageTotal);
+      if (total) previousTokenUsageTotal = total;
+      if (!increment) return;
+
+      // The increment is this notification's new usage; the turn controller sums them.
       const cacheWrite =
-        typeof last.cacheWriteInputTokens === 'number' ? last.cacheWriteInputTokens : undefined;
+        typeof increment.cacheWriteInputTokens === 'number'
+          ? increment.cacheWriteInputTokens
+          : undefined;
       context.onUsage({
         inputTokens: {
-          total: last.inputTokens,
-          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens - (cacheWrite ?? 0)),
-          cacheRead: last.cachedInputTokens,
+          total: increment.inputTokens,
+          noCache: Math.max(
+            0,
+            increment.inputTokens - increment.cachedInputTokens - (cacheWrite ?? 0),
+          ),
+          cacheRead: increment.cachedInputTokens,
           cacheWrite,
         },
         outputTokens: {
-          total: last.outputTokens,
+          total: increment.outputTokens,
           text: undefined,
-          reasoning: last.reasoningOutputTokens,
+          reasoning: increment.reasoningOutputTokens,
         },
-        raw: (last as unknown as import('@ai-sdk/provider').JSONObject) ?? undefined,
+        raw: { ...increment } as unknown as import('@ai-sdk/provider').JSONObject,
       });
     },
     'turn/completed': (params) => {

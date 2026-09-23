@@ -230,6 +230,46 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('tracks the latest token usage total per thread for turn baselines', async () => {
+    const { child, emitServerMessage } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const usage = (inputTokens: number) => ({
+      totalTokens: inputTokens + 1,
+      inputTokens,
+      cachedInputTokens: 0,
+      outputTokens: 1,
+      reasoningOutputTokens: 0,
+    });
+    const update = (threadId: string, turnId: string, inputTokens: number) =>
+      emitServerMessage({
+        method: 'thread/tokenUsage/updated',
+        params: {
+          threadId,
+          turnId,
+          tokenUsage: { total: usage(inputTokens), last: usage(1), modelContextWindow: null },
+        },
+      });
+
+    // Restored snapshot replayed on resume, then two updates from the new turn.
+    update('thr_a', 'turn_restored', 500);
+    update('thr_a', 'turn_new', 600);
+    update('thr_a', 'turn_new', 700);
+    update('thr_b', 'turn_other', 50);
+    await flush();
+
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_new')?.inputTokens).toBe(500);
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_next')?.inputTokens).toBe(700);
+    expect(client.getTokenUsageTotalBeforeTurn('thr_b', 'turn_other')).toBeUndefined();
+    expect(client.getTokenUsageTotalBeforeTurn('thr_missing', 'turn_x')).toBeUndefined();
+
+    await client.close();
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_next')).toBeUndefined();
+  });
+
   it('drops invalid notifications for known methods', async () => {
     const { child, emitServerMessage } = createMockProcess();
     setSpawnMock(() => child);

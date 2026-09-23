@@ -425,61 +425,162 @@ describe('AppServerNotificationRouter', () => {
     router.unsubscribe();
   });
 
-  it('maps cacheWriteInputTokens when reported and leaves it undefined when absent', () => {
-    const client = new FakeClient();
-    const { controller } = createCapture();
-    const emitter = new AppServerStreamEmitter(controller, {
-      modelId: 'gpt-5.3-codex',
-      threadId: 'thr_cw',
-    });
-
-    const received: LanguageModelV4Usage[] = [];
-    const router = new AppServerNotificationRouter({
-      client: client as never,
-      emitter,
-      threadId: 'thr_cw',
-      onUsage: (nextUsage) => {
-        received.push(nextUsage);
-      },
-      onTurnCompleted: () => undefined,
-      onError: () => undefined,
-    });
-
-    router.setTurnId('turn_cw');
-    router.subscribe();
-
-    const breakdown = {
-      totalTokens: 110,
-      inputTokens: 100,
-      cachedInputTokens: 60,
-      outputTokens: 10,
-      reasoningOutputTokens: 0,
+  describe('token usage increments', () => {
+    type Breakdown = {
+      totalTokens: number;
+      inputTokens: number;
+      cachedInputTokens: number;
+      cacheWriteInputTokens?: number;
+      outputTokens: number;
+      reasoningOutputTokens: number;
     };
-    client.emit('notification', 'thread/tokenUsage/updated', {
-      threadId: 'thr_cw',
-      turnId: 'turn_cw',
-      tokenUsage: { total: breakdown, last: { ...breakdown, cacheWriteInputTokens: 30 } },
-    });
-    client.emit('notification', 'thread/tokenUsage/updated', {
-      threadId: 'thr_cw',
-      turnId: 'turn_cw',
-      tokenUsage: { total: breakdown, last: breakdown },
+
+    const breakdown = (
+      inputTokens: number,
+      cachedInputTokens: number,
+      outputTokens: number,
+      extra: Partial<Breakdown> = {},
+    ): Breakdown => ({
+      totalTokens: inputTokens + outputTokens,
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      reasoningOutputTokens: 0,
+      ...extra,
     });
 
-    expect(received[0]?.inputTokens).toEqual({
-      total: 100,
-      noCache: 10,
-      cacheRead: 60,
-      cacheWrite: 30,
-    });
-    expect(received[1]?.inputTokens).toEqual({
-      total: 100,
-      noCache: 40,
-      cacheRead: 60,
-      cacheWrite: undefined,
+    function setup(baseline?: Breakdown) {
+      const client = new FakeClient() as FakeClient & {
+        getTokenUsageTotalBeforeTurn?: (threadId: string, turnId: string) => Breakdown | undefined;
+      };
+      const baselineCalls: Array<[string, string]> = [];
+      if (baseline) {
+        client.getTokenUsageTotalBeforeTurn = (threadId, turnId) => {
+          baselineCalls.push([threadId, turnId]);
+          return baseline;
+        };
+      }
+      const { controller } = createCapture();
+      const emitter = new AppServerStreamEmitter(controller, {
+        modelId: 'gpt-5.3-codex',
+        threadId: 'thr_inc',
+      });
+      const received: LanguageModelV4Usage[] = [];
+      const router = new AppServerNotificationRouter({
+        client: client as never,
+        emitter,
+        threadId: 'thr_inc',
+        onUsage: (nextUsage) => {
+          received.push(nextUsage);
+        },
+        onTurnCompleted: () => undefined,
+        onError: () => undefined,
+      });
+      router.setTurnId('turn_inc');
+      router.subscribe();
+      const update = (total: Breakdown, last: Breakdown) =>
+        client.emit('notification', 'thread/tokenUsage/updated', {
+          threadId: 'thr_inc',
+          turnId: 'turn_inc',
+          tokenUsage: { total, last, modelContextWindow: null },
+        });
+      return { router, received, update, baselineCalls };
+    }
+
+    it('maps cacheWriteInputTokens when reported and leaves it undefined when absent', () => {
+      const withCacheWrite = setup();
+      const first = breakdown(100, 60, 10, { cacheWriteInputTokens: 30 });
+      withCacheWrite.update(first, first);
+      expect(withCacheWrite.received[0]?.inputTokens).toEqual({
+        total: 100,
+        noCache: 10,
+        cacheRead: 60,
+        cacheWrite: 30,
+      });
+      withCacheWrite.router.unsubscribe();
+
+      const withoutCacheWrite = setup();
+      const plain = breakdown(100, 60, 10);
+      withoutCacheWrite.update(plain, plain);
+      expect(withoutCacheWrite.received[0]?.inputTokens).toEqual({
+        total: 100,
+        noCache: 40,
+        cacheRead: 60,
+        cacheWrite: undefined,
+      });
+      withoutCacheWrite.router.unsubscribe();
     });
 
-    router.unsubscribe();
+    it('counts distinct responses with identical breakdowns', () => {
+      const { router, received, update } = setup();
+      const response = breakdown(100, 50, 10);
+      update(breakdown(100, 50, 10), response);
+      update(breakdown(200, 100, 20), response);
+      expect(received.map((usage) => usage.inputTokens.total)).toEqual([100, 100]);
+      router.unsubscribe();
+    });
+
+    it('ignores re-emitted snapshots that add no new usage', () => {
+      // e.g. rate limits arrive, then the response stream fails and is retried.
+      const { router, received, update } = setup();
+      const response = breakdown(100, 50, 10);
+      update(breakdown(100, 50, 10), response);
+      update(breakdown(100, 50, 10), response);
+      update(breakdown(250, 150, 30), breakdown(150, 100, 20));
+      expect(received.map((usage) => usage.inputTokens.total)).toEqual([100, 150]);
+      expect(received.map((usage) => usage.outputTokens.total)).toEqual([10, 20]);
+      router.unsubscribe();
+    });
+
+    it('ignores compaction estimates that carry no input or output tokens', () => {
+      const { router, received, update } = setup();
+      update(breakdown(100, 50, 10), breakdown(100, 50, 10));
+      update(breakdown(100, 50, 10), {
+        totalTokens: 42,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+      });
+      expect(received).toHaveLength(1);
+      expect(received[0]?.raw).toMatchObject({ totalTokens: 110 });
+      router.unsubscribe();
+    });
+
+    it('ignores a compaction estimate reported before any response', () => {
+      const { router, received, update } = setup();
+      update(breakdown(0, 0, 0, { totalTokens: 5000 }), breakdown(0, 0, 0, { totalTokens: 5000 }));
+      expect(received).toHaveLength(0);
+      router.unsubscribe();
+    });
+
+    it('recovers after Codex resets the cumulative total to fill the context window', () => {
+      const { router, received, update } = setup();
+      update(breakdown(100, 50, 10), breakdown(100, 50, 10));
+      const filled = { ...breakdown(0, 0, 0), totalTokens: 258_400 };
+      update(filled, { ...breakdown(0, 0, 0), totalTokens: 258_290 });
+      update({ ...breakdown(80, 40, 5), totalTokens: 258_485 }, breakdown(80, 40, 5));
+      expect(received.map((usage) => usage.inputTokens.total)).toEqual([100, 80]);
+      router.unsubscribe();
+    });
+
+    it('measures a resumed turn against the thread total from before the turn', () => {
+      const previousTurnTotal = breakdown(1000, 800, 50);
+      const { router, received, update, baselineCalls } = setup(previousTurnTotal);
+      // Stale snapshot re-emitted under the new turn id before its first response completes.
+      update(previousTurnTotal, breakdown(400, 300, 20));
+      update(breakdown(1150, 900, 70), breakdown(150, 100, 20));
+      expect(baselineCalls).toEqual([['thr_inc', 'turn_inc']]);
+      expect(received).toHaveLength(1);
+      expect(received[0]?.inputTokens).toEqual({
+        total: 150,
+        noCache: 50,
+        cacheRead: 100,
+        cacheWrite: undefined,
+      });
+      expect(received[0]?.outputTokens.total).toBe(20);
+      router.unsubscribe();
+    });
   });
 
   it('routes error notifications for the active turn only', () => {
