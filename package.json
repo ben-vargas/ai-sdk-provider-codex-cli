@@ -62,7 +62,7 @@
     "jsonc-parser": "^3.3.1"
   },
   "optionalDependencies": {
-    "@openai/codex": "^0.153.4"
+    "@openai/codex": "^0.156.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",

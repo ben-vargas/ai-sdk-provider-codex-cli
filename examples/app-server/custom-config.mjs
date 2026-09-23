@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const defaultSettings = {
-  minCodexVersion: '0.153.0',
+  minCodexVersion: '0.155.0',
   idleTimeoutMs: 30000,
 };
 

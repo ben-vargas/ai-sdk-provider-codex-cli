@@ -3,7 +3,7 @@
 import { listModels } from 'ai-sdk-provider-codex-cli';
 
 const { models, defaultModel } = await listModels({
-  minCodexVersion: '0.153.0',
+  minCodexVersion: '0.155.0',
 });
 
 console.log(`Found ${models.length} model(s).`);
