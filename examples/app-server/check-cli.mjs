@@ -41,7 +41,7 @@ console.log('  app-server command available');
 console.log('\n Running minimal app-server generation...');
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.155.0',
+    minCodexVersion: '0.156.0',
     idleTimeoutMs: 30000,
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },

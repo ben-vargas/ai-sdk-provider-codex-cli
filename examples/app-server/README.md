@@ -7,7 +7,7 @@ These examples use `createCodexAppServer` and a persistent `codex app-server` JS
 - Best for higher-throughput or stateful workflows.
 - Stateful continuation starts from a persistent thread and then uses `providerOptions['codex-app-server'].threadId`.
 - Server-initiated JSON-RPC requests can be handled with `serverRequests`.
-- Requires Codex CLI `>= 0.155.0` for `gpt-6-sol` (the examples set `minCodexVersion: '0.155.0'`; the package default minimum is still `0.153.0`).
+- Requires Codex CLI `>= 0.156.0` (the package default `minCodexVersion`); `gpt-6-sol` itself needs `>= 0.155.0`.
 
 ## Thread Lifecycle
 

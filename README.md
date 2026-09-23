@@ -64,7 +64,7 @@ npm i ai@^6 ai-sdk-provider-codex-cli@ai-sdk-v6
 npm i ai@^5.0.0 ai-sdk-provider-codex-cli@ai-sdk-v5
 ```
 
-> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.153.x** (the line that introduced `gpt-6-astra`) for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.156.1`, the latest non-alpha release line validated for this release line. `gpt-6-sol` (used by the examples) requires Codex CLI **0.155.0** or newer; older CLIs are rejected with "model is not supported when using Codex with a ChatGPT account". If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
+> **⚠️ Codex CLI Version**: Requires the current stable Codex CLI **0.156.x** for full support of both provider modes (`codexExec` and `codexAppServer`). This package pins its optional `@openai/codex` dependency to `^0.156.1`, the latest non-alpha release line validated for this release line. `gpt-6-sol` (used by the examples) is rejected by older CLIs (< 0.155.0) with "model is not supported when using Codex with a ChatGPT account". If you supply your own Codex CLI (global install or custom `codexPath`), check it with `codex --version` and upgrade if needed.
 >
 > ```bash
 > npm i -g @openai/codex@latest
@@ -100,7 +100,7 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const provider = createCodexAppServer({
   defaultSettings: {
-    minCodexVersion: '0.153.0',
+    minCodexVersion: '0.156.0',
     autoApprove: false,
     personality: 'pragmatic',
   },

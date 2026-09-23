@@ -59,10 +59,10 @@ const MAX_TOKEN_USAGE_THREADS = 256;
 const MAX_TOKEN_USAGE_TURNS_PER_THREAD = 4;
 /**
  * Default minimum Codex CLI version accepted by the app-server client.
- * Tracks the validated support baseline (Codex CLI 0.153.x); override with
+ * Tracks the validated support baseline (Codex CLI 0.156.x); override with
  * `minCodexVersion` to accept older CLIs.
  */
-export const DEFAULT_MIN_CODEX_VERSION = '0.153.0';
+export const DEFAULT_MIN_CODEX_VERSION = '0.156.0';
 
 export function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
   if (explicitPath) {

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Merged to main but not yet published. Fold into the next release's entry and choose the version bump accordingly. -->
 
-## [2.2.2] - 2026-09-22
+## [2.3.0] - 2026-09-22
 
 ### Fixed
 
@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update the optional `@openai/codex` dependency from `^0.153.4` to `^0.156.1`. `gpt-6-sol` requires Codex CLI >= 0.155.0: older CLIs (including the previously bundled 0.153.4) are rejected by the backend with "The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account". The app-server default `minCodexVersion` stays `0.153.0`.
-- Examples now use `gpt-6-sol` and explicitly select medium reasoning effort (previously `gpt-6-astra`, mostly inheriting the effort from the user's Codex config; examples that demonstrate contrasting effort levels keep them) and set `minCodexVersion: '0.155.0'`. The integration smoke-test default model is `gpt-6-sol`, and `CodexModelId` gains `gpt-6-sol` and `gpt-6-luna`.
+- Raise the validated Codex CLI baseline to 0.156.x: the optional `@openai/codex` dependency moves from `^0.153.4` to `^0.156.1`, and the app-server default `minCodexVersion` (`DEFAULT_MIN_CODEX_VERSION`) from `0.153.0` to `0.156.0` (set `minCodexVersion` explicitly to accept older CLIs). This also unblocks `gpt-6-sol`, which the backend rejects for Codex CLI < 0.155.0 ("The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account"), including the previously bundled 0.153.4.
+- Examples now use `gpt-6-sol` and explicitly select medium reasoning effort (previously `gpt-6-astra`, mostly inheriting the effort from the user's Codex config; examples that demonstrate contrasting effort levels keep them) and set `minCodexVersion: '0.156.0'`. The integration smoke-test default model is `gpt-6-sol`, and `CodexModelId` gains `gpt-6-sol` and `gpt-6-luna`.
 
 ## [2.2.1] - 2026-09-09
 

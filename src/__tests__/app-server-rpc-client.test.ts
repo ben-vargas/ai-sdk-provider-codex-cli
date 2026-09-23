@@ -79,7 +79,7 @@ function createMockProcess(
           `${JSON.stringify({
             id: message.id,
             result: {
-              userAgent: options.userAgent ?? 'codex-cli 0.153.4',
+              userAgent: options.userAgent ?? 'codex-cli 0.156.1',
               capabilities: options.initializeCapabilities ?? null,
             },
           })}\n`,
@@ -917,30 +917,30 @@ describe('AppServerRpcClient', () => {
     );
   });
 
-  it('rejects servers below the default minCodexVersion (0.153.0) when none is configured', async () => {
-    expect(DEFAULT_MIN_CODEX_VERSION).toBe('0.153.0');
+  it('rejects servers below the default minCodexVersion (0.156.0) when none is configured', async () => {
+    expect(DEFAULT_MIN_CODEX_VERSION).toBe('0.156.0');
 
-    const { child } = createMockProcess({ userAgent: 'codex-cli 0.152.9' });
+    const { child } = createMockProcess({ userAgent: 'codex-cli 0.155.9' });
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient();
 
     await expect(client.ensureReady()).rejects.toThrow(
-      "codex app-server version '0.152.9' is below required minimum '0.153.0'.",
+      "codex app-server version '0.155.9' is below required minimum '0.156.0'.",
     );
   });
 
-  it('parses the codex 0.153.x userAgent format (client-prefixed, with OS version)', async () => {
+  it('parses the codex 0.153+ userAgent format (client-prefixed, with OS version)', async () => {
     const { child } = createMockProcess({
       userAgent:
-        'ai-sdk-provider-codex-cli/0.153.4 (Mac OS 15.0.0; arm64) vscode/1.0.0 (ai-sdk-provider-codex-cli; 2.2.0)',
+        'ai-sdk-provider-codex-cli/0.156.1 (Mac OS 15.0.0; arm64) vscode/1.0.0 (ai-sdk-provider-codex-cli; 2.3.0)',
     });
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient();
     await client.ensureReady();
 
-    expect(client.serverVersion).toBe('0.153.4');
+    expect(client.serverVersion).toBe('0.156.1');
     await client.close();
   });
 
@@ -1323,7 +1323,7 @@ describe('AppServerRpcClient', () => {
     child.emit('close', 1, null);
 
     const error = await failure;
-    expect((error as Error).message).toContain('codex app-server requires codex CLI >= 0.153.0');
+    expect((error as Error).message).toContain('codex app-server requires codex CLI >= 0.156.0');
     expect((error as Error).message).toContain("error: unknown subcommand 'app-server'");
     expect((error as Error).message).not.toContain('codex executable not found');
     await client.close();
