@@ -24,6 +24,7 @@ console.log('   API-level enforcement (more reliable)');
 console.log('   Guaranteed valid JSON output\n');
 
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

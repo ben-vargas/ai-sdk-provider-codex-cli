@@ -21,6 +21,7 @@ async function main() {
   // Example 2: Web search enabled
   console.log('\n=== Example 2: Web Search ===');
   const withWebSearch = codexExec('gpt-6-sol', {
+    reasoningEffort: 'medium',
     allowNpx: true,
     skipGitRepoCheck: true,
     webSearch: true,
@@ -35,6 +36,7 @@ async function main() {
   // Example 3: Generic config overrides
   console.log('\n=== Example 3: Advanced Config ===');
   const advanced = codexExec('gpt-6-sol', {
+    reasoningEffort: 'medium',
     allowNpx: true,
     configOverrides: {
       model_context_window: 200000,

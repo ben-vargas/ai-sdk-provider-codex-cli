@@ -19,6 +19,7 @@ console.log('This example demonstrates the current Codex CLI event format.');
 console.log('Events are parsed from --experimental-json output.\n');
 
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true, // For examples only!

@@ -4,6 +4,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 // Demonstrates custom CWD and sandbox/approval options
 
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   cwd: process.cwd(),
   skipGitRepoCheck: true,

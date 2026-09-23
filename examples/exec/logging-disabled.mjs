@@ -37,6 +37,7 @@ async function main() {
     // Disable all logging
     const result = streamText({
       model: codexExec('gpt-6-sol', {
+        reasoningEffort: 'medium',
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-request',

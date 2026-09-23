@@ -24,6 +24,7 @@ try {
     // Example 2: Personality/summary tuning
     console.log('\n=== Example 2: Personality + Summary ===');
     const withPersonality = appServer('gpt-6-sol', {
+      effort: 'medium',
       personality: 'friendly',
       summary: 'concise',
     });
@@ -37,6 +38,7 @@ try {
     // Example 3: Generic config overrides
     console.log('\n=== Example 3: Advanced Config ===');
     const advanced = appServer('gpt-6-sol', {
+      effort: 'medium',
       configOverrides: {
         model_context_window: 200000,
         hide_agent_reasoning: false,

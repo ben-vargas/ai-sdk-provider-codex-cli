@@ -60,6 +60,7 @@ function getMediaType(filePath) {
 
 // Create model instance - gpt-6-sol supports vision/multimodal inputs
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-request',

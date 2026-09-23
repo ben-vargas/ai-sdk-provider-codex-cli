@@ -12,6 +12,7 @@ try {
   // Demonstrates custom CWD plus approval/sandbox policy options.
   const modelSettings = {
     cwd: process.cwd(),
+    effort: 'medium',
     // Optional app-server style policy overrides:
     // approvalPolicy: 'on-request',
     // personality: 'pragmatic',

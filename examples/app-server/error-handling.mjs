@@ -9,6 +9,7 @@ const appServer = createCodexAppServer({
 
 try {
   const model = appServer('gpt-6-sol', {
+    effort: 'medium',
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

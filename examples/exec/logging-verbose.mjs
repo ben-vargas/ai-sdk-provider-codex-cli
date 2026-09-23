@@ -33,6 +33,7 @@ async function main() {
     // Enable verbose logging to see debug and info messages
     const result = streamText({
       model: codexExec('gpt-6-sol', {
+        reasoningEffort: 'medium',
         allowNpx: true,
         skipGitRepoCheck: true,
         approvalMode: 'on-request',

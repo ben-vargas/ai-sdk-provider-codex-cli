@@ -13,6 +13,7 @@ import { z } from 'zod';
 console.log(' Codex CLI - Object Generation with Constraints\n');
 
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-request',

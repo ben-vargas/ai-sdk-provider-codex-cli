@@ -71,6 +71,7 @@ try {
 
   // Create model instance - gpt-6-sol supports vision/multimodal inputs
   const model = appServer('gpt-6-sol', {
+    effort: 'medium',
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

@@ -10,6 +10,7 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const model = codexExec('gpt-6-sol', {
+  reasoningEffort: 'medium',
   allowNpx: true,
   skipGitRepoCheck: true,
   approvalMode: 'on-request',

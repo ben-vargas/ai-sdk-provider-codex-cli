@@ -18,6 +18,7 @@ try {
   console.log(' Codex CLI - Object Generation with Constraints\n');
 
   const model = appServer('gpt-6-sol', {
+    effort: 'medium',
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

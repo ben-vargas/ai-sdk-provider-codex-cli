@@ -7,6 +7,7 @@ const appServer = createCodexAppServer({
 
 try {
   const model = appServer('gpt-6-sol', {
+    effort: 'medium',
     approvalPolicy: 'never',
     sandboxPolicy: { type: 'readOnly' },
     configOverrides: {

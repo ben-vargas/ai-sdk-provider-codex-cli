@@ -17,6 +17,7 @@ const appServer = createCodexAppServer({
 try {
   async function run(label, settings) {
     const model = appServer('gpt-6-sol', {
+      effort: 'medium',
       ...settings,
     });
     const { text } = await generateText({ model, prompt: `Say the mode label: ${label}.` });
