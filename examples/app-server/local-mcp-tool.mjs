@@ -24,13 +24,13 @@ const provider = createCodexAppServer({
       math: mathServer,
     },
     approvalPolicy: 'on-request',
-    effort: 'low',
+    effort: 'medium',
   },
 });
 
 try {
   const result = await generateText({
-    model: provider('gpt-6-astra'),
+    model: provider('gpt-6-sol'),
     prompt:
       'Use the math MCP tool to compute 41 + 1 and answer with the numeric result and one sentence.',
   });

@@ -17,7 +17,7 @@ const appServer = createCodexAppServer({
 try {
   console.log(' Codex CLI - Object Generation with Constraints\n');
 
-  const model = appServer('gpt-6-astra', {
+  const model = appServer('gpt-6-sol', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

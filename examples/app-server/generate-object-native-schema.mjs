@@ -28,7 +28,7 @@ try {
   console.log('   API-level enforcement (more reliable)');
   console.log('   Guaranteed valid JSON output\n');
 
-  const model = appServer('gpt-6-astra', {});
+  const model = appServer('gpt-6-sol', {});
 
   // Example 1: Complex nested schema with constraints
   async function example1_complexSchema() {

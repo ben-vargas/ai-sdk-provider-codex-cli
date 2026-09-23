@@ -18,12 +18,12 @@ const appServer = createCodexAppServer({
 try {
   console.log(' Codex CLI - Advanced Object Generation\n');
 
-  // Use the Codex flagship model to exercise extra-high reasoning effort.
-  // Requires the validated Codex CLI 0.153.x line (gpt-6-astra exposes xhigh, max and ultra).
-  const model = appServer('gpt-6-astra', {
+  // Use gpt-6-sol at medium reasoning effort for structured outputs.
+  // gpt-6-sol also exposes xhigh, max and ultra for deeper reasoning.
+  const model = appServer('gpt-6-sol', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
-    effort: 'xhigh', // gpt-6-astra also accepts 'max' and 'ultra'; deeper reasoning for structured outputs
+    effort: 'medium',
   });
 
   // Example 1: Product comparison with scoring and rationale

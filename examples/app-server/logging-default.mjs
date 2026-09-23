@@ -33,7 +33,7 @@ try {
     try {
       // Default logging suppresses request-level debug output.
       const result = streamText({
-        model: appServer('gpt-6-astra', {
+        model: appServer('gpt-6-sol', {
           approvalPolicy: 'on-request',
           sandboxPolicy: { type: 'workspaceWrite' },
         }),

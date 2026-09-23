@@ -5,7 +5,7 @@ import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 const exampleCwd = dirname(fileURLToPath(import.meta.url));
 
-const model = codexExec('gpt-6-astra', {
+const model = codexExec('gpt-6-sol', {
   allowNpx: true,
   skipGitRepoCheck: true,
   dangerouslyBypassApprovalsAndSandbox: true,

@@ -8,7 +8,7 @@ const appServer = createCodexAppServer({
 });
 
 try {
-  const model = appServer('gpt-6-astra', {
+  const model = appServer('gpt-6-sol', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

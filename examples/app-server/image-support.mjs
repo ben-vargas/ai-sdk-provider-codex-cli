@@ -69,8 +69,8 @@ try {
     );
   }
 
-  // Create model instance - gpt-6-astra supports vision/multimodal inputs
-  const model = appServer('gpt-6-astra', {
+  // Create model instance - gpt-6-sol supports vision/multimodal inputs
+  const model = appServer('gpt-6-sol', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

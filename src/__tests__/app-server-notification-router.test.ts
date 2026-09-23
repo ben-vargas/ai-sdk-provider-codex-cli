@@ -425,6 +425,63 @@ describe('AppServerNotificationRouter', () => {
     router.unsubscribe();
   });
 
+  it('maps cacheWriteInputTokens when reported and leaves it undefined when absent', () => {
+    const client = new FakeClient();
+    const { controller } = createCapture();
+    const emitter = new AppServerStreamEmitter(controller, {
+      modelId: 'gpt-5.3-codex',
+      threadId: 'thr_cw',
+    });
+
+    const received: LanguageModelV4Usage[] = [];
+    const router = new AppServerNotificationRouter({
+      client: client as never,
+      emitter,
+      threadId: 'thr_cw',
+      onUsage: (nextUsage) => {
+        received.push(nextUsage);
+      },
+      onTurnCompleted: () => undefined,
+      onError: () => undefined,
+    });
+
+    router.setTurnId('turn_cw');
+    router.subscribe();
+
+    const breakdown = {
+      totalTokens: 110,
+      inputTokens: 100,
+      cachedInputTokens: 60,
+      outputTokens: 10,
+      reasoningOutputTokens: 0,
+    };
+    client.emit('notification', 'thread/tokenUsage/updated', {
+      threadId: 'thr_cw',
+      turnId: 'turn_cw',
+      tokenUsage: { total: breakdown, last: { ...breakdown, cacheWriteInputTokens: 30 } },
+    });
+    client.emit('notification', 'thread/tokenUsage/updated', {
+      threadId: 'thr_cw',
+      turnId: 'turn_cw',
+      tokenUsage: { total: breakdown, last: breakdown },
+    });
+
+    expect(received[0]?.inputTokens).toEqual({
+      total: 100,
+      noCache: 10,
+      cacheRead: 60,
+      cacheWrite: 30,
+    });
+    expect(received[1]?.inputTokens).toEqual({
+      total: 100,
+      noCache: 40,
+      cacheRead: 60,
+      cacheWrite: undefined,
+    });
+
+    router.unsubscribe();
+  });
+
   it('routes error notifications for the active turn only', () => {
     const client = new FakeClient();
     const { controller } = createCapture();

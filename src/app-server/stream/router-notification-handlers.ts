@@ -188,12 +188,15 @@ export function createNotificationHandlers(
       const last = event.tokenUsage?.last;
       if (!last) return;
 
+      // `last` is this single model response; the turn controller sums them.
+      const cacheWrite =
+        typeof last.cacheWriteInputTokens === 'number' ? last.cacheWriteInputTokens : undefined;
       context.onUsage({
         inputTokens: {
           total: last.inputTokens,
-          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens),
+          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens - (cacheWrite ?? 0)),
           cacheRead: last.cachedInputTokens,
-          cacheWrite: 0,
+          cacheWrite,
         },
         outputTokens: {
           total: last.outputTokens,

@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-provider-codex-cli",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "AI SDK v7 provider for OpenAI Codex CLI (use ChatGPT Plus/Pro subscription)",
   "keywords": [
     "ai-sdk",
@@ -8,6 +8,7 @@
     "openai",
     "cli",
     "language-model",
+    "gpt-6-sol",
     "gpt-6-astra",
     "provider"
   ],

@@ -9,9 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Merged to main but not yet published. Fold into the next release's entry and choose the version bump accordingly. -->
 
+## [2.2.2] - 2026-09-22
+
 ### Fixed
 
+- App-server `usage` now covers the whole turn instead of only its final model response (#49). Codex emits one `thread/tokenUsage/updated` per model response, and an agentic turn (tool calls, file reads, edits) makes many; the provider overwrote each update with the next, so `generateText` / `streamText` usage and any cost derived from it were undercounted, often by an order of magnitude. The per-response `tokenUsage.last` breakdowns are now summed across the turn. `tokenUsage.total` is deliberately not used: it is cumulative for the thread, so on a resumed thread (`threadId`) it would include earlier turns. `usage.raw` is the summed Codex breakdown (same camelCase shape as before). Expect reported usage to rise for multi-step turns after upgrading; the new numbers match Codex's own session log.
+- Cache-write tokens are no longer hard-coded to `0` in either provider (#49). The app-server maps `cacheWriteInputTokens` and the exec provider maps `cache_write_input_tokens` into `inputTokens.cacheWrite` and subtract them from `noCache`. When Codex omits the field, `cacheWrite` is now `undefined` rather than `0`, so "not reported" stays distinct from "reported as zero". The exec provider also maps `reasoning_output_tokens` into `outputTokens.reasoning` (previously always `undefined`). `TokenUsageBreakdown` and its validator gain the optional `cacheWriteInputTokens` field.
 - `CodexErrorInfo` and `TurnError` are now exported by name from the package entry point. 2.2.1 described `CodexErrorInfo` as exported, but it was only reachable structurally through the exported `Turn` / `ErrorNotification` types (`Turn['error']['codexErrorInfo']`); `import type { CodexErrorInfo } from 'ai-sdk-provider-codex-cli'` now works. Same fix as 1.4.1 on the AI SDK v6 line (#47).
+
+### Changed
+
+- Examples now use `gpt-6-sol` at medium reasoning effort (previously `gpt-6-astra`; examples that demonstrate contrasting effort levels keep them). The integration smoke-test default model is `gpt-6-sol`, and `CodexModelId` gains `gpt-6-sol` and `gpt-6-luna`.
 
 ## [2.2.1] - 2026-09-09
 

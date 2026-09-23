@@ -19,7 +19,7 @@ const appServer = createCodexAppServer({
 try {
   console.log(' Codex CLI - Basic Object Generation\n');
 
-  const model = appServer('gpt-6-astra', {});
+  const model = appServer('gpt-6-sol', {});
 
   // Example 1: Simple object with primitives
   async function example1_simpleObject() {

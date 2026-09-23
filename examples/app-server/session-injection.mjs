@@ -15,7 +15,7 @@ const provider = createCodexAppServer({
 
 try {
   const result = streamText({
-    model: provider('gpt-6-astra'),
+    model: provider('gpt-6-sol'),
     prompt:
       'Write a tiny Node.js function named parseCsvLine that parses one CSV line with no dependencies. Start with one markdown code block. If you receive follow-up guidance while writing, append a second revised markdown code block rather than trying to erase earlier streamed text.',
     providerOptions: {

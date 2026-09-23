@@ -32,7 +32,7 @@ try {
   console.log('This example demonstrates the codex app-server JSON-RPC event stream.');
   console.log('Events are parsed from app-server notifications.\n');
 
-  const model = appServer('gpt-6-astra', {});
+  const model = appServer('gpt-6-sol', {});
 
   // Example 1: Basic text generation with usage tracking
   async function example1_basicWithUsage() {

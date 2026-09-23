@@ -50,7 +50,7 @@ const provider = createCodexAppServer({
 
 try {
   const { text } = await generateText({
-    model: provider('gpt-6-astra'),
+    model: provider('gpt-6-sol'),
     prompt: 'Reply with exactly OK.',
   });
   console.log('  App-server generation OK');

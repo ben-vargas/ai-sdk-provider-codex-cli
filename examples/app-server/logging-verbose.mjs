@@ -38,7 +38,7 @@ try {
     try {
       // Enable verbose logging to surface provider diagnostics when available.
       const result = streamText({
-        model: appServer('gpt-6-astra', {
+        model: appServer('gpt-6-sol', {
           approvalPolicy: 'on-request',
           sandboxPolicy: { type: 'workspaceWrite' },
           verbose: true, // Enable verbose logging

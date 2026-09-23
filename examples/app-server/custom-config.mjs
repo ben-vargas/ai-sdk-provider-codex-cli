@@ -22,7 +22,7 @@ try {
   console.log('Default app-server settings:', JSON.stringify(defaultSettings));
   console.log('Per-model settings:', JSON.stringify(modelSettings));
 
-  const model = appServer('gpt-6-astra', modelSettings);
+  const model = appServer('gpt-6-sol', modelSettings);
 
   const { text } = await generateText({
     model,

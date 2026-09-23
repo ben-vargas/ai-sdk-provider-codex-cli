@@ -7,7 +7,7 @@ const appServer = createCodexAppServer({
 
 try {
   async function main() {
-    const model = appServer('gpt-6-astra', {
+    const model = appServer('gpt-6-sol', {
       effort: 'low',
     });
 
