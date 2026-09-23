@@ -3,7 +3,7 @@ import type {
   LanguageModelV3Usage,
   SharedV3Warning,
 } from '@ai-sdk/provider';
-import { createEmptyCodexUsage, sanitizeJsonSchema } from '../../shared-utils.js';
+import { addCodexUsage, createEmptyCodexUsage, sanitizeJsonSchema } from '../../shared-utils.js';
 import type { Turn, TurnStartParams } from '../protocol/types.js';
 import { AppServerRpcClient } from '../rpc/client.js';
 import type { CodexAppServerRequestHandlers } from '../types.js';
@@ -163,8 +163,11 @@ export class TurnStreamController {
       client: this.options.client,
       emitter: this.emitter,
       threadId: this.options.threadId,
+      // Codex emits one tokenUsage update per model response; a turn can make
+      // many responses (tool calls, edits), so sum them for the whole call.
+      // `tokenUsage.total` is thread-cumulative and would include prior turns.
       onUsage: (nextUsage) => {
-        this.usage = nextUsage;
+        this.usage = addCodexUsage(this.usage, nextUsage);
       },
       onThreadTurnCompleted: (turn) => {
         this.options.session?.setInactive(turn.id);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addCodexUsage,
   createEmptyCodexUsage,
   isPlainObject,
   mapCodexCliFinishReason,
@@ -28,6 +29,30 @@ describe('shared-utils', () => {
         reasoning: undefined,
       },
       raw: undefined,
+    });
+  });
+
+  it('adds usage field by field, keeping unreported fields undefined', () => {
+    const first = addCodexUsage(createEmptyCodexUsage(), {
+      inputTokens: { total: 100, noCache: 40, cacheRead: 60, cacheWrite: undefined },
+      outputTokens: { total: 10, text: undefined, reasoning: 4 },
+      raw: { inputTokens: 100, cachedInputTokens: 60, outputTokens: 10 },
+    });
+    expect(first).toEqual({
+      inputTokens: { total: 100, noCache: 40, cacheRead: 60, cacheWrite: undefined },
+      outputTokens: { total: 10, text: undefined, reasoning: 4 },
+      raw: { inputTokens: 100, cachedInputTokens: 60, outputTokens: 10 },
+    });
+
+    const second = addCodexUsage(first, {
+      inputTokens: { total: 50, noCache: 20, cacheRead: 25, cacheWrite: 5 },
+      outputTokens: { total: 7, text: undefined, reasoning: 2 },
+      raw: { inputTokens: 50, cachedInputTokens: 25, cacheWriteInputTokens: 5, outputTokens: 7 },
+    });
+    expect(second).toEqual({
+      inputTokens: { total: 150, noCache: 60, cacheRead: 85, cacheWrite: 5 },
+      outputTokens: { total: 17, text: undefined, reasoning: 6 },
+      raw: { inputTokens: 150, cachedInputTokens: 85, cacheWriteInputTokens: 5, outputTokens: 17 },
     });
   });
 

@@ -29,7 +29,7 @@ async function main() {
 
   const codex = createCodexAppServer({
     defaultSettings: {
-      minCodexVersion: '0.153.0',
+      minCodexVersion: '0.156.0',
       idleTimeoutMs: 30000,
       cwd: process.cwd(),
       approvalPolicy: 'on-request',
@@ -40,7 +40,7 @@ async function main() {
     console.log('Calling Codex CLI with long prompt...\n');
 
     const result = await generateText({
-      model: codex('gpt-6-astra'),
+      model: codex('gpt-6-sol', { effort: 'medium' }),
       prompt: longPrompt,
     });
 

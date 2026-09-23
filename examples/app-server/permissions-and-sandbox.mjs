@@ -11,12 +11,13 @@ import { generateText } from 'ai';
 import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.156.0', idleTimeoutMs: 30000 },
 });
 
 try {
   async function run(label, settings) {
-    const model = appServer('gpt-6-astra', {
+    const model = appServer('gpt-6-sol', {
+      effort: 'medium',
       ...settings,
     });
     const { text } = await generateText({ model, prompt: `Say the mode label: ${label}.` });

@@ -75,6 +75,9 @@ export class AppServerNotificationRouter {
       onError: this.onError,
       isSameTurn: (params) => this.isSameTurn(params),
       getBoundTurnId: () => this.turnId,
+      getTokenUsageTotalBeforeTurn: (turnId) =>
+        // Optional so lightweight client doubles without usage tracking still work.
+        this.client.getTokenUsageTotalBeforeTurn?.(this.threadId, turnId),
     });
 
     this.serverRequestHandlers = createServerRequestHandlers({

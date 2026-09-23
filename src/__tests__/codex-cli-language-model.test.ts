@@ -88,7 +88,7 @@ describe('CodexCliLanguageModel', () => {
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'thread-123' });
     expect(res.usage).toMatchObject({
-      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: undefined },
       outputTokens: { total: 5, text: undefined, reasoning: undefined },
     });
     expect(res.usage.raw).toBeDefined();
@@ -256,7 +256,7 @@ describe('CodexCliLanguageModel', () => {
 
     const finish = received.find((p) => p.type === 'finish');
     expect(finish?.usage).toMatchObject({
-      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: 0 },
+      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: undefined },
       outputTokens: { total: 2, text: undefined, reasoning: undefined },
     });
     expect(finish?.usage.raw).toBeDefined();

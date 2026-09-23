@@ -90,7 +90,7 @@ describe('ExecLanguageModel', () => {
     expect(res.content[0]).toMatchObject({ type: 'text', text: 'Hello JSON' });
     expect(res.providerMetadata?.['codex-cli']).toMatchObject({ sessionId: 'thread-123' });
     expect(res.usage).toMatchObject({
-      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+      inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: undefined },
       outputTokens: { total: 5, text: undefined, reasoning: undefined },
     });
     expect(res.usage.raw).toBeDefined();
@@ -120,15 +120,39 @@ describe('ExecLanguageModel', () => {
       sessionId: '01990000-0000-7000-8000-000000000010',
     });
     expect(res.usage).toMatchObject({
-      inputTokens: { total: 16537, noCache: 4249, cacheRead: 12288 },
-      outputTokens: { total: 5 },
+      inputTokens: { total: 16537, noCache: 4249, cacheRead: 12288, cacheWrite: 0 },
+      outputTokens: { total: 5, reasoning: 0 },
     });
-    // The raw payload keeps the 0.153 fields even though they are not mapped yet.
     expect(res.usage.raw).toMatchObject({
       cache_write_input_tokens: 0,
       reasoning_output_tokens: 0,
     });
     expect(res.finishReason).toEqual({ unified: 'stop', raw: undefined });
+  });
+
+  it('maps a non-zero cache_write_input_tokens out of noCache', async () => {
+    const lines = [
+      '{"type":"thread.started","thread_id":"thread-cache-write"}',
+      '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"ok"}}',
+      '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":600,"cache_write_input_tokens":300,"output_tokens":5,"reasoning_output_tokens":2}}',
+    ];
+    (childProc as any).__setSpawnMock(makeMockSpawn(lines, 0));
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-6-astra',
+      settings: { allowNpx: true, color: 'never' },
+    });
+    const res = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'hi' }] as any,
+    });
+
+    expect(res.usage.inputTokens).toEqual({
+      total: 1000,
+      noCache: 100,
+      cacheRead: 600,
+      cacheWrite: 300,
+    });
+    expect(res.usage.outputTokens).toEqual({ total: 5, text: undefined, reasoning: 2 });
   });
 
   it('doGenerate includes tool-call and tool-result parts in content', async () => {
@@ -296,7 +320,7 @@ describe('ExecLanguageModel', () => {
 
     const finish = received.find((p) => p.type === 'finish');
     expect(finish?.usage).toMatchObject({
-      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: 0 },
+      inputTokens: { total: 4, noCache: 3, cacheRead: 1, cacheWrite: undefined },
       outputTokens: { total: 2, text: undefined, reasoning: undefined },
     });
     expect(finish?.usage.raw).toBeDefined();
