@@ -11,13 +11,14 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.156.0', idleTimeoutMs: 30000 },
 });
 
 try {
   console.log(' Codex CLI - Object Generation with Constraints\n');
 
-  const model = appServer('gpt-6-astra', {
+  const model = appServer('gpt-6-sol', {
+    effort: 'medium',
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
   });

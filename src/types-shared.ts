@@ -12,7 +12,9 @@ export interface Logger {
  * Known Codex-capable model IDs with string fallback for forward compatibility.
  */
 export type CodexModelId =
+  | 'gpt-6-sol'
   | 'gpt-6-astra'
+  | 'gpt-6-luna'
   | 'gpt-5.6-sol'
   | 'gpt-5.6-terra'
   | 'gpt-5.6-luna'

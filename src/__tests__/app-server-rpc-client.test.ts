@@ -79,7 +79,7 @@ function createMockProcess(
           `${JSON.stringify({
             id: message.id,
             result: {
-              userAgent: options.userAgent ?? 'codex-cli 0.153.4',
+              userAgent: options.userAgent ?? 'codex-cli 0.156.1',
               capabilities: options.initializeCapabilities ?? null,
             },
           })}\n`,
@@ -228,6 +228,46 @@ describe('AppServerRpcClient', () => {
     expect(received).toHaveLength(1);
     expect(received[0]?.method).toBe('thread/started');
     await client.close();
+  });
+
+  it('tracks the latest token usage total per thread for turn baselines', async () => {
+    const { child, emitServerMessage } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.ensureReady();
+
+    const usage = (inputTokens: number) => ({
+      totalTokens: inputTokens + 1,
+      inputTokens,
+      cachedInputTokens: 0,
+      outputTokens: 1,
+      reasoningOutputTokens: 0,
+    });
+    const update = (threadId: string, turnId: string, inputTokens: number) =>
+      emitServerMessage({
+        method: 'thread/tokenUsage/updated',
+        params: {
+          threadId,
+          turnId,
+          tokenUsage: { total: usage(inputTokens), last: usage(1), modelContextWindow: null },
+        },
+      });
+
+    // Restored snapshot replayed on resume, then two updates from the new turn.
+    update('thr_a', 'turn_restored', 500);
+    update('thr_a', 'turn_new', 600);
+    update('thr_a', 'turn_new', 700);
+    update('thr_b', 'turn_other', 50);
+    await flush();
+
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_new')?.inputTokens).toBe(500);
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_next')?.inputTokens).toBe(700);
+    expect(client.getTokenUsageTotalBeforeTurn('thr_b', 'turn_other')).toBeUndefined();
+    expect(client.getTokenUsageTotalBeforeTurn('thr_missing', 'turn_x')).toBeUndefined();
+
+    await client.close();
+    expect(client.getTokenUsageTotalBeforeTurn('thr_a', 'turn_next')).toBeUndefined();
   });
 
   it('drops invalid notifications for known methods', async () => {
@@ -877,30 +917,30 @@ describe('AppServerRpcClient', () => {
     );
   });
 
-  it('rejects servers below the default minCodexVersion (0.153.0) when none is configured', async () => {
-    expect(DEFAULT_MIN_CODEX_VERSION).toBe('0.153.0');
+  it('rejects servers below the default minCodexVersion (0.156.0) when none is configured', async () => {
+    expect(DEFAULT_MIN_CODEX_VERSION).toBe('0.156.0');
 
-    const { child } = createMockProcess({ userAgent: 'codex-cli 0.152.9' });
+    const { child } = createMockProcess({ userAgent: 'codex-cli 0.155.9' });
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient();
 
     await expect(client.ensureReady()).rejects.toThrow(
-      "codex app-server version '0.152.9' is below required minimum '0.153.0'.",
+      "codex app-server version '0.155.9' is below required minimum '0.156.0'.",
     );
   });
 
-  it('parses the codex 0.153.x userAgent format (client-prefixed, with OS version)', async () => {
+  it('parses the codex 0.153+ userAgent format (client-prefixed, with OS version)', async () => {
     const { child } = createMockProcess({
       userAgent:
-        'ai-sdk-provider-codex-cli/0.153.4 (Mac OS 15.0.0; arm64) vscode/1.0.0 (ai-sdk-provider-codex-cli; 2.2.0)',
+        'ai-sdk-provider-codex-cli/0.156.1 (Mac OS 15.0.0; arm64) vscode/1.0.0 (ai-sdk-provider-codex-cli; 2.3.0)',
     });
     setSpawnMock(() => child);
 
     const client = new AppServerRpcClient();
     await client.ensureReady();
 
-    expect(client.serverVersion).toBe('0.153.4');
+    expect(client.serverVersion).toBe('0.156.1');
     await client.close();
   });
 
@@ -1283,7 +1323,7 @@ describe('AppServerRpcClient', () => {
     child.emit('close', 1, null);
 
     const error = await failure;
-    expect((error as Error).message).toContain('codex app-server requires codex CLI >= 0.153.0');
+    expect((error as Error).message).toContain('codex app-server requires codex CLI >= 0.156.0');
     expect((error as Error).message).toContain("error: unknown subcommand 'app-server'");
     expect((error as Error).message).not.toContain('codex executable not found');
     await client.close();

@@ -17,7 +17,7 @@ Provider-specific notes:
   - `npm i -g @openai/codex`
   - `codex login` (or set `OPENAI_API_KEY`)
 - Build this package before running examples: `npm run build`
-- App-server examples require Codex CLI `>= 0.153.0`.
+- Examples require Codex CLI `>= 0.156.0` (the bundled `@openai/codex` optional dependency satisfies this); `gpt-6-sol` itself needs `>= 0.155.0`.
 
 ## Run
 

@@ -23,7 +23,7 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 - `env` (Record<string,string>): Extra env vars for the child process (e.g., `OPENAI_API_KEY`).
 - `verbose` (boolean): Enable verbose logging mode. When `true`, enables `debug` and `info` log levels. When `false` (default), only `warn` and `error` are logged.
 - `logger` (Logger | false): Custom logger object or `false` to disable logging entirely. Logger must implement four methods: `debug`, `info`, `warn`, and `error`. Default uses `console.*` methods.
-- `rmcpClient` (boolean): Enable the RMCP client so HTTP-based MCP servers can be reached (`-c features.rmcp_client=true`). Current Codex CLIs (0.153.x) use the RMCP client unconditionally and no longer list this feature flag, so the override is a harmless no-op there; it is kept for older CLIs.
+- `rmcpClient` (boolean): Enable the RMCP client so HTTP-based MCP servers can be reached (`-c features.rmcp_client=true`). Current Codex CLIs (0.153.x and newer) use the RMCP client unconditionally and no longer list this feature flag, so the override is a harmless no-op there; it is kept for older CLIs.
 - `mcpServers` (Record<string, McpServerConfig>): Define MCP servers (stdio or HTTP). Keys are server names; values follow the shapes below.
 
 ### Reasoning & Verbosity

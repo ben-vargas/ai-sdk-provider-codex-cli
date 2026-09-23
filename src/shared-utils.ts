@@ -28,6 +28,57 @@ export function createEmptyCodexUsage(): LanguageModelV4Usage {
   };
 }
 
+function addOptionalTokens(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined && b === undefined) return undefined;
+  return (a ?? 0) + (b ?? 0);
+}
+
+function isRawUsageObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Sums numeric fields of two raw usage payloads. Non-numeric fields keep the
+ * most recent value so the summed payload retains the provider's shape.
+ */
+function addRawUsage(
+  a: LanguageModelV4Usage['raw'],
+  b: LanguageModelV4Usage['raw'],
+): LanguageModelV4Usage['raw'] {
+  if (!isRawUsageObject(a)) return b;
+  if (!isRawUsageObject(b)) return a;
+  const sum: Record<string, unknown> = { ...a };
+  for (const [key, value] of Object.entries(b)) {
+    const previous = sum[key];
+    sum[key] = typeof value === 'number' && typeof previous === 'number' ? previous + value : value;
+  }
+  return sum as LanguageModelV4Usage['raw'];
+}
+
+/**
+ * Adds two usage records field by field. A field stays `undefined` only when
+ * neither side reports it, so "not reported" remains distinct from zero.
+ */
+export function addCodexUsage(
+  a: LanguageModelV4Usage,
+  b: LanguageModelV4Usage,
+): LanguageModelV4Usage {
+  return {
+    inputTokens: {
+      total: addOptionalTokens(a.inputTokens.total, b.inputTokens.total),
+      noCache: addOptionalTokens(a.inputTokens.noCache, b.inputTokens.noCache),
+      cacheRead: addOptionalTokens(a.inputTokens.cacheRead, b.inputTokens.cacheRead),
+      cacheWrite: addOptionalTokens(a.inputTokens.cacheWrite, b.inputTokens.cacheWrite),
+    },
+    outputTokens: {
+      total: addOptionalTokens(a.outputTokens.total, b.outputTokens.total),
+      text: addOptionalTokens(a.outputTokens.text, b.outputTokens.text),
+      reasoning: addOptionalTokens(a.outputTokens.reasoning, b.outputTokens.reasoning),
+    },
+    raw: addRawUsage(a.raw, b.raw),
+  };
+}
+
 export function mapCodexCliFinishReason(reason?: string): LanguageModelV4FinishReason {
   switch (reason) {
     case 'stop':

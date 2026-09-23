@@ -11,7 +11,8 @@ import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
 
 async function run(label, settings) {
-  const model = codexExec('gpt-6-astra', {
+  const model = codexExec('gpt-6-sol', {
+    reasoningEffort: 'medium',
     allowNpx: true,
     skipGitRepoCheck: true,
     color: 'never',
