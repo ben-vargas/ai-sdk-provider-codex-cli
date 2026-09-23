@@ -398,6 +398,95 @@ describe('AppServerLanguageModel', () => {
     expect(result.usage.outputTokens.reasoning).toBe(15);
   });
 
+  it('sums per-response token usage across a multi-response turn', async () => {
+    const client = new FakeClient();
+    // `total` is thread-cumulative (includes an earlier turn on a resumed thread);
+    // only the per-response `last` breakdowns belong to this call.
+    const responses = [
+      {
+        inputTokens: 1000,
+        cachedInputTokens: 800,
+        cacheWriteInputTokens: 0,
+        outputTokens: 20,
+        reasoningOutputTokens: 5,
+      },
+      {
+        inputTokens: 1200,
+        cachedInputTokens: 1000,
+        cacheWriteInputTokens: 100,
+        outputTokens: 30,
+        reasoningOutputTokens: 10,
+      },
+      {
+        inputTokens: 1500,
+        cachedInputTokens: 1200,
+        cacheWriteInputTokens: 0,
+        outputTokens: 50,
+        reasoningOutputTokens: 15,
+      },
+    ];
+    client.turnStartImpl = async (params) => {
+      setTimeout(() => {
+        const running = {
+          totalTokens: 9000,
+          inputTokens: 8000,
+          cachedInputTokens: 6000,
+          cacheWriteInputTokens: 0,
+          outputTokens: 1000,
+          reasoningOutputTokens: 300,
+        };
+        for (const last of responses) {
+          running.inputTokens += last.inputTokens;
+          running.cachedInputTokens += last.cachedInputTokens;
+          running.cacheWriteInputTokens += last.cacheWriteInputTokens;
+          running.outputTokens += last.outputTokens;
+          running.reasoningOutputTokens += last.reasoningOutputTokens;
+          running.totalTokens += last.inputTokens + last.outputTokens;
+          client.emit('notification', 'thread/tokenUsage/updated', {
+            threadId: params.threadId,
+            turnId: 'turn_multi',
+            tokenUsage: {
+              total: { ...running },
+              last: { ...last, totalTokens: last.inputTokens + last.outputTokens },
+              modelContextWindow: null,
+            },
+          });
+        }
+        client.emit('notification', 'item/completed', {
+          threadId: params.threadId,
+          turnId: 'turn_multi',
+          item: { type: 'agentMessage', id: 'item_msg_multi', text: 'Done', phase: null },
+        });
+        client.emit('notification', 'turn/completed', {
+          threadId: params.threadId,
+          turn: { id: 'turn_multi', items: [], status: 'completed', error: null },
+        });
+      }, 5);
+      return { turn: { id: 'turn_multi' } };
+    };
+
+    const model = new AppServerLanguageModel({ id: 'gpt-5.3-codex', client: client as never });
+    const result = await model.doGenerate({
+      prompt: [{ role: 'user', content: 'multi-step task' }] as never,
+    });
+
+    expect(result.usage.inputTokens).toEqual({
+      total: 3700,
+      noCache: 600,
+      cacheRead: 3000,
+      cacheWrite: 100,
+    });
+    expect(result.usage.outputTokens).toEqual({ total: 100, text: undefined, reasoning: 30 });
+    expect(result.usage.raw).toMatchObject({
+      totalTokens: 3800,
+      inputTokens: 3700,
+      cachedInputTokens: 3000,
+      cacheWriteInputTokens: 100,
+      outputTokens: 100,
+      reasoningOutputTokens: 30,
+    });
+  });
+
   it('maps failed turn finish reason for context window exceeded', async () => {
     const client = new FakeClient();
     client.turnStartImpl = async (params) => {

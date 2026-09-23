@@ -12,18 +12,18 @@ import { createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 import { z } from 'zod';
 
 const appServer = createCodexAppServer({
-  defaultSettings: { minCodexVersion: '0.153.0', idleTimeoutMs: 30000 },
+  defaultSettings: { minCodexVersion: '0.156.0', idleTimeoutMs: 30000 },
 });
 
 try {
   console.log(' Codex CLI - Advanced Object Generation\n');
 
-  // Use the Codex flagship model to exercise extra-high reasoning effort.
-  // Requires the validated Codex CLI 0.153.x line for gpt-6-astra + xhigh.
-  const model = appServer('gpt-6-astra', {
+  // Use gpt-6-sol at medium reasoning effort for structured outputs.
+  // gpt-6-sol also exposes xhigh, max and ultra for deeper reasoning.
+  const model = appServer('gpt-6-sol', {
     approvalPolicy: 'on-request',
     sandboxPolicy: { type: 'workspaceWrite' },
-    effort: 'xhigh', // codex-max and newer models that expose xhigh; deeper reasoning for structured outputs
+    effort: 'medium',
   });
 
   // Example 1: Product comparison with scoring and rationale

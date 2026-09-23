@@ -7,7 +7,7 @@ These examples use `createCodexAppServer` and a persistent `codex app-server` JS
 - Best for higher-throughput or stateful workflows.
 - Stateful continuation starts from a persistent thread and then uses `providerOptions['codex-app-server'].threadId`.
 - Server-initiated JSON-RPC requests can be handled with `serverRequests`.
-- Requires Codex CLI `>= 0.153.0`.
+- Requires Codex CLI `>= 0.156.0` (the package default `minCodexVersion`); `gpt-6-sol` itself needs `>= 0.155.0`.
 
 ## Thread Lifecycle
 
@@ -50,13 +50,13 @@ For the repository's app-server smoke test (`src/__tests__/app-server-integratio
 - `CODEX_APP_SERVER_INTEGRATION_CODEX_PATH`
   - Optional path to a specific Codex CLI binary/script to use for the test.
 - `CODEX_APP_SERVER_INTEGRATION_MODEL`
-  - Optional model override (defaults to `gpt-6-astra`).
+  - Optional model override (defaults to `gpt-6-sol`).
 
 Example:
 
 ```bash
 CODEX_APP_SERVER_INTEGRATION=1 \
-CODEX_APP_SERVER_INTEGRATION_MODEL=gpt-6-astra \
+CODEX_APP_SERVER_INTEGRATION_MODEL=gpt-6-sol \
 npx vitest run src/__tests__/app-server-integration.smoke.test.ts
 ```
 

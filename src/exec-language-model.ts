@@ -65,6 +65,8 @@ interface ExperimentalJsonEvent {
     input_tokens?: number;
     output_tokens?: number;
     cached_input_tokens?: number;
+    cache_write_input_tokens?: number;
+    reasoning_output_tokens?: number;
   };
   item?: {
     id?: string;
@@ -507,17 +509,27 @@ export class ExecLanguageModel implements LanguageModelV3 {
     const inputTotal = reported.input_tokens ?? 0;
     const outputTotal = reported.output_tokens ?? 0;
     const cachedInputTokens = reported.cached_input_tokens ?? 0;
+    // Leave optional fields undefined when Codex omits them, so "not reported"
+    // stays distinct from "reported as zero".
+    const cacheWrite =
+      typeof reported.cache_write_input_tokens === 'number'
+        ? reported.cache_write_input_tokens
+        : undefined;
+    const reasoning =
+      typeof reported.reasoning_output_tokens === 'number'
+        ? reported.reasoning_output_tokens
+        : undefined;
     return {
       inputTokens: {
         total: inputTotal,
-        noCache: inputTotal - cachedInputTokens,
+        noCache: Math.max(0, inputTotal - cachedInputTokens - (cacheWrite ?? 0)),
         cacheRead: cachedInputTokens,
-        cacheWrite: 0,
+        cacheWrite,
       },
       outputTokens: {
         total: outputTotal,
         text: undefined,
-        reasoning: undefined,
+        reasoning,
       },
       raw: reported as JSONObject,
     };

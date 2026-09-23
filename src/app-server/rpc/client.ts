@@ -30,6 +30,7 @@ import type {
   ThreadResumeResponse,
   ThreadStartParams,
   ThreadStartResponse,
+  TokenUsageBreakdown,
   TurnInterruptParams,
   TurnInterruptResponse,
   TurnStartParams,
@@ -54,12 +55,14 @@ type ClientState = 'idle' | 'starting' | 'ready' | 'error' | 'closed';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_COMPLETED_TURN_IDS = 1_024;
+const MAX_TOKEN_USAGE_THREADS = 256;
+const MAX_TOKEN_USAGE_TURNS_PER_THREAD = 4;
 /**
  * Default minimum Codex CLI version accepted by the app-server client.
- * Tracks the validated support baseline (Codex CLI 0.153.x); override with
+ * Tracks the validated support baseline (Codex CLI 0.156.x); override with
  * `minCodexVersion` to accept older CLIs.
  */
-export const DEFAULT_MIN_CODEX_VERSION = '0.153.0';
+export const DEFAULT_MIN_CODEX_VERSION = '0.156.0';
 
 export function resolveCodexPath(explicitPath?: string): { cmd: string; args: string[] } {
   if (explicitPath) {
@@ -191,6 +194,16 @@ export class AppServerRpcClient extends EventEmitter {
   private pendingRequestContextIdsByThread = new Map<string, Set<string>>();
   private activeRequestContextsByTurn = new Map<string, ActiveRequestContext>();
   private completedTurnIds = new Set<string>();
+  /**
+   * Latest cumulative `tokenUsage.total` per thread, keyed by the turn that
+   * reported it (most recent last). Lets a turn measure its own usage against
+   * the snapshot that preceded it, including the restored snapshot Codex
+   * replays when a thread is resumed.
+   */
+  private tokenUsageTotalsByThread = new Map<
+    string,
+    Array<{ turnId: string | undefined; total: TokenUsageBreakdown }>
+  >();
   private lastStderr = '';
   private lastCrashHadStderr = false;
   private idleTimer?: NodeJS.Timeout;
@@ -433,6 +446,7 @@ export class AppServerRpcClient extends EventEmitter {
     this.pendingRequestContextIdsByThread.clear();
     this.activeRequestContextsByTurn.clear();
     this.completedTurnIds.clear();
+    this.tokenUsageTotalsByThread.clear();
     this.serverCapabilities = undefined;
 
     if (this.child) {
@@ -769,6 +783,9 @@ export class AppServerRpcClient extends EventEmitter {
           this.rememberCompletedTurn(turnId);
         }
       }
+      if (data.method === 'thread/tokenUsage/updated') {
+        this.recordThreadTokenUsage(data.params);
+      }
       this.emit('notification', data.method, data.params ?? {});
       return;
     }
@@ -1071,6 +1088,47 @@ export class AppServerRpcClient extends EventEmitter {
     const queued = this.writeQueue.then(writeOperation, writeOperation);
     this.writeQueue = queued.catch(() => undefined);
     await queued;
+  }
+
+  /**
+   * Returns the most recent cumulative token usage snapshot recorded for
+   * `threadId` by a turn other than `turnId`, i.e. the thread's total before
+   * `turnId` started, when known.
+   */
+  getTokenUsageTotalBeforeTurn(threadId: string, turnId: string): TokenUsageBreakdown | undefined {
+    const entries = this.tokenUsageTotalsByThread.get(threadId);
+    if (!entries) return undefined;
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry && entry.turnId !== turnId) return entry.total;
+    }
+    return undefined;
+  }
+
+  private recordThreadTokenUsage(params: unknown): void {
+    if (!params || typeof params !== 'object') return;
+    const { threadId, turnId, tokenUsage } = params as {
+      threadId?: unknown;
+      turnId?: unknown;
+      tokenUsage?: { total?: TokenUsageBreakdown };
+    };
+    const total = tokenUsage?.total;
+    if (typeof threadId !== 'string' || !total || typeof total !== 'object') return;
+
+    const turnKey = typeof turnId === 'string' ? turnId : undefined;
+    const entries = (this.tokenUsageTotalsByThread.get(threadId) ?? []).filter(
+      (entry) => entry.turnId !== turnKey,
+    );
+    entries.push({ turnId: turnKey, total });
+    if (entries.length > MAX_TOKEN_USAGE_TURNS_PER_THREAD) entries.shift();
+
+    // Re-insert so the Map's iteration order tracks recency for eviction.
+    this.tokenUsageTotalsByThread.delete(threadId);
+    this.tokenUsageTotalsByThread.set(threadId, entries);
+    if (this.tokenUsageTotalsByThread.size > MAX_TOKEN_USAGE_THREADS) {
+      const oldest = this.tokenUsageTotalsByThread.keys().next().value;
+      if (typeof oldest === 'string') this.tokenUsageTotalsByThread.delete(oldest);
+    }
   }
 
   private rememberCompletedTurn(turnId: string): void {
