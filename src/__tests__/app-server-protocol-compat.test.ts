@@ -7,7 +7,17 @@ import {
 } from '../app-server/protocol/validators.js';
 // Imported from the package entry point on purpose: consumers must be able to
 // name these types from 'ai-sdk-provider-codex-cli', not just the internal module.
-import type { CodexErrorInfo, TurnError } from '../index.js';
+import type {
+  CodexErrorInfo,
+  ModelInfo,
+  ModelServiceTier,
+  ServiceTier,
+  ThreadResumeParams,
+  ThreadStartParams,
+  ThreadStartResponse,
+  TurnError,
+  TurnStartParams,
+} from '../index.js';
 
 const fixturesRoot = join(process.cwd(), 'src', '__tests__', 'fixtures', 'app-server-protocol');
 
@@ -636,5 +646,48 @@ describe('codex 0.153.4 protocol shapes', () => {
       },
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('service tier protocol fields (codex >= 0.153)', () => {
+  it('types serviceTier on thread/turn params, thread responses and model/list from the package entry point', () => {
+    const threadStart: ThreadStartParams = {
+      model: 'gpt-6-sol',
+      serviceTier: 'fast',
+      ephemeral: true,
+    };
+    const threadResume: ThreadResumeParams = { threadId: 'thr_1', serviceTier: null };
+    const turnStart: TurnStartParams = {
+      threadId: 'thr_1',
+      input: [],
+      serviceTier: 'default',
+      serviceTierForTurn: null,
+    };
+    const response: ThreadStartResponse = {
+      thread: { id: 'thr_1' },
+      model: 'gpt-6-sol',
+      modelProvider: 'openai',
+      cwd: '/tmp',
+      approvalPolicy: 'never',
+      sandbox: 'workspace-write',
+      reasoningEffort: 'medium',
+      serviceTier: 'priority',
+    };
+    const tier: ModelServiceTier = { id: 'priority', name: 'Fast', description: '1.5x speed' };
+    const model: ModelInfo = {
+      id: 'gpt-6-sol',
+      serviceTiers: [tier],
+      defaultServiceTier: 'priority',
+    };
+    const catalogTier: ServiceTier = 'turbo';
+
+    expect(threadStart.serviceTier).toBe('fast');
+    expect(threadResume.serviceTier).toBeNull();
+    expect(turnStart.serviceTier).toBe('default');
+    expect(turnStart.serviceTierForTurn).toBeNull();
+    expect(response.serviceTier).toBe('priority');
+    expect(model.serviceTiers?.[0]?.id).toBe('priority');
+    expect(model.defaultServiceTier).toBe('priority');
+    expect(catalogTier).toBe('turbo');
   });
 });

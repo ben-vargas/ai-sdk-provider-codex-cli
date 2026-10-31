@@ -148,6 +148,38 @@ describe('createCodexAppServer', () => {
     await provider.close();
   });
 
+  it('accepts serviceTier in default and per-model settings and rejects an empty tier', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.142.5', serviceTier: 'fast' },
+    });
+
+    const inherited = provider('gpt-6-sol') as unknown as { settings: { serviceTier?: string } };
+    const overridden = provider('gpt-6-sol', { serviceTier: 'default' }) as unknown as {
+      settings: { serviceTier?: string };
+    };
+
+    expect(inherited.settings.serviceTier).toBe('fast');
+    expect(overridden.settings.serviceTier).toBe('default');
+    expect(() => provider('gpt-6-sol', { serviceTier: '' })).toThrow(/Invalid settings/);
+
+    await provider.close();
+  });
+
+  it('keys persistent model instances on serviceTier', async () => {
+    const provider = createCodexAppServer({
+      defaultSettings: { minCodexVersion: '0.142.5' },
+    });
+
+    const fast = provider('gpt-6-sol', { threadMode: 'persistent', serviceTier: 'fast' });
+    const fastAgain = provider('gpt-6-sol', { threadMode: 'persistent', serviceTier: 'fast' });
+    const standard = provider('gpt-6-sol', { threadMode: 'persistent', serviceTier: 'default' });
+
+    expect(fast).toBe(fastAgain);
+    expect(fast).not.toBe(standard);
+
+    await provider.close();
+  });
+
   it('reuses persistent model instances for identical model + settings', async () => {
     const provider = createCodexAppServer({
       defaultSettings: {

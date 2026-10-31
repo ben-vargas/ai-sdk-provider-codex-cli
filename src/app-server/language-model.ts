@@ -298,6 +298,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
       personality: providerOptions.personality ?? this.settings.personality,
       effort: providerOptions.effort ?? this.settings.effort,
       summary: providerOptions.summary ?? this.settings.summary,
+      serviceTier: providerOptions.serviceTier ?? this.settings.serviceTier,
       approvalPolicy: providerOptions.approvalPolicy ?? this.settings.approvalPolicy,
       sandboxPolicy: providerOptions.sandboxPolicy ?? this.settings.sandboxPolicy,
       baseInstructions: providerOptions.baseInstructions ?? this.settings.baseInstructions,
@@ -484,6 +485,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         baseInstructions: settings.baseInstructions,
         developerInstructions: developerInstructionsOverride ?? systemInstruction,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
         ephemeral,
         experimentalRawEvents: includeRawChunks,
         persistExtendedHistory: settings.persistExtendedHistory ?? false,
@@ -520,6 +522,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
             baseInstructions: settings.baseInstructions,
             developerInstructions: developerInstructionsOverride ?? systemInstruction,
             personality: settings.personality,
+            serviceTier: settings.serviceTier,
             persistExtendedHistory: settings.persistExtendedHistory ?? false,
           });
 
@@ -687,6 +690,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
       },
       requestHandlers: settings.serverRequests ?? {},
       autoApprove: settings.autoApprove,
@@ -1052,6 +1056,7 @@ export class AppServerLanguageModel implements LanguageModelV4 {
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
       },
       responseFormat: options.responseFormat as { type?: string; schema?: unknown } | undefined,
     });

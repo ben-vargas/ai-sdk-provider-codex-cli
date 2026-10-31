@@ -89,6 +89,15 @@ const configOverrideKeySchema = z
  */
 export const reasoningEffortSchema = z.enum(CODEX_REASONING_EFFORTS);
 
+/**
+ * Service tier ("fast mode") accepted by both providers (`serviceTier`).
+ * Known values are listed in `CODEX_SERVICE_TIERS`, but tiers are
+ * catalog-driven (any tier advertised by the active model is valid), so any
+ * non-empty string is accepted; Codex warns and omits a tier the model does
+ * not advertise instead of failing.
+ */
+export const serviceTierSchema = z.string().min(1);
+
 const configOverridesSchema = z
   .record(
     configOverrideKeySchema,
@@ -108,6 +117,7 @@ export const sharedSettingsSchema = z
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     modelVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+    serviceTier: serviceTierSchema.optional(),
     mcpServers: mcpServersSchema.optional(),
     rmcpClient: z.boolean().optional(),
     configOverrides: configOverridesSchema,
@@ -231,6 +241,7 @@ export const appServerSettingsSchema = z
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
     effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
+    serviceTier: serviceTierSchema.optional(),
     approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
     baseInstructions: z.string().optional(),
@@ -273,6 +284,7 @@ export const appServerProviderOptionsSchema = z
     personality: z.enum(['none', 'friendly', 'pragmatic']).optional(),
     effort: reasoningEffortSchema.optional(),
     summary: z.enum(['auto', 'concise', 'detailed', 'none']).optional(),
+    serviceTier: serviceTierSchema.optional(),
     approvalPolicy: appServerApprovalPolicySchema.optional(),
     sandboxPolicy: sandboxPolicySchema.optional(),
     baseInstructions: z.string().optional(),

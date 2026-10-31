@@ -422,6 +422,7 @@ export function buildTurnStartParams(args: {
     effort?: TurnStartParams['effort'];
     summary?: TurnStartParams['summary'];
     personality?: TurnStartParams['personality'];
+    serviceTier?: TurnStartParams['serviceTier'];
   };
   responseFormat?: {
     type?: string;
@@ -438,6 +439,7 @@ export function buildTurnStartParams(args: {
     effort: args.settings.effort,
     summary: args.settings.summary,
     personality: args.settings.personality,
+    serviceTier: args.settings.serviceTier,
     ...(args.responseFormat?.type === 'json' && args.responseFormat.schema
       ? { outputSchema: sanitizeJsonSchema(args.responseFormat.schema) }
       : {}),

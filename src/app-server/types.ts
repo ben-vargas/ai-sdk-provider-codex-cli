@@ -20,6 +20,7 @@ import type {
   Logger,
   McpServerConfig,
   ReasoningEffort,
+  ServiceTier,
 } from '../types-shared.js';
 import type { SdkMcpServer } from '../tools/sdk-mcp-server.js';
 
@@ -234,6 +235,14 @@ export interface CodexAppServerSettings {
   personality?: AppServerPersonality;
   effort?: ReasoningEffort;
   summary?: AppServerReasoningSummary;
+  /**
+   * Codex service tier ("fast mode"). Sent as the thread default on
+   * `thread/start` / `thread/resume` and on every `turn/start`. Codex keeps a
+   * tier sent on `turn/start` for the thread's subsequent turns, so on
+   * persistent / resumed threads pass `'default'` to return to standard
+   * speed; `undefined` sends nothing. See `ServiceTier`.
+   */
+  serviceTier?: ServiceTier;
   approvalPolicy?: AppServerApprovalPolicy;
   sandboxPolicy?: AppServerSandboxPolicy;
   baseInstructions?: string;
@@ -276,6 +285,7 @@ export interface CodexAppServerProviderOptions {
   personality?: AppServerPersonality;
   effort?: ReasoningEffort;
   summary?: AppServerReasoningSummary;
+  serviceTier?: ServiceTier;
   approvalPolicy?: AppServerApprovalPolicy;
   sandboxPolicy?: AppServerSandboxPolicy;
   baseInstructions?: string;
