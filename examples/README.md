@@ -50,6 +50,7 @@ npm run validate:examples:app-server
 | `custom-config.mjs`                 | `examples/exec/custom-config.mjs`                 | `examples/app-server/custom-config.mjs`                 |
 | `error-handling.mjs`                | `examples/exec/error-handling.mjs`                | `examples/app-server/error-handling.mjs`                |
 | `experimental-json-events.mjs`      | `examples/exec/experimental-json-events.mjs`      | `examples/app-server/experimental-json-events.mjs`      |
+| `fast-mode.mjs`                     | `examples/exec/fast-mode.mjs`                     | `examples/app-server/fast-mode.mjs`                     |
 | `generate-object-advanced.mjs`      | `examples/exec/generate-object-advanced.mjs`      | `examples/app-server/generate-object-advanced.mjs`      |
 | `generate-object-basic.mjs`         | `examples/exec/generate-object-basic.mjs`         | `examples/app-server/generate-object-basic.mjs`         |
 | `generate-object-constraints.mjs`   | `examples/exec/generate-object-constraints.mjs`   | `examples/app-server/generate-object-constraints.mjs`   |

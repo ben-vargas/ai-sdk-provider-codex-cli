@@ -38,6 +38,14 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 - **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.
 - **`modelVerbosity`** ('low' | 'medium' | 'high'): Controls output length/detail for models that support `model_verbosity`; Codex-specific slugs ignore it (the CLI disables verbosity for those model families). Maps to `-c model_verbosity=<value>`.
 
+### Service Tier (Fast Mode)
+
+- **`serviceTier`** ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode, i.e. the `/fast` toggle of the TUI / `service_tier` in `config.toml`. Maps to `-c service_tier=<value>` (emitted before `configOverrides`, so an explicit `configOverrides.service_tier` still wins).
+  - `'fast'` requests the Fast tier (Codex sends it as the catalog id `priority`): faster responses at higher usage (2.5x of a ChatGPT plan's included limits; API keys pay the API fast-mode rate). `'ultrafast'` is only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
+  - `'default'` forces standard speed, e.g. to override a `service_tier` from `~/.codex/config.toml`.
+  - Any other non-empty string is passed through as a catalog tier id. Which tiers a model offers is owned by Codex: `listModels()` reports `serviceTiers` / `defaultServiceTier` per model. A tier the model does not advertise is dropped by Codex with a stderr warning ("Configured service tier `x` is not advertised as supported for model `y` and will be omitted from requests"); the request still runs at standard speed.
+  - When omitted, nothing is sent and Codex falls back to config.toml / the model's default tier.
+
 ### Advanced Codex Features
 
 - **`profile`** (string): Configuration profile from config.toml to specify default options. Maps to `--profile <name>`.
@@ -118,6 +126,7 @@ Use AI SDK `providerOptions` to override Codex parameters for a single request w
 - `reasoningSummary` → `model_reasoning_summary`
 - `reasoningSummaryFormat` → `model_reasoning_summary_format`
 - `textVerbosity` → `model_verbosity` (AI SDK naming; mirrors constructor `modelVerbosity`)
+- `serviceTier` → `service_tier` (overrides constructor `serviceTier`; see [Service Tier (Fast Mode)](#service-tier-fast-mode))
 - `addDirs` → appends `--add-dir` entries (merged with constructor `addDirs`)
 - `configOverrides` → merged with constructor-level overrides (per-call values win on key conflicts)
 - `mcpServers` → merged with constructor-level MCP servers (per-call values override per server)
@@ -169,6 +178,7 @@ await generateText({
 - `reasoningSummary` → `-c model_reasoning_summary=<value>`
 - `reasoningSummaryFormat` → `-c model_reasoning_summary_format=<value>`
 - `modelVerbosity` → `-c model_verbosity=<value>`
+- `serviceTier` → `-c service_tier=<value>` (emitted before `configOverrides`)
 - `profile` → `--profile <name>`
 - `oss` → `--oss`
 - `webSearch` → `-c tools.web_search=true`
@@ -199,6 +209,7 @@ await generateText({
 - `personality` ('none' | 'friendly' | 'pragmatic'): Codex response personality.
 - `effort` ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'): Reasoning effort for the turn (`'max'` / `'ultra'` need Codex CLI >= 0.149); see [Reasoning Precedence](#reasoning-precedence).
 - `summary` ('auto' | 'concise' | 'detailed' | 'none'): Reasoning summary level (app-server protocol accepts all four).
+- `serviceTier` ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode / service tier. Sent as the thread default on `thread/start` / `thread/resume` and on every `turn/start` with the effective (per-call > model) value. Codex keeps a tier sent on `turn/start` for the thread's subsequent turns, so on persistent or resumed threads pass `'default'` to return to standard speed; `undefined` sends nothing. Session `injectMessage()` turns use the tier in force when the session was created. See [Service Tier (Fast Mode)](#service-tier-fast-mode) for the values.
 - `approvalPolicy`: 'untrusted' | 'on-request' | 'never' or the protocol-shaped `{ granular: { sandbox_approval, rules, mcp_elicitations, skill_approval?, request_permissions? } }` object (flags set to `true` are forwarded to your `serverRequests` handlers, `false` auto-rejects that category). `'on-failure'` and the legacy `{ reject: … }` form are deprecated: Codex app-server >= 0.144 rejects them, so the provider translates them (`'on-failure'` → `'on-request'`, `reject` → the equivalent inverted `granular`) and warns once per model.
 - `sandboxPolicy`: 'read-only' | 'workspace-write' | 'danger-full-access' or a protocol-shaped object (e.g. `{ type: 'externalSandbox', networkAccess: 'enabled' }`).
 - `baseInstructions` / `developerInstructions` (string): Instruction overrides passed to the thread.
@@ -224,7 +235,7 @@ await generateText({
 
 ### Per-call Overrides (`providerOptions['codex-app-server']`)
 
-Per-call keys mirror the settings above: `threadId`, `resume`, `threadMode`, `includeRawChunks`, `personality`, `effort`, `summary`, `approvalPolicy`, `sandboxPolicy`, `baseInstructions`, `developerInstructions`, `mcpServers`, `rmcpClient`, `configOverrides`, `autoApprove`, `persistExtendedHistory`, `serverRequests`, `onSessionCreated`.
+Per-call keys mirror the settings above: `threadId`, `resume`, `threadMode`, `includeRawChunks`, `personality`, `effort`, `summary`, `serviceTier`, `approvalPolicy`, `sandboxPolicy`, `baseInstructions`, `developerInstructions`, `mcpServers`, `rmcpClient`, `configOverrides`, `autoApprove`, `persistExtendedHistory`, `serverRequests`, `onSessionCreated`.
 
 ```ts
 import { generateText } from 'ai';
@@ -256,6 +267,7 @@ Always call `provider.close()` (alias `dispose()`) when you are done; the app-se
 
 - `listModels(options?)` — standalone helper; spins up a temporary app-server process. Options: `codexPath`, `env`, `cwd`, `minCodexVersion`, `modelProviders`, `connectionTimeoutMs`, `requestTimeoutMs`. Returns `{ models, defaultModel, nextCursor }`.
 - `provider.listModels(modelProviders?)` — queries through the provider's existing client process.
+- Each returned model carries `supportedReasoningEfforts` and, on Codex >= 0.153, `serviceTiers` (`{ id, name, description }[]`) and `defaultServiceTier`, so you can check whether a model offers fast mode before setting `serviceTier`.
 
 ## Reasoning Precedence
 
