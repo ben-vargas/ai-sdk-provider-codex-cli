@@ -77,6 +77,15 @@ export interface ModelListParams {
   includeHidden?: boolean | null;
 }
 
+/** One entry of `Model.serviceTiers` from `model/list` (codex >= 0.153). */
+export interface ModelServiceTier {
+  /** Catalog tier id, e.g. 'priority' (Fast) or 'ultrafast'. */
+  id: string;
+  /** Display name, e.g. 'Fast'. */
+  name: string;
+  description: string;
+}
+
 /**
  * Vendored subset of the codex 0.142.5 `Model` wire type (renamed upstream
  * from `ModelInfo`), plus fields only pre-0.142 servers return.
@@ -95,6 +104,12 @@ export interface ModelInfo {
   name?: string | null;
   /** External contract: only pre-0.142 servers return `modelProvider`. */
   modelProvider?: string | null;
+  /** Service tiers advertised by the model (codex >= 0.153). */
+  serviceTiers?: ModelServiceTier[];
+  /** Catalog default service tier id for this model, when one is configured (codex >= 0.153). */
+  defaultServiceTier?: string | null;
+  /** @deprecated Superseded by `serviceTiers`; still emitted by codex 0.153-0.164. */
+  additionalSpeedTiers?: string[];
   [k: string]: unknown;
 }
 
@@ -121,6 +136,11 @@ export interface ThreadStartParams {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
+  /**
+   * Thread default service tier, e.g. 'fast' (codex >= 0.153; verified on
+   * 0.153.4 and 0.164.0). Codex maps 'fast' to the catalog tier 'priority'.
+   */
+  serviceTier?: string | null;
   ephemeral?: boolean | null;
   experimentalRawEvents?: boolean;
   /**
@@ -138,6 +158,8 @@ export interface ThreadStartResponse {
   approvalPolicy: unknown;
   sandbox: unknown;
   reasoningEffort: string | null;
+  /** Effective thread service tier (codex >= 0.153); absent on older servers. */
+  serviceTier?: string | null;
 }
 
 export interface ThreadResumeParams {
@@ -153,6 +175,8 @@ export interface ThreadResumeParams {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
+  /** Thread default service tier, e.g. 'fast' (codex >= 0.153). */
+  serviceTier?: string | null;
   /**
    * External contract: consumed by pre-0.142 servers only. Codex 0.142.5
    * removed this param and ignores it when sent.
@@ -197,6 +221,18 @@ export interface TurnStartParams {
   effort?: string | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
+  /**
+   * Service tier override for this turn and the thread's subsequent turns
+   * (codex >= 0.153). The provider sends the effective merged `serviceTier`
+   * here, mirroring `effort` / `summary` / `personality`.
+   */
+  serviceTier?: string | null;
+  /**
+   * Override only for the turn this request starts ('default' = standard
+   * speed; omitted/null inherits the thread's tier). Vendored for
+   * completeness; the provider does not set it.
+   */
+  serviceTierForTurn?: string | null;
   outputSchema?: unknown;
   collaborationMode?: unknown;
 }
