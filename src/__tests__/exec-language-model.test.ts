@@ -1112,7 +1112,7 @@ describe('ExecLanguageModel', () => {
     });
     await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
 
-    const settingIdx = lastArgs.indexOf('service_tier=fast');
+    const settingIdx = lastArgs.indexOf('service_tier="fast"');
     const overrideIdx = lastArgs.indexOf('service_tier=default');
     expect(settingIdx).toBeGreaterThan(-1);
     expect(overrideIdx).toBeGreaterThan(settingIdx);
@@ -1279,7 +1279,7 @@ describe('ExecLanguageModel', () => {
   });
 
   describe('Phase 1: constructor-level parameters', () => {
-    it('emits -c service_tier=<tier> verbatim when serviceTier is set and omits it otherwise', async () => {
+    it('emits -c service_tier="<tier>" as a quoted TOML string when serviceTier is set and omits it otherwise', async () => {
       let seen: string[] = [];
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-tier' }),
@@ -1298,7 +1298,7 @@ describe('ExecLanguageModel', () => {
         settings: { allowNpx: true, color: 'never', serviceTier: 'fast' },
       });
       await fast.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
-      const tierIdx = seen.indexOf('service_tier=fast');
+      const tierIdx = seen.indexOf('service_tier="fast"');
       expect(tierIdx).toBeGreaterThan(-1);
       expect(seen[tierIdx - 1]).toBe('-c');
 
@@ -1307,7 +1307,18 @@ describe('ExecLanguageModel', () => {
         settings: { allowNpx: true, color: 'never', serviceTier: 'priority' },
       });
       await catalog.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
-      expect(seen).toContain('service_tier=priority');
+      expect(seen).toContain('service_tier="priority"');
+
+      // Numeric- / boolean-looking ids stay TOML strings (unquoted, Codex would
+      // load them as an integer / boolean and abort with a config error).
+      for (const tier of ['123', 'true', 'a"b']) {
+        const odd = new ExecLanguageModel({
+          id: 'gpt-6-sol',
+          settings: { allowNpx: true, color: 'never', serviceTier: tier },
+        });
+        await odd.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+        expect(seen).toContain(`service_tier=${JSON.stringify(tier)}`);
+      }
 
       const standard = new ExecLanguageModel({
         id: 'gpt-6-sol',
@@ -1786,8 +1797,8 @@ describe('ExecLanguageModel', () => {
         },
       });
 
-      expect(argsCaptured).toContain('service_tier=default');
-      expect(argsCaptured.join(' ')).not.toContain('service_tier=fast');
+      expect(argsCaptured).toContain('service_tier="default"');
+      expect(argsCaptured.join(' ')).not.toContain('service_tier="fast"');
 
       await expect(
         model.doGenerate({
@@ -2351,7 +2362,7 @@ describe('ExecLanguageModel', () => {
 
       expect(argsCaptured).toContain('model_reasoning_effort=medium');
       expect(argsCaptured).toContain('model_verbosity=low');
-      expect(argsCaptured).toContain('service_tier=fast');
+      expect(argsCaptured).toContain('service_tier="fast"');
     });
   });
 

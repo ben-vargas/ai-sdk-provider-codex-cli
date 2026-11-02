@@ -237,10 +237,11 @@ export interface CodexAppServerSettings {
   summary?: AppServerReasoningSummary;
   /**
    * Codex service tier ("fast mode"). Sent as the thread default on
-   * `thread/start` / `thread/resume` and on every `turn/start`. Codex keeps a
-   * tier sent on `turn/start` for the thread's subsequent turns, so on
-   * persistent / resumed threads pass `'default'` to return to standard
-   * speed; `undefined` sends nothing. See `ServiceTier`.
+   * `thread/start` / `thread/resume` and on every `turn/start` (including
+   * session `injectMessage()` turns); `undefined` sends nothing and the
+   * thread keeps Codex's configured tier. A per-call
+   * `providerOptions.serviceTier` overrides it for that call's turn only.
+   * See `ServiceTier`.
    */
   serviceTier?: ServiceTier;
   approvalPolicy?: AppServerApprovalPolicy;
@@ -285,6 +286,13 @@ export interface CodexAppServerProviderOptions {
   personality?: AppServerPersonality;
   effort?: ReasoningEffort;
   summary?: AppServerReasoningSummary;
+  /**
+   * Service tier for this call's turn only, sent as `turn/start`
+   * `serviceTierForTurn`. Unlike the model-level setting it never changes the
+   * thread's tier, so later calls on a persistent / resumed thread go back to
+   * the model-level tier. It does not apply to a turn that is already running
+   * (steering).
+   */
   serviceTier?: ServiceTier;
   approvalPolicy?: AppServerApprovalPolicy;
   sandboxPolicy?: AppServerSandboxPolicy;

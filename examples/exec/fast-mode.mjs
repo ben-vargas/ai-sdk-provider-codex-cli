@@ -14,7 +14,7 @@ async function main() {
     allowNpx: true,
     skipGitRepoCheck: true,
     reasoningEffort: 'medium',
-    serviceTier: 'fast', // emitted as -c service_tier=fast
+    serviceTier: 'fast', // emitted as -c service_tier="fast"
   });
 
   console.log('=== Fast mode (serviceTier: fast) ===');

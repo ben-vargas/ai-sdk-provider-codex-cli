@@ -223,14 +223,16 @@ export interface TurnStartParams {
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
   /**
    * Service tier override for this turn and the thread's subsequent turns
-   * (codex >= 0.153). The provider sends the effective merged `serviceTier`
-   * here, mirroring `effort` / `summary` / `personality`.
+   * (codex >= 0.153). The provider sends the model-level `serviceTier`
+   * setting here (never a per-call override).
    */
   serviceTier?: string | null;
   /**
    * Override only for the turn this request starts ('default' = standard
-   * speed; omitted/null inherits the thread's tier). Vendored for
-   * completeness; the provider does not set it.
+   * speed; omitted/null inherits the thread's tier). Does not change the
+   * thread's tier or a turn being steered (codex >= 0.153; present in the
+   * 0.156.0 generated protocol). The provider sends a per-call
+   * `providerOptions.serviceTier` here.
    */
   serviceTierForTurn?: string | null;
   outputSchema?: unknown;

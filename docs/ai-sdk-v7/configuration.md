@@ -40,7 +40,7 @@ Model IDs are discovered, not hard-coded: use `listModels()` / `provider.listMod
 
 ### Service Tier (Fast Mode)
 
-- **`serviceTier`** ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode, i.e. the `/fast` toggle of the TUI / `service_tier` in `config.toml`. Maps to `-c service_tier=<value>` (emitted before `configOverrides`, so an explicit `configOverrides.service_tier` still wins).
+- **`serviceTier`** ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode, i.e. the `/fast` toggle of the TUI / `service_tier` in `config.toml`. Maps to `-c service_tier="<value>"` (always quoted as a TOML string) (emitted before `configOverrides`, so an explicit `configOverrides.service_tier` still wins).
   - `'fast'` requests the Fast tier (Codex sends it as the catalog id `priority`): faster responses at higher usage (2.5x of a ChatGPT plan's included limits; API keys pay the API fast-mode rate). `'ultrafast'` is only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
   - `'default'` forces standard speed, e.g. to override a `service_tier` from `~/.codex/config.toml`.
   - Any other non-empty string is passed through as a catalog tier id. Which tiers a model offers is owned by Codex: `listModels()` reports `serviceTiers` / `defaultServiceTier` per model. A tier the model does not advertise is dropped by Codex with a stderr warning ("Configured service tier `x` is not advertised as supported for model `y` and will be omitted from requests"); the request still runs at standard speed.
@@ -178,7 +178,7 @@ await generateText({
 - `reasoningSummary` → `-c model_reasoning_summary=<value>`
 - `reasoningSummaryFormat` → `-c model_reasoning_summary_format=<value>`
 - `modelVerbosity` → `-c model_verbosity=<value>`
-- `serviceTier` → `-c service_tier=<value>` (emitted before `configOverrides`)
+- `serviceTier` → `-c service_tier="<value>"` (emitted before `configOverrides`)
 - `profile` → `--profile <name>`
 - `oss` → `--oss`
 - `webSearch` → `-c tools.web_search=true`
@@ -209,7 +209,7 @@ await generateText({
 - `personality` ('none' | 'friendly' | 'pragmatic'): Codex response personality.
 - `effort` ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'): Reasoning effort for the turn (`'max'` / `'ultra'` need Codex CLI >= 0.149); see [Reasoning Precedence](#reasoning-precedence).
 - `summary` ('auto' | 'concise' | 'detailed' | 'none'): Reasoning summary level (app-server protocol accepts all four).
-- `serviceTier` ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode / service tier. Sent as the thread default on `thread/start` / `thread/resume` and on every `turn/start` with the effective (per-call > model) value. Codex keeps a tier sent on `turn/start` for the thread's subsequent turns, so on persistent or resumed threads pass `'default'` to return to standard speed; `undefined` sends nothing. Session `injectMessage()` turns use the tier in force when the session was created. See [Service Tier (Fast Mode)](#service-tier-fast-mode) for the values.
+- `serviceTier` ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode / service tier. The model-level value is the thread default: it is sent on `thread/start` / `thread/resume` and on every `turn/start`, including session `injectMessage()` turns; `undefined` sends nothing. A per-call `providerOptions['codex-app-server'].serviceTier` is sent only as `turn/start` `serviceTierForTurn`: it applies to that call's turn and never changes the thread's tier, so later calls on a persistent or resumed thread return to the model-level tier. It does not apply to a turn that is already running (steering). See [Service Tier (Fast Mode)](#service-tier-fast-mode) for the values.
 - `approvalPolicy`: 'untrusted' | 'on-request' | 'never' or the protocol-shaped `{ granular: { sandbox_approval, rules, mcp_elicitations, skill_approval?, request_permissions? } }` object (flags set to `true` are forwarded to your `serverRequests` handlers, `false` auto-rejects that category). `'on-failure'` and the legacy `{ reject: … }` form are deprecated: Codex app-server >= 0.144 rejects them, so the provider translates them (`'on-failure'` → `'on-request'`, `reject` → the equivalent inverted `granular`) and warns once per model.
 - `sandboxPolicy`: 'read-only' | 'workspace-write' | 'danger-full-access' or a protocol-shaped object (e.g. `{ type: 'externalSandbox', networkAccess: 'enabled' }`).
 - `baseInstructions` / `developerInstructions` (string): Instruction overrides passed to the thread.

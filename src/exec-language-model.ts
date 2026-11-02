@@ -304,8 +304,11 @@ export class ExecLanguageModel implements LanguageModelV4 {
 
     // Service tier ("fast mode"): Codex maps 'fast' to the catalog tier 'priority'.
     // Emitted before configOverrides so an explicit configOverrides.service_tier still wins.
+    // Quoted as a TOML string: Codex parses `-c` values as TOML, so an unquoted
+    // '123' / 'true' would load as a non-string and abort the run instead of
+    // being dropped as an unsupported tier.
     if (settings.serviceTier) {
-      args.push('-c', `service_tier=${settings.serviceTier}`);
+      args.push('-c', `service_tier=${JSON.stringify(settings.serviceTier)}`);
     }
 
     // Advanced Codex features

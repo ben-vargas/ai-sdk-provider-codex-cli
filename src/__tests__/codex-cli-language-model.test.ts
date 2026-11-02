@@ -666,7 +666,7 @@ describe('CodexCliLanguageModel', () => {
   });
 
   describe('Phase 1: constructor-level parameters', () => {
-    it('emits -c service_tier=<tier> when serviceTier is set and lets per-call options replace it', async () => {
+    it('emits -c service_tier="<tier>" when serviceTier is set and lets per-call options replace it', async () => {
       let seen: string[] = [];
       const lines = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-tier-alias' }),
@@ -685,14 +685,14 @@ describe('CodexCliLanguageModel', () => {
         settings: { allowNpx: true, color: 'never', serviceTier: 'fast' },
       });
       await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
-      expect(seen).toContain('service_tier=fast');
+      expect(seen).toContain('service_tier="fast"');
 
       await model.doGenerate({
         prompt: [{ role: 'user', content: 'Hi' }] as any,
         providerOptions: { 'codex-cli': { serviceTier: 'default' } },
       });
-      expect(seen).toContain('service_tier=default');
-      expect(seen.join(' ')).not.toContain('service_tier=fast');
+      expect(seen).toContain('service_tier="default"');
+      expect(seen.join(' ')).not.toContain('service_tier="fast"');
     });
 
     it('emits -c model_reasoning_* and model_verbosity args when set', async () => {

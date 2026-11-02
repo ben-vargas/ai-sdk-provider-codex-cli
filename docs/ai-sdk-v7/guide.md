@@ -164,7 +164,7 @@ Codex's fast mode (`/fast` in the TUI) trades higher usage for faster responses.
 import { generateText } from 'ai';
 import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
-// exec: emits -c service_tier=fast
+// exec: emits -c service_tier="fast"
 const fastExec = codexExec('gpt-6-sol', {
   allowNpx: true,
   skipGitRepoCheck: true,
@@ -183,7 +183,7 @@ await generateText({
 });
 ```
 
-Known values are `'fast'` (sent to Codex as the catalog tier `priority`), `'ultrafast'` (GPT-6 Astra / GPT-6.1 Sol on eligible plans) and `'default'`; any other string is passed through as a catalog tier id. Availability depends on the model and your account: `listModels()` reports each model's `serviceTiers` / `defaultServiceTier`, and Codex drops a tier the model does not advertise with a warning instead of failing. With a ChatGPT login, fast mode consumes included usage at 2.5x the standard rate (Ultrafast 8x); API keys pay the API fast-mode price. See [configuration.md](./configuration.md#service-tier-fast-mode) for the mapping details and the persistent-thread note.
+Known values are `'fast'` (Codex maps it to the catalog tier `priority`), `'ultrafast'` (GPT-6 Astra / GPT-6.1 Sol on eligible plans) and `'default'`; any other string is passed through as a catalog tier id. Availability depends on the model and your account: `listModels()` reports each model's `serviceTiers` / `defaultServiceTier`, and Codex drops a tier the model does not advertise with a warning instead of failing. With a ChatGPT login, fast mode consumes included usage at 2.5x the standard rate (Ultrafast 8x); API keys pay the API fast-mode price. See [configuration.md](./configuration.md#service-tier-fast-mode) for the mapping details and the persistent-thread note.
 
 ## Image Inputs
 

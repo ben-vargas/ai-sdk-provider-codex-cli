@@ -79,9 +79,9 @@ export const CODEX_REASONING_EFFORTS = [
  *   limits; API-key users pay the API fast-mode rate).
  * - `'ultrafast'`: Ultrafast mode, only advertised by some models
  *   (GPT-6 Astra / GPT-6.1 Sol) and plans.
- * - `'default'`: explicit standard speed. Use it to override a `service_tier`
- *   set in `~/.codex/config.toml`, or to return a persistent / resumed
- *   app-server thread to standard speed after a faster tier was sent.
+ * - `'default'`: explicit standard speed, e.g. to override a `service_tier`
+ *   set in `~/.codex/config.toml` (as a model setting) or for a single call
+ *   (as a per-call provider option).
  *
  * Tiers are catalog-driven, so any other id advertised by the active model is
  * accepted as-is (`listModels()` reports `serviceTiers` / `defaultServiceTier`

@@ -359,7 +359,7 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
   - `fullAuto` is deprecated: Codex CLI 0.147 removed `codex exec --full-auto`. The flag now defaults to `sandboxMode: 'workspace-write'` and `approvalMode: 'never'` (what `--full-auto` pinned); explicit `sandboxMode` / `approvalMode` win, and it still suppresses `dangerouslyBypassApprovalsAndSandbox`. To migrate, set both settings explicitly and drop the bypass flag if it was configured alongside
 - `skipGitRepoCheck`: on by default (pass `false` to keep Codex's git-repo check for CI/non‑repo safety)
 - `color`: `always` | `never` | `auto`
-- `serviceTier`: Codex fast mode / service tier (`'fast'`, `'ultrafast'`, `'default'`, or any tier id advertised by the model); exec emits `-c service_tier=<tier>`, app-server sends `serviceTier` on thread/start, thread/resume and turn/start. See [Fast mode (service tier)](#fast-mode-service-tier)
+- `serviceTier`: Codex fast mode / service tier (`'fast'`, `'ultrafast'`, `'default'`, or any tier id advertised by the model); exec emits `-c service_tier="<tier>"`, app-server sends `serviceTier` on thread/start, thread/resume and turn/start (a per-call override applies to that call's turn only). See [Fast mode (service tier)](#fast-mode-service-tier)
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably
 - Logging:
   - `verbose`: Enable debug/info logs (default: `false` for clean output)
@@ -379,7 +379,7 @@ See [docs/ai-sdk-v7/configuration.md](docs/ai-sdk-v7/configuration.md) for the f
 - `serverRequests`: typed handlers for server-initiated JSON-RPC requests
 - `autoApprove`: default approval response when no custom handler is provided (covers command execution, file changes, skills, and MCP tool call approvals via `mcpServer/elicitation/request` on Codex >= 0.139)
 - `persistExtendedHistory`: request extended thread history persistence
-- `serviceTier`: Codex fast mode (`'fast'`), `'ultrafast'`, or `'default'` to force standard speed; sent on thread/start, thread/resume and every turn/start (see [Fast mode (service tier)](#fast-mode-service-tier))
+- `serviceTier`: Codex fast mode (`'fast'`), `'ultrafast'`, or `'default'` to force standard speed; sent on thread/start, thread/resume and every turn/start. A per-call `providerOptions['codex-app-server'].serviceTier` is sent as `serviceTierForTurn` and applies to that call's turn only (see [Fast mode (service tier)](#fast-mode-service-tier))
 - `threadMode`: `stateless` (default) or `persistent` automatic thread reuse
 - `resume`: shorthand to resume an existing thread id
 - `onSessionCreated`: receive a session object for `injectMessage()` / `interrupt()`
@@ -460,13 +460,14 @@ Codex's fast mode (the `/fast` toggle in the TUI, `service_tier` in `config.toml
 
 - `'fast'` — Fast mode; Codex sends it as the catalog tier `priority`. Faster responses at higher usage: with a ChatGPT login it consumes included usage at 2.5x the standard rate; with an API key the API fast-mode price applies.
 - `'ultrafast'` — Ultrafast mode, only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
-- `'default'` — explicit standard speed. Use it to override a `service_tier` set in `~/.codex/config.toml`, or to return a persistent/resumed app-server thread to standard speed (Codex keeps a tier sent on `turn/start` for the thread's subsequent turns).
+- `'default'` — explicit standard speed. Use it to override a `service_tier` set in `~/.codex/config.toml`, or per call to run one request at standard speed.
+- Per-call overrides are scoped to the call. In the app-server provider the model-level tier is the thread default, and a per-call `serviceTier` is sent as `turn/start` `serviceTierForTurn`, so it never changes the tier of a persistent or resumed thread (and does not apply to a turn that is already running).
 - Any other string is passed through as a catalog tier id. Codex owns the list per model (`listModels()` reports `serviceTiers` and `defaultServiceTier`); a tier the model does not advertise is dropped with a warning on Codex's stderr and the request still runs at standard speed.
 
 ```ts
 import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';
 
-const execFast = codexExec('gpt-6-sol', { serviceTier: 'fast' }); // -c service_tier=fast
+const execFast = codexExec('gpt-6-sol', { serviceTier: 'fast' }); // -c service_tier="fast"
 
 const appServer = createCodexAppServer();
 const appServerFast = appServer('gpt-6-sol', { serviceTier: 'fast' }); // serviceTier on thread/start + turn/start
