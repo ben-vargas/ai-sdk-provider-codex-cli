@@ -170,6 +170,7 @@ console.log(object);
 - Safe defaults for non‑interactive automation (`on-request`, `workspace-write`, `--skip-git-repo-check`)
 - Fallback to `npx @openai/codex` when not on PATH (`allowNpx`)
 - Usage tracking from experimental JSON event format
+- **Fast mode / service tiers** - `serviceTier: 'fast'` (or any tier advertised by the model) in both providers, overridable per call
 - **Image support** - Local binary images in both providers, plus remote HTTP/HTTPS image URLs in app-server mode
 
 ### Image Support
@@ -349,6 +350,7 @@ When OpenAI adds streaming support to `codex exec --experimental-json`, this pro
   - `fullAuto` is deprecated: Codex CLI 0.147 removed `codex exec --full-auto`. The flag now defaults to `sandboxMode: 'workspace-write'` and `approvalMode: 'never'` (what `--full-auto` pinned); explicit `sandboxMode` / `approvalMode` win, and it still suppresses `dangerouslyBypassApprovalsAndSandbox`. To migrate, set both settings explicitly and drop the bypass flag if it was configured alongside
 - `skipGitRepoCheck`: enable by default for CI/non‑repo contexts
 - `color`: `always` | `never` | `auto`
+- `serviceTier`: Codex fast mode / service tier (`'fast'`, `'ultrafast'`, `'default'`, or any tier id advertised by the model); exec emits `-c service_tier="<tier>"`, app-server sends `serviceTier` on thread/start, thread/resume and turn/start (a per-call override applies to that call's turn only). See [Fast mode (service tier)](#fast-mode-service-tier)
 - `outputLastMessageFile`: by default the provider sets a temp path and reads it to capture final text reliably
 - Logging (v0.5.0+):
   - `verbose`: Enable debug/info logs (default: `false` for clean output)
@@ -368,11 +370,12 @@ See [docs/ai-sdk-v5/configuration.md](docs/ai-sdk-v5/configuration.md) for the f
 - `serverRequests`: typed handlers for server-initiated JSON-RPC requests
 - `autoApprove`: default approval response when no custom handler is provided (covers command execution, file changes, skills, and MCP tool call approvals via `mcpServer/elicitation/request` on Codex >= 0.139)
 - `persistExtendedHistory`: request extended thread history persistence
+- `serviceTier`: Codex fast mode (`'fast'`), `'ultrafast'`, or `'default'` to force standard speed; sent on thread/start, thread/resume and every turn/start. A per-call `providerOptions['codex-app-server'].serviceTier` is sent as `serviceTierForTurn` and applies to that call's turn only (see [Fast mode (service tier)](#fast-mode-service-tier))
 - `threadMode`: `stateless` (default) or `persistent` automatic thread reuse
 - `resume`: shorthand to resume an existing thread id
 - `onSessionCreated`: receive a session object for `injectMessage()` / `interrupt()`
 
-Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`).
+Per-call app-server overrides use `providerOptions['codex-app-server']` (for example `threadId`, `threadMode`, `includeRawChunks`, `personality`, `serviceTier`, `approvalPolicy`, `sandboxPolicy`, `serverRequests`, `configOverrides`).
 
 Additional app-server helpers:
 
@@ -404,6 +407,9 @@ const model = codexExec('gpt-6-astra', {
   reasoningSummary: 'auto', // auto | detailed (Note: 'concise' and 'none' are rejected by API)
   reasoningSummaryFormat: 'none', // none | experimental
   modelVerbosity: 'high', // low | medium | high
+
+  // Speed (fast mode)
+  serviceTier: 'fast', // fast | ultrafast | default | any tier id in listModels().serviceTiers (maps to -c service_tier=...)
 
   // Advanced features
   profile: 'production', // adds --profile production
@@ -439,6 +445,27 @@ Nested override objects are flattened to dotted keys (e.g., the example above em
 `-c sandbox_workspace_write.network_access=true`). Arrays are serialized to JSON strings.
 MCP server env/header objects flatten the same way (e.g., `mcp_servers.docs.http_headers.x-tenant=acme`).
 
+### Fast mode (service tier)
+
+Codex's fast mode (the `/fast` toggle in the TUI, `service_tier` in `config.toml`) is exposed as `serviceTier` in both providers and in their per-call `providerOptions`:
+
+- `'fast'` — Fast mode; Codex maps it to the catalog tier `priority`. Faster responses at higher usage: with a ChatGPT login it consumes included usage at 2.5x the standard rate; with an API key the API fast-mode price applies.
+- `'ultrafast'` — Ultrafast mode, only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
+- `'default'` — explicit standard speed. Use it to override a `service_tier` set in `~/.codex/config.toml`, or per call to run one request at standard speed.
+- Per-call overrides are scoped to the call. In the app-server provider the model-level tier is the thread default, and a per-call `serviceTier` is sent as `turn/start` `serviceTierForTurn`, so it never changes the tier of a persistent or resumed thread (and does not apply to a turn that is already running).
+- Any other string is passed through as a catalog tier id. Codex owns the list per model (`listModels()` reports `serviceTiers` and `defaultServiceTier`); a tier the model does not advertise is dropped with a warning on Codex's stderr and the request still runs at standard speed.
+
+```ts
+import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+const execFast = codexExec('gpt-6-sol', { serviceTier: 'fast' }); // -c service_tier="fast"
+
+const appServer = createCodexAppServer();
+const appServerFast = appServer('gpt-6-sol', { serviceTier: 'fast' }); // serviceTier on thread/start + turn/start
+```
+
+When `serviceTier` is omitted nothing is sent and Codex falls back to your config.toml / the model's default tier. Runnable examples: `node examples/exec/fast-mode.mjs` and `node examples/app-server/fast-mode.mjs`.
+
 ### Per-call overrides via `providerOptions` (v0.4.0+)
 
 Override these parameters for individual AI SDK calls using the `providerOptions` map. Per-call
@@ -462,6 +489,7 @@ const response = await generateText({
       reasoningEffort: 'high',
       reasoningSummary: 'detailed',
       textVerbosity: 'high', // AI SDK naming; maps to model_verbosity
+      serviceTier: 'default', // standard speed for this call (fast | ultrafast | default | catalog tier id)
       rmcpClient: true,
       mcpServers: {
         scratch: {
@@ -494,6 +522,7 @@ const response = await generateText({
     'codex-app-server': {
       threadId: 'thr_existing',
       personality: 'pragmatic',
+      serviceTier: 'fast',
       approvalPolicy: 'on-request',
     },
   },

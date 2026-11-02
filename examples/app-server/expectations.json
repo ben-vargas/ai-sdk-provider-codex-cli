@@ -22,6 +22,10 @@
     "basic-usage.mjs": { "mustInclude": ["Result:"] },
     "check-cli.mjs": { "mustInclude": ["app-server"] },
     "conversation-history.mjs": { "mustInclude": ["threadId"] },
+    "fast-mode.mjs": {
+      "mustInclude": ["Fast mode (serviceTier: fast)", "Fast mode example complete."],
+      "timeoutMs": 90000
+    },
     "generate-object-basic.mjs": { "mustInclude": ["Done"], "timeoutMs": 90000 },
     "generate-object-advanced.mjs": {
       "mustInclude": ["Advanced examples complete"],

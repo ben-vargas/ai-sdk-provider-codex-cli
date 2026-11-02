@@ -60,12 +60,27 @@ export interface ModelListParams {
   limit?: number | null;
 }
 
+/** One entry of `Model.serviceTiers` from `model/list` (codex >= 0.153). */
+export interface ModelServiceTier {
+  /** Catalog tier id, e.g. 'priority' (Fast) or 'ultrafast'. */
+  id: string;
+  /** Display name, e.g. 'Fast'. */
+  name: string;
+  description: string;
+}
+
 export interface ModelInfo {
   id: string;
   name?: string | null;
   modelProvider?: string | null;
   description?: string | null;
   isDefault?: boolean | null;
+  /** Service tiers advertised by the model (codex >= 0.153). */
+  serviceTiers?: ModelServiceTier[];
+  /** Catalog default service tier id for this model, when one is configured (codex >= 0.153). */
+  defaultServiceTier?: string | null;
+  /** @deprecated Superseded by `serviceTiers`; still emitted by codex 0.153-0.164. */
+  additionalSpeedTiers?: string[];
   [k: string]: unknown;
 }
 
@@ -92,6 +107,11 @@ export interface ThreadStartParams {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
+  /**
+   * Thread default service tier, e.g. 'fast' (codex >= 0.153; verified on
+   * 0.153.4 and 0.164.0). Codex maps 'fast' to the catalog tier 'priority'.
+   */
+  serviceTier?: string | null;
   ephemeral?: boolean | null;
   experimentalRawEvents: boolean;
   persistExtendedHistory: boolean;
@@ -105,6 +125,8 @@ export interface ThreadStartResponse {
   approvalPolicy: unknown;
   sandbox: unknown;
   reasoningEffort: string | null;
+  /** Effective thread service tier (codex >= 0.153); absent on older servers. */
+  serviceTier?: string | null;
 }
 
 export interface ThreadResumeParams {
@@ -121,6 +143,8 @@ export interface ThreadResumeParams {
   developerInstructions?: string | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
   persistExtendedHistory: boolean;
+  /** Thread default service tier, e.g. 'fast' (codex >= 0.153). */
+  serviceTier?: string | null;
 }
 
 export type ThreadResumeResponse = ThreadStartResponse;
@@ -148,6 +172,20 @@ export interface TurnStartParams {
   effort?: string | null;
   summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
   personality?: 'none' | 'friendly' | 'pragmatic' | null;
+  /**
+   * Service tier override for this turn and the thread's subsequent turns
+   * (codex >= 0.153). The provider sends the model-level `serviceTier`
+   * setting here (never a per-call override).
+   */
+  serviceTier?: string | null;
+  /**
+   * Override only for the turn this request starts ('default' = standard
+   * speed; omitted/null inherits the thread's tier). Does not change the
+   * thread's tier or a turn being steered (codex >= 0.153; present in the
+   * 0.156.0 generated protocol). The provider sends a per-call
+   * `providerOptions.serviceTier` here.
+   */
+  serviceTierForTurn?: string | null;
   outputSchema?: unknown;
   collaborationMode?: unknown;
 }
