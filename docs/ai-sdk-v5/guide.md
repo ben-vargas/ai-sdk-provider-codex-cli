@@ -276,6 +276,35 @@ try {
 }
 ```
 
+## Fast Mode (Service Tier)
+
+Codex's fast mode (`/fast` in the TUI) trades higher usage for faster responses. Set `serviceTier` on either provider, or per call through `providerOptions`:
+
+```js
+import { generateText } from 'ai';
+import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+// exec: emits -c service_tier="fast"
+const fastExec = codexExec('gpt-6-sol', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+  serviceTier: 'fast',
+});
+
+// app-server: serviceTier is sent on thread/start, thread/resume and every turn/start
+const appServer = createCodexAppServer();
+const fastAppServer = appServer('gpt-6-sol', { serviceTier: 'fast' });
+
+// per call: force standard speed for one request
+await generateText({
+  model: fastAppServer,
+  prompt: 'Quick question.',
+  providerOptions: { 'codex-app-server': { serviceTier: 'default' } },
+});
+```
+
+Known values are `'fast'` (Codex maps it to the catalog tier `priority`), `'ultrafast'` (GPT-6 Astra / GPT-6.1 Sol on eligible plans) and `'default'`; any other string is passed through as a catalog tier id. Availability depends on the model and your account: `listModels()` reports each model's `serviceTiers` / `defaultServiceTier`, and Codex drops a tier the model does not advertise with a warning instead of failing. With a ChatGPT login, fast mode consumes included usage at 2.5x the standard rate (Ultrafast 8x); API keys pay the API fast-mode price. A per-call app-server `serviceTier` applies to that call's turn only (sent as `turn/start` `serviceTierForTurn`), so it never changes the tier of a persistent or resumed thread. See [configuration.md](./configuration.md#service-tier-fast-mode) for the exec mapping details.
+
 ## Examples
 
 See `examples/` for runnable scripts that cover:
@@ -284,3 +313,4 @@ See `examples/` for runnable scripts that cover:
 - Conversation history and system messages
 - Permissions & sandbox modes
 - JSON object generation: basic, nested, constraints, advanced
+- Fast mode / service tiers (`fast-mode.mjs`)

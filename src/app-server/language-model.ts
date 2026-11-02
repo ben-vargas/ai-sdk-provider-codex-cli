@@ -254,6 +254,9 @@ export class AppServerLanguageModel implements LanguageModelV3 {
       personality: providerOptions.personality ?? this.settings.personality,
       effort: providerOptions.effort ?? this.settings.effort,
       summary: providerOptions.summary ?? this.settings.summary,
+      // serviceTier is deliberately not merged: the model-level tier is the thread
+      // default, and a per-call providerOptions.serviceTier is sent only as
+      // turn/start `serviceTierForTurn` so it never outlives the call.
       approvalPolicy: providerOptions.approvalPolicy ?? this.settings.approvalPolicy,
       sandboxPolicy: providerOptions.sandboxPolicy ?? this.settings.sandboxPolicy,
       baseInstructions: providerOptions.baseInstructions ?? this.settings.baseInstructions,
@@ -433,6 +436,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         baseInstructions: settings.baseInstructions,
         developerInstructions,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
         ephemeral,
         experimentalRawEvents: includeRawChunks,
         persistExtendedHistory: settings.persistExtendedHistory ?? false,
@@ -469,6 +473,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
             baseInstructions: settings.baseInstructions,
             developerInstructions,
             personality: settings.personality,
+            serviceTier: settings.serviceTier,
             persistExtendedHistory: settings.persistExtendedHistory ?? false,
           });
 
@@ -614,6 +619,7 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
       },
       requestHandlers: settings.serverRequests ?? {},
       autoApprove: settings.autoApprove,
@@ -969,6 +975,8 @@ export class AppServerLanguageModel implements LanguageModelV3 {
         effort: settings.effort,
         summary: settings.summary,
         personality: settings.personality,
+        serviceTier: settings.serviceTier,
+        serviceTierForTurn: providerOptions?.serviceTier,
       },
       responseFormat: options.responseFormat as { type?: string; schema?: unknown } | undefined,
     });

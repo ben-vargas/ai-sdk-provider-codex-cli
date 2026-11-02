@@ -33,6 +33,14 @@ This provider wraps the `codex exec` CLI in non‑interactive mode and maps sett
 - **`reasoningSummaryFormat`** ('none' | 'experimental'): Controls reasoning summary format (experimental). Maps to `-c model_reasoning_summary_format=<value>`.
 - **`modelVerbosity`** ('low' | 'medium' | 'high'): Controls output length/detail for GPT-5.1 **non-Codex** models (and legacy GPT-5). Codex-specific slugs (`gpt-5.1-codex`, `gpt-5.1-codex-mini`) ignore this, because the CLI disables verbosity for those model families (`codex-rs/core/src/model_family.rs`). Maps to `-c model_verbosity=<value>` when supported.
 
+### Service Tier (Fast Mode)
+
+- **`serviceTier`** ('fast' | 'ultrafast' | 'default' | catalog tier id): Codex fast mode, i.e. the `/fast` toggle of the TUI / `service_tier` in `config.toml`. Maps to `-c service_tier="<value>"`, always quoted as a TOML string and emitted before `configOverrides` (so an explicit `configOverrides.service_tier` still wins).
+  - `'fast'` requests the Fast tier (Codex maps it to the catalog id `priority`): faster responses at higher usage (2.5x of a ChatGPT plan's included limits; API keys pay the API fast-mode rate). `'ultrafast'` is only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
+  - `'default'` forces standard speed, e.g. to override a `service_tier` from `~/.codex/config.toml`.
+  - Any other non-empty string is passed through as a catalog tier id. Which tiers a model offers is owned by Codex: `listModels()` reports `serviceTiers` / `defaultServiceTier` per model. A tier the model does not advertise is dropped by Codex (it emits a "Configured service tier `x` is not advertised as supported for model `y` and will be omitted from requests" warning in its own event stream, which the provider does not surface); the request still runs at standard speed.
+  - When omitted, nothing is sent and Codex falls back to config.toml / the model's default tier.
+
 ### Advanced Codex Features
 
 - **`profile`** (string): Configuration profile from config.toml to specify default options. Maps to `--profile <name>`.
@@ -105,6 +113,7 @@ model instance. The provider parses the `codex-cli` entry and applies the keys b
 - `reasoningSummary` → `model_reasoning_summary`
 - `reasoningSummaryFormat` → `model_reasoning_summary_format`
 - `textVerbosity` → `model_verbosity` (AI SDK naming; mirrors constructor `modelVerbosity`)
+- `serviceTier` → `service_tier` (overrides constructor `serviceTier`; see [Service Tier (Fast Mode)](#service-tier-fast-mode))
 - `addDirs` → appends `--add-dir` entries (merged with constructor `addDirs`)
 - `configOverrides` → merged with constructor-level overrides (per-call values win on key conflicts)
 - `mcpServers` → merged with constructor-level MCP servers (per-call values override per server)
@@ -165,6 +174,7 @@ await generateText({
 - `reasoningSummary` → `-c model_reasoning_summary=<value>`
 - `reasoningSummaryFormat` → `-c model_reasoning_summary_format=<value>`
 - `modelVerbosity` → `-c model_verbosity=<value>`
+- `serviceTier` → `-c service_tier="<value>"` (emitted before `configOverrides`)
 - `profile` → `--profile <name>`
 - `oss` → `--oss`
 - `webSearch` → `-c tools.web_search=true`

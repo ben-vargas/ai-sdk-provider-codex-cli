@@ -959,6 +959,31 @@ describe('ExecLanguageModel', () => {
     expect(overrideIdx).toBeGreaterThan(neverIdx);
   });
 
+  it('emits configOverrides.service_tier after the serviceTier setting so it can replace it', async () => {
+    let lastArgs: string[] = [];
+    const lines = [JSON.stringify({ type: 'thread.started', thread_id: 'thread-tier-override' })];
+    (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+      lastArgs = args;
+      return makeMockSpawn(lines, 0)(cmd, args);
+    });
+
+    const model = new ExecLanguageModel({
+      id: 'gpt-6-sol',
+      settings: {
+        allowNpx: true,
+        color: 'never',
+        serviceTier: 'fast',
+        configOverrides: { service_tier: 'default' },
+      },
+    });
+    await model.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+
+    const settingIdx = lastArgs.indexOf('service_tier="fast"');
+    const overrideIdx = lastArgs.indexOf('service_tier=default');
+    expect(settingIdx).toBeGreaterThan(-1);
+    expect(overrideIdx).toBeGreaterThan(settingIdx);
+  });
+
   it('defaults to approval_policy=on-request and sandbox_mode=workspace-write', async () => {
     let lastArgs: string[] = [];
     const lines = [
@@ -1120,6 +1145,55 @@ describe('ExecLanguageModel', () => {
   });
 
   describe('Phase 1: constructor-level parameters', () => {
+    it('emits -c service_tier="<tier>" as a quoted TOML string when serviceTier is set and omits it otherwise', async () => {
+      let seen: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-tier' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        seen = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const fast = new ExecLanguageModel({
+        id: 'gpt-6-sol',
+        settings: { allowNpx: true, color: 'never', serviceTier: 'fast' },
+      });
+      await fast.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+      const tierIdx = seen.indexOf('service_tier="fast"');
+      expect(tierIdx).toBeGreaterThan(-1);
+      expect(seen[tierIdx - 1]).toBe('-c');
+
+      const catalog = new ExecLanguageModel({
+        id: 'gpt-6-sol',
+        settings: { allowNpx: true, color: 'never', serviceTier: 'priority' },
+      });
+      await catalog.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+      expect(seen).toContain('service_tier="priority"');
+
+      // Numeric- / boolean-looking ids stay TOML strings (unquoted, Codex would
+      // load them as an integer / boolean and abort with a config error).
+      for (const tier of ['123', 'true', 'a"b']) {
+        const odd = new ExecLanguageModel({
+          id: 'gpt-6-sol',
+          settings: { allowNpx: true, color: 'never', serviceTier: tier },
+        });
+        await odd.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+        expect(seen).toContain(`service_tier=${JSON.stringify(tier)}`);
+      }
+
+      const standard = new ExecLanguageModel({
+        id: 'gpt-6-sol',
+        settings: { allowNpx: true, color: 'never' },
+      });
+      await standard.doGenerate({ prompt: [{ role: 'user', content: 'Hi' }] as any });
+      expect(seen.join(' ')).not.toContain('service_tier=');
+    });
+
     it('emits -c model_reasoning_* and model_verbosity args when set', async () => {
       let seen: any = { args: [] as string[] };
       const lines = [
@@ -1438,6 +1512,49 @@ describe('ExecLanguageModel', () => {
   });
 
   describe('Phase 2: providerOptions overrides', () => {
+    it('overrides constructor serviceTier per call and rejects an empty tier', async () => {
+      let argsCaptured: string[] = [];
+      const lines = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-tier-call' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { item_type: 'assistant_message', text: 'ok' },
+        }),
+      ];
+      (childProc as any).__setSpawnMock((cmd: string, args: string[]) => {
+        argsCaptured = args;
+        return makeMockSpawn(lines, 0)(cmd, args);
+      });
+
+      const model = new ExecLanguageModel({
+        id: 'gpt-6-sol',
+        settings: { allowNpx: true, color: 'never', serviceTier: 'fast' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'Hi' }] as any,
+        providerOptions: {
+          'codex-cli': {
+            serviceTier: 'default',
+          },
+        },
+      });
+
+      expect(argsCaptured).toContain('service_tier="default"');
+      expect(argsCaptured.join(' ')).not.toContain('service_tier="fast"');
+
+      await expect(
+        model.doGenerate({
+          prompt: [{ role: 'user', content: 'Hi' }] as any,
+          providerOptions: {
+            'codex-cli': {
+              serviceTier: '',
+            },
+          },
+        }),
+      ).rejects.toThrow();
+    });
+
     it('overrides constructor reasoning settings per call', async () => {
       let argsCaptured: string[] = [];
       const lines = [
@@ -1848,6 +1965,7 @@ describe('ExecLanguageModel', () => {
           'codex-cli': {
             reasoningEffort: 'medium',
             textVerbosity: 'low',
+            serviceTier: 'fast',
           },
         },
       });
@@ -1859,6 +1977,7 @@ describe('ExecLanguageModel', () => {
 
       expect(argsCaptured).toContain('model_reasoning_effort=medium');
       expect(argsCaptured).toContain('model_verbosity=low');
+      expect(argsCaptured).toContain('service_tier="fast"');
     });
   });
 

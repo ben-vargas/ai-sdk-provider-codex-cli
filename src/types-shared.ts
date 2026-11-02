@@ -71,6 +71,36 @@ export const CODEX_REASONING_EFFORTS = [
 ] as const satisfies readonly ReasoningEffort[];
 
 /**
+ * Codex service tier ("fast mode"). Mirrors the `service_tier` config key and
+ * the app-server `serviceTier` protocol field.
+ *
+ * - `'fast'`: Fast mode (Codex sends it as the catalog tier `priority`):
+ *   faster responses at higher usage (2.5x of a ChatGPT plan's included
+ *   limits; API-key users pay the API fast-mode rate).
+ * - `'ultrafast'`: Ultrafast mode, only advertised by some models
+ *   (GPT-6 Astra / GPT-6.1 Sol) and plans.
+ * - `'default'`: explicit standard speed, e.g. to override a `service_tier`
+ *   set in `~/.codex/config.toml` (as a model setting) or for a single call
+ *   (as a per-call provider option).
+ *
+ * Tiers are catalog-driven, so any other id advertised by the active model is
+ * accepted as-is (`listModels()` reports `serviceTiers` / `defaultServiceTier`
+ * per model). Codex warns and omits a tier the model does not advertise
+ * instead of failing. When undefined, nothing is sent and Codex falls back to
+ * config.toml / the model's default tier.
+ */
+export type ServiceTier = 'fast' | 'ultrafast' | 'default' | (string & {});
+
+/**
+ * Service tiers known to this provider. Not exhaustive: see `ServiceTier`.
+ */
+export const CODEX_SERVICE_TIERS = [
+  'fast',
+  'ultrafast',
+  'default',
+] as const satisfies readonly ServiceTier[];
+
+/**
  * Reasoning summary detail level for exec mode.
  */
 export type ReasoningSummary = 'auto' | 'detailed';
@@ -117,6 +147,8 @@ export interface CodexSharedSettings {
   reasoningSummary?: ReasoningSummary;
   reasoningSummaryFormat?: ReasoningSummaryFormat;
   modelVerbosity?: ModelVerbosity;
+  /** Codex service tier ("fast mode"); exec emits `-c service_tier=<tier>`. */
+  serviceTier?: ServiceTier;
   mcpServers?: Record<string, McpServerConfig>;
   rmcpClient?: boolean;
   configOverrides?: Record<string, CodexConfigOverrideValue>;
@@ -127,6 +159,7 @@ export interface CodexSharedProviderOptions {
   reasoningSummary?: ReasoningSummary;
   reasoningSummaryFormat?: ReasoningSummaryFormat;
   textVerbosity?: ModelVerbosity;
+  serviceTier?: ServiceTier;
   mcpServers?: Record<string, McpServerConfig>;
   rmcpClient?: boolean;
   configOverrides?: Record<string, CodexConfigOverrideValue>;

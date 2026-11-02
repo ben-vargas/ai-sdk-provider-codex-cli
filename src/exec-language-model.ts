@@ -28,7 +28,12 @@ import { NoSuchModelError } from '@ai-sdk/provider';
 import { generateId, parseProviderOptions } from '@ai-sdk/provider-utils';
 import { getLogger, createVerboseLogger } from './logger.js';
 import type { CodexExecProviderOptions, CodexExecSettings, Logger } from './types.js';
-import { mcpServersSchema, reasoningEffortSchema, validateModelId } from './validation.js';
+import {
+  mcpServersSchema,
+  reasoningEffortSchema,
+  serviceTierSchema,
+  validateModelId,
+} from './validation.js';
 import { mapMessagesToPrompt, type ImageData } from './message-mapper.js';
 import { writeImageToTempFile, cleanupTempImages } from './image-utils.js';
 import { createAPICallError, createAuthenticationError } from './errors.js';
@@ -105,6 +110,7 @@ const codexCliProviderOptionsSchema: z.ZodType<CodexExecProviderOptions> = z
     reasoningSummary: z.enum(['auto', 'detailed']).optional(),
     reasoningSummaryFormat: z.enum(['none', 'experimental']).optional(),
     textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+    serviceTier: serviceTierSchema.optional(),
     addDirs: z.array(z.string().min(1)).optional(),
     configOverrides: z
       .record(
@@ -209,6 +215,7 @@ export class ExecLanguageModel implements LanguageModelV3 {
       reasoningSummaryFormat:
         providerOptions.reasoningSummaryFormat ?? this.settings.reasoningSummaryFormat,
       modelVerbosity: providerOptions.textVerbosity ?? this.settings.modelVerbosity,
+      serviceTier: providerOptions.serviceTier ?? this.settings.serviceTier,
       configOverrides: mergedConfigOverrides,
       addDirs: mergedAddDirs,
       mcpServers: mergedMcpServers,
@@ -285,6 +292,15 @@ export class ExecLanguageModel implements LanguageModelV3 {
     }
     if (settings.modelVerbosity) {
       args.push('-c', `model_verbosity=${settings.modelVerbosity}`);
+    }
+
+    // Service tier ("fast mode"): Codex maps 'fast' to the catalog tier 'priority'.
+    // Emitted before configOverrides so an explicit configOverrides.service_tier still wins.
+    // Quoted as a TOML string: Codex parses `-c` values as TOML, so an unquoted
+    // '123' / 'true' would load as a non-string and abort the run instead of
+    // being dropped as an unsupported tier.
+    if (settings.serviceTier) {
+      args.push('-c', `service_tier=${JSON.stringify(settings.serviceTier)}`);
     }
 
     // Advanced Codex features

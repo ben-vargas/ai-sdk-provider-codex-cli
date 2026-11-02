@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-11-01
+
+### Added
+
+- `serviceTier` setting to enable Codex fast mode in both providers (#52). Known values are `'fast'` (Codex maps it to the catalog tier `priority`), `'ultrafast'` (GPT-6 Astra / GPT-6.1 Sol on eligible plans) and `'default'` (explicit standard speed, e.g. to override a `service_tier` set in `~/.codex/config.toml`); any other non-empty string is passed through as a catalog tier id, because Codex warns and omits a tier the active model does not advertise instead of failing (`listModels()` reports each model's `serviceTiers` / `defaultServiceTier`). The exec provider emits `-c service_tier="<tier>"`, quoted as a TOML string so numeric- or boolean-looking ids do not abort the run (before `configOverrides`, so an explicit `configOverrides.service_tier` still wins); the app-server provider sends the model-level `serviceTier` on `thread/start`, `thread/resume` and every `turn/start` (protocol fields present since Codex 0.153, covered by the 0.156 baseline); `undefined` sends nothing. Per-call overrides via `providerOptions['codex-cli'].serviceTier` / `providerOptions['codex-app-server'].serviceTier` take precedence over model settings and apply to that call only: the app-server provider sends them as `turn/start` `serviceTierForTurn`, so they never change the tier of a persistent or resumed thread or leak into later calls and session `injectMessage()` turns. With a ChatGPT login, fast mode consumes included usage at 2.5x the standard rate (Ultrafast 8x); API-key users pay the API fast-mode price. The `ServiceTier` type and the `CODEX_SERVICE_TIERS` constant are exported.
+- Vendored protocol types gain the service tier fields: `serviceTier` on `ThreadStartParams`, `ThreadResumeParams`, `TurnStartParams` and `ThreadStartResponse`, `serviceTierForTurn` on `TurnStartParams`, and `serviceTiers` / `defaultServiceTier` / `additionalSpeedTiers` on `ModelInfo` (what `listModels()` returns). `ModelInfo` and the new `ModelServiceTier` are exported by name from the package entry point.
+- `fast-mode.mjs` examples for both providers (`examples/exec/fast-mode.mjs`, `examples/app-server/fast-mode.mjs`).
+- Same feature as 2.4.0 on the AI SDK v7 line (#53).
+
 ## [1.5.0] - 2026-09-23
 
 ### Fixed
