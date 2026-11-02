@@ -48,6 +48,8 @@ console.log('default:', defaultModel?.id);
 console.log(models.map((m) => m.id));
 ```
 
+Each model also reports `supportedReasoningEfforts` and, on Codex >= 0.153, `serviceTiers` / `defaultServiceTier` (see [Fast Mode](#fast-mode-service-tier)).
+
 `listModels()` starts a temporary app-server process. If you already hold an app-server provider, reuse its process instead:
 
 ```js
@@ -153,6 +155,35 @@ Provider-specific options take precedence when both are present:
 - app-server: `providerOptions['codex-app-server'].effort` wins over top-level `reasoning`
 
 `reasoning: 'provider-default'` (or omitting the option) leaves your constructor settings and Codex defaults untouched. The full precedence chain is documented in [configuration.md](./configuration.md#reasoning-precedence).
+
+## Fast Mode (Service Tier)
+
+Codex's fast mode (`/fast` in the TUI) trades higher usage for faster responses. Set `serviceTier` on either provider, or per call through `providerOptions`:
+
+```js
+import { generateText } from 'ai';
+import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';
+
+// exec: emits -c service_tier="fast"
+const fastExec = codexExec('gpt-6-sol', {
+  allowNpx: true,
+  skipGitRepoCheck: true,
+  serviceTier: 'fast',
+});
+
+// app-server: serviceTier is sent on thread/start, thread/resume and every turn/start
+const appServer = createCodexAppServer();
+const fastAppServer = appServer('gpt-6-sol', { serviceTier: 'fast' });
+
+// per call: force standard speed for one request
+await generateText({
+  model: fastAppServer,
+  prompt: 'Quick question.',
+  providerOptions: { 'codex-app-server': { serviceTier: 'default' } },
+});
+```
+
+Known values are `'fast'` (Codex maps it to the catalog tier `priority`), `'ultrafast'` (GPT-6 Astra / GPT-6.1 Sol on eligible plans) and `'default'`; any other string is passed through as a catalog tier id. Availability depends on the model and your account: `listModels()` reports each model's `serviceTiers` / `defaultServiceTier`, and Codex drops a tier the model does not advertise with a warning instead of failing. With a ChatGPT login, fast mode consumes included usage at 2.5x the standard rate (Ultrafast 8x); API keys pay the API fast-mode price. See [configuration.md](./configuration.md#service-tier-fast-mode) for the mapping details and the persistent-thread note.
 
 ## Image Inputs
 
@@ -371,6 +402,7 @@ See [examples/](../../examples/) for runnable scripts (organized as `examples/ex
 - Permissions & sandbox modes
 - JSON object generation: basic, nested, constraints, advanced
 - Image inputs, raw chunks, model listing, local MCP tools, session injection
+- Fast mode / service tiers (`fast-mode.mjs`)
 
 ## See Also
 

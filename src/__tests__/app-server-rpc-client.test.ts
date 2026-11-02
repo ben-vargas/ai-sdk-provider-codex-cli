@@ -175,6 +175,32 @@ describe('AppServerRpcClient', () => {
     await client.close();
   });
 
+  it('serializes serviceTier on thread/start and omits the key when undefined', async () => {
+    const { child, writes } = createMockProcess();
+    setSpawnMock(() => child);
+
+    const client = new AppServerRpcClient();
+    await client.threadStart({
+      serviceTier: 'fast',
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    });
+    await client.threadStart({
+      serviceTier: undefined,
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    });
+
+    const threadStarts = writes.filter(
+      (message) => (message as { method?: string }).method === 'thread/start',
+    ) as Array<{ params: Record<string, unknown> }>;
+    expect(threadStarts).toHaveLength(2);
+    expect(threadStarts[0]?.params.serviceTier).toBe('fast');
+    expect('serviceTier' in (threadStarts[1]?.params ?? {})).toBe(false);
+
+    await client.close();
+  });
+
   it('supports model/list requests', async () => {
     const { child } = createMockProcess();
     setSpawnMock(() => child);

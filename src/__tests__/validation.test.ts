@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { validateAppServerSettings, validateSettings } from '../validation.js';
+import {
+  appServerProviderOptionsSchema,
+  serviceTierSchema,
+  validateAppServerSettings,
+  validateSettings,
+} from '../validation.js';
+import { CODEX_SERVICE_TIERS } from '../types-shared.js';
 
 describe('validateSettings', () => {
   it('accepts minimal settings', () => {
@@ -94,6 +100,39 @@ describe('validateSettings', () => {
     }
     const invalid = validateAppServerSettings({ effort: 'extreme' });
     expect(invalid.valid).toBe(false);
+  });
+
+  it('accepts known and catalog-driven serviceTier values for exec settings', () => {
+    for (const serviceTier of ['fast', 'ultrafast', 'default', 'priority', 'turbo']) {
+      const res = validateSettings({ serviceTier });
+      expect(res.valid).toBe(true);
+      expect(res.errors).toHaveLength(0);
+    }
+    expect(CODEX_SERVICE_TIERS.every((tier) => serviceTierSchema.safeParse(tier).success)).toBe(
+      true,
+    );
+  });
+
+  it('rejects empty or non-string serviceTier for exec settings', () => {
+    for (const serviceTier of ['', 1, null]) {
+      const res = validateSettings({ serviceTier } as never);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some((e) => /serviceTier/i.test(e))).toBe(true);
+    }
+  });
+
+  it('validates serviceTier for app-server settings and per-call options', () => {
+    expect(validateAppServerSettings({ serviceTier: 'fast' }).valid).toBe(true);
+    expect(validateAppServerSettings({ serviceTier: 'priority' }).valid).toBe(true);
+    const invalid = validateAppServerSettings({ serviceTier: '' });
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.some((e) => /serviceTier/i.test(e))).toBe(true);
+
+    expect(appServerProviderOptionsSchema.safeParse({ serviceTier: 'ultrafast' }).success).toBe(
+      true,
+    );
+    expect(appServerProviderOptionsSchema.safeParse({ serviceTier: '' }).success).toBe(false);
+    expect(appServerProviderOptionsSchema.safeParse({ serviceTier: 1 }).success).toBe(false);
   });
 
   it('accepts addDirs with valid paths', () => {

@@ -17,6 +17,8 @@ export type {
   JsonRpcNotification,
   JsonRpcMessage,
   Thread,
+  ModelInfo,
+  ModelServiceTier,
   Turn,
   TurnError,
   CodexErrorInfo,
@@ -65,8 +67,9 @@ export type {
   ReasoningSummary,
   ReasoningSummaryFormat,
   ModelVerbosity,
+  ServiceTier,
 } from './types.js';
-export { CODEX_REASONING_EFFORTS } from './types-shared.js';
+export { CODEX_REASONING_EFFORTS, CODEX_SERVICE_TIERS } from './types-shared.js';
 export { DEFAULT_MIN_CODEX_VERSION } from './app-server/rpc/client.js';
 
 // Backward-compat type exports

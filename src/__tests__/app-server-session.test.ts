@@ -57,6 +57,36 @@ describe('AppServerSession', () => {
     expect(session.isActive()).toBe(false);
   });
 
+  it('spreads serviceTier from defaultTurnParams into injected turn/start', async () => {
+    const turnStart = vi.fn().mockResolvedValue({ turn: { id: 'turn_2' } });
+
+    const session = new AppServerSession({
+      threadId: 'thr_1',
+      modelId: 'gpt-6-sol',
+      client: {
+        registerRequestContext: vi.fn().mockReturnValue('ctx_1'),
+        bindRequestContext: vi.fn(),
+        clearRequestContext: vi.fn(),
+        hasTurnCompleted: vi.fn().mockReturnValue(false),
+        withThreadLock: vi.fn(async (_threadId: string, fn: () => Promise<unknown>) => await fn()),
+        turnStart,
+        turnInterrupt: vi.fn(),
+      } as never,
+      defaultTurnParams: { serviceTier: 'fast', effort: 'low' },
+    });
+
+    await session.injectMessage('follow-up');
+
+    expect(turnStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'thr_1',
+        model: 'gpt-6-sol',
+        serviceTier: 'fast',
+        effort: 'low',
+      }),
+    );
+  });
+
   it('clears pending request context when injected turn/start fails', async () => {
     const turnStart = vi.fn().mockRejectedValue(new Error('turn start failed'));
     const registerRequestContext = vi.fn().mockReturnValue('ctx_2');

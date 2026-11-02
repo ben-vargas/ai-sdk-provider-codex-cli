@@ -829,6 +829,200 @@ describe('AppServerLanguageModel', () => {
     });
   });
 
+  describe('service tier (fast mode)', () => {
+    it('sends serviceTier on thread/start and turn/start when configured', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: { serviceTier: 'fast' },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'fast please' }] as never });
+
+      expect((client.threadStartCalls[0] as { serviceTier?: unknown }).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBe('fast');
+    });
+
+    it('omits serviceTier from thread/start and turn/start when unset', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'standard' }] as never });
+
+      expect((client.threadStartCalls[0] as { serviceTier?: unknown }).serviceTier).toBeUndefined();
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBeUndefined();
+      expect(JSON.stringify(client.threadStartCalls[0])).not.toContain('serviceTier');
+      expect(JSON.stringify(client.turnStartCalls[0])).not.toContain('serviceTier');
+    });
+
+    it('sends a per-call serviceTier only as serviceTierForTurn and accepts catalog tiers', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: { serviceTier: 'fast' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'standard for this call' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'default' } },
+      });
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'catalog tier' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'priority' } },
+      });
+
+      // The thread default stays the model-level tier; the override is per turn.
+      expect((client.threadStartCalls[0] as { serviceTier?: unknown }).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTierForTurn).toBe('default');
+      expect((client.threadStartCalls[1] as { serviceTier?: unknown }).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[1] as TurnStartParams).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[1] as TurnStartParams).serviceTierForTurn).toBe('priority');
+    });
+
+    it('omits serviceTierForTurn when no per-call serviceTier is given', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: { serviceTier: 'fast' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'model tier' }] as never,
+        providerOptions: { 'codex-app-server': { effort: 'low' } },
+      });
+
+      expect(JSON.stringify(client.turnStartCalls[0])).not.toContain('serviceTierForTurn');
+    });
+
+    it('keeps a per-call serviceTier off the thread for an explicit threadId', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'resume fast' }] as never,
+        providerOptions: {
+          'codex-app-server': { threadId: 'thr_existing', serviceTier: 'fast' },
+        },
+      });
+
+      expect(client.threadStartCalls).toHaveLength(0);
+      expect(
+        (client.threadResumeCalls[0] as { serviceTier?: unknown }).serviceTier,
+      ).toBeUndefined();
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBeUndefined();
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTierForTurn).toBe('fast');
+    });
+
+    it('does not leak a first-call per-call tier into later persistent turns', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: { threadMode: 'persistent' },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'first, fast' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'fast' } },
+      });
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'second' }] as never });
+
+      // The per-call tier never becomes the persistent thread's default...
+      expect((client.threadStartCalls[0] as { serviceTier?: unknown }).serviceTier).toBeUndefined();
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBeUndefined();
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTierForTurn).toBe('fast');
+      // ...and the next call on the same thread sends no tier at all.
+      expect(
+        (client.threadResumeCalls[0] as { serviceTier?: unknown }).serviceTier,
+      ).toBeUndefined();
+      expect(JSON.stringify(client.turnStartCalls[1])).not.toContain('serviceTier');
+    });
+
+    it('keeps the model-level tier on persistent resume when one call overrides it', async () => {
+      const client = new FakeClient();
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: { threadMode: 'persistent', serviceTier: 'fast' },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'first' }] as never });
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'second' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'default' } },
+      });
+
+      expect((client.threadStartCalls[0] as { serviceTier?: unknown }).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[0] as TurnStartParams).serviceTier).toBe('fast');
+      expect((client.threadResumeCalls[0] as { serviceTier?: unknown }).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[1] as TurnStartParams).serviceTier).toBe('fast');
+      expect((client.turnStartCalls[1] as TurnStartParams).serviceTierForTurn).toBe('default');
+    });
+
+    it('never captures a per-call tier in a cached persistent session (injectMessage)', async () => {
+      const client = new FakeClient();
+      let session: { injectMessage: (content: string) => Promise<void> } | undefined;
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: {
+          threadMode: 'persistent',
+          logger: false,
+          onSessionCreated: (created) => {
+            session = created as typeof session;
+          },
+        },
+      });
+
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'fast once' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'fast' } },
+      });
+      await model.doGenerate({
+        prompt: [{ role: 'user', content: 'standard once' }] as never,
+        providerOptions: { 'codex-app-server': { serviceTier: 'default' } },
+      });
+      await session?.injectMessage('follow-up');
+
+      expect(client.turnStartCalls).toHaveLength(3);
+      expect(JSON.stringify(client.turnStartCalls[2])).not.toContain('serviceTier');
+    });
+
+    it('applies serviceTier to session default turn params (injectMessage)', async () => {
+      const client = new FakeClient();
+      let session: { injectMessage: (content: string) => Promise<void> } | undefined;
+      const model = new AppServerLanguageModel({
+        id: 'gpt-6-sol',
+        client: client as never,
+        settings: {
+          serviceTier: 'fast',
+          logger: false,
+          onSessionCreated: (created) => {
+            session = created as typeof session;
+          },
+        },
+      });
+
+      await model.doGenerate({ prompt: [{ role: 'user', content: 'start' }] as never });
+      await session?.injectMessage('follow-up');
+
+      expect(client.turnStartCalls).toHaveLength(2);
+      for (const call of client.turnStartCalls) {
+        expect((call as TurnStartParams).serviceTier).toBe('fast');
+      }
+    });
+  });
+
   it('uses thread resume when threadId is provided and only sends last user message', async () => {
     const client = new FakeClient();
     const model = new AppServerLanguageModel({
