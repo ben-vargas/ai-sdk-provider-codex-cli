@@ -453,7 +453,7 @@ Codex's fast mode (the `/fast` toggle in the TUI, `service_tier` in `config.toml
 - `'ultrafast'` — Ultrafast mode, only advertised by some models (GPT-6 Astra, GPT-6.1 Sol) and plans.
 - `'default'` — explicit standard speed. Use it to override a `service_tier` set in `~/.codex/config.toml`, or per call to run one request at standard speed.
 - Per-call overrides are scoped to the call. In the app-server provider the model-level tier is the thread default, and a per-call `serviceTier` is sent as `turn/start` `serviceTierForTurn`, so it never changes the tier of a persistent or resumed thread (and does not apply to a turn that is already running).
-- Any other string is passed through as a catalog tier id. Codex owns the list per model (`listModels()` reports `serviceTiers` and `defaultServiceTier`); a tier the model does not advertise is dropped with a warning on Codex's stderr and the request still runs at standard speed.
+- Any other string is passed through as a catalog tier id. Codex owns the list per model (`listModels()` reports `serviceTiers` and `defaultServiceTier`); Codex drops a tier the model does not advertise (it emits a warning in its own event stream, which the provider does not surface) and the request still runs at standard speed, so check `listModels()` if you need to know whether fast mode applies.
 
 ```ts
 import { codexExec, createCodexAppServer } from 'ai-sdk-provider-codex-cli';

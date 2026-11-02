@@ -3,8 +3,9 @@
 // Codex "fast mode" (service tier): faster responses in exchange for higher
 // usage (Fast consumes 2.5x of a ChatGPT plan's included limits; API keys pay
 // the API fast-mode rate). Availability depends on the model and your account:
-// Codex drops a tier the model does not advertise and logs a warning on stderr
-// instead of failing, so the request still runs at standard speed.
+// Codex drops a tier the model does not advertise (with a warning the provider
+// does not surface) instead of failing, so the request still runs at standard
+// speed. Check `serviceTiers` from listModels() to know whether it applies.
 
 import { generateText } from 'ai';
 import { codexExec } from 'ai-sdk-provider-codex-cli';
